@@ -120,12 +120,12 @@ bash update.sh
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v3_ФИНАЛ.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v3_ФИНАЛ.md](ВТОРОЙ_МОЗГ_v3_ФИНАЛ.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.0.md](ВТОРОЙ_МОЗГ_v1.0.md) — full architecture
 
 ## Changelog
 
