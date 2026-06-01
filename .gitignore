@@ -1,0 +1,45 @@
+# ── macOS ─────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ── Linux ─────────────────────────────────────────────────
+*~
+.nfs*
+
+# ── Windows ───────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Personal Claude Code overrides ────────────────────────
+# CLAUDE.md is safe to commit (no personal data in this repo)
+# Use CLAUDE.local.md for personal overrides — it stays local
+CLAUDE.local.md
+.claude/
+
+# ── Test artifacts ────────────────────────────────────────
+# Created when testing install.sh locally
+test-home/
+tmp/
+*.test/
+
+# ── Safety net: secrets ───────────────────────────────────
+.env
+.env.*
+*.key
+*.pem
+*.p12
+id_rsa
+id_ed25519
+credentials.json
+token.json
+secrets.*
