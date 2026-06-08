@@ -71,6 +71,18 @@ mkdir ~/Workspace/projects/dotfiles && cd ~/Workspace/projects/dotfiles && claud
 | `/brain-lint` | Аудит текущего проекта |
 | `/brain-lint --all` | Полный аудит vault (раз в неделю) |
 
+## Chat Skills
+
+Скиллы для Claude.ai — дополняют slash-команды Claude Code.
+Работают в любом чате, проектах Claude.ai и Cowork — без Claude Code.
+
+| Скилл | Триггер | Когда |
+|---|---|---|
+| `brain-onboard` | `/brain-onboard` | Перенести проект из чата в Claude Code |
+
+Установка: запакуй папку скилла в zip → Claude.ai → Customize → Skills.
+Подробнее: [chat-skills/README_RU.md](chat-skills/README_RU.md)
+
 ## Ключевые принципы
 
 **Автономные проекты.** Каждый проект — самостоятельная папка. Удалить проект = удалить одну папку. Добавить = создать одну папку.
@@ -132,6 +144,7 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 
 - [WORKFLOW.md](WORKFLOW.md) — пошаговое руководство пользователя
 - [ВТОРОЙ_МОЗГ_v1.0.md](ВТОРОЙ_МОЗГ_v1.0.md) — полная архитектурная справка
+- [chat-skills/README_RU.md](chat-skills/README_RU.md) — скиллы для Claude.ai
 
 ## Changelog
 
@@ -143,6 +156,10 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 - `install.sh` создаёт `~/Workspace/` при установке автоматически
 - Рекомендуемое расположение кода: `~/Workspace/projects/` (не обязательно)
 - Единый путь на macOS и Linux
+
+**Chat Skills:**
+- `brain-onboard` — новый скилл для Claude.ai: переносит проект из контекста чата
+  в vault Второго Мозга (генерирует CLAUDE.md, _PROJECT.md, taskboard.md)
 
 ---
 

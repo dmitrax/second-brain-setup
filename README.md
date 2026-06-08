@@ -96,6 +96,18 @@ as Claude adds `[[wikilinks]]` between notes.
 **Rewrite, not append** — when processing a new source, Claude rewrites existing
 notes instead of creating duplicates. Knowledge stays clean and current.
 
+## Chat Skills
+
+Skills for Claude.ai that complement the Claude Code commands.
+Work in any chat, Claude.ai Projects, and Cowork — no Claude Code needed.
+
+| Skill | Trigger | When |
+|---|---|---|
+| `brain-onboard` | `/brain-onboard` | Onboard a project from chat to Claude Code |
+
+Install: zip the skill folder → Claude.ai → Customize → Skills.
+See [chat-skills/README.md](chat-skills/README.md) for details.
+
 ## Compatibility
 
 The skill files (`SKILL.md`, `brain-*.md`) are written in English and follow
@@ -126,6 +138,7 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 | `WORKFLOW.md` | Russian | User guide (human) |
 | `ВТОРОЙ_МОЗГ_v1.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
+| `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
@@ -141,6 +154,10 @@ User guide and architecture doc in Russian:
 - `install.sh` now creates `~/Workspace/` if absent
 - Recommended code projects location: `~/Workspace/projects/` (not required)
 - Cross-device path consistency: same on macOS and Linux
+
+**Chat Skills:**
+- `brain-onboard` — new Claude.ai skill: onboards any project from chat context
+  into the Second Brain vault (generates CLAUDE.md, _PROJECT.md, taskboard.md)
 
 ---
 
