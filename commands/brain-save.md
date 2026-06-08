@@ -20,7 +20,7 @@ If nothing changed: skip this step.
 ## Identify current project
 
 Read CLAUDE.md in current directory → find line `Project:` → that is `$PROJECT`.
-Vault: `~/Documents/second-brain-vault/`
+Vault: `~/Workspace/second-brain-vault/`
 
 ## Step 1: Create session log
 

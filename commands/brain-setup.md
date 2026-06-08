@@ -5,8 +5,8 @@ Run once after installation, or to refresh your profile.
 
 ## Step 1: Check current state
 
-Read `~/Documents/second-brain-vault/00-shared/CRITICAL_FACTS.md`
-and `~/Documents/second-brain-vault/00-shared/SOUL.md`.
+Read `~/Workspace/second-brain-vault/00-shared/CRITICAL_FACTS.md`
+and `~/Workspace/second-brain-vault/00-shared/SOUL.md`.
 
 If files contain placeholder text (e.g. "(заполни)") → proceed with setup.
 If already filled → ask: "Эти файлы уже заполнены. Обновить? (да / нет)"
@@ -19,7 +19,7 @@ Ask questions one by one, wait for each answer:
 1. "Как тебя зовут?"
 2. "Часовой пояс? (например: Europe/Berlin UTC+2)"
 3. "На каких устройствах работаешь?"
-4. "Путь к vault? (по умолчанию: ~/Documents/second-brain-vault/)"
+4. "Путь к vault? (по умолчанию: ~/Workspace/second-brain-vault/)"
 5. "Язык работы? (по умолчанию: русский)"
 6. "Твои основные роли? (например: лидер FieldForce, вайб-кодер)"
 

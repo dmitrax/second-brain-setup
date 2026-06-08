@@ -5,7 +5,7 @@
 # The vault (personal knowledge) is a separate private repo.
 
 ## Vault (Second Brain)
-~/Documents/second-brain-vault/
+~/Workspace/second-brain-vault/
 Project: second-brain-system/
 
 ### At session start

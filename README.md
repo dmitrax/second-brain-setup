@@ -24,7 +24,7 @@ Five slash commands to manage it. The vault grows with every session.
 projects/dotfiles/        ← your code (existing repo)
     CLAUDE.md             ← the bridge to vault
 
-~/Documents/second-brain-vault/   ← Obsidian vault (private git repo)
+~/Workspace/second-brain-vault/   ← Obsidian vault (private git repo)
     dotfiles/             ← project knowledge
         _PROJECT.md       ← what, why, current status
         taskboard.md      ← project tasks
@@ -49,11 +49,11 @@ cd second-brain-setup
 bash install.sh
 
 # 3. Fill your profile (one time)
-cd ~/projects/any-folder && claude
+cd ~/Workspace/projects/any-folder && claude
 > /brain-setup
 
 # 4. Create your first project
-mkdir ~/projects/dotfiles && cd ~/projects/dotfiles && claude
+mkdir ~/Workspace/projects/dotfiles && cd ~/Workspace/projects/dotfiles && claude
 > /brain-init dotfiles
 
 # 5. Work. Save. Repeat.
@@ -82,10 +82,10 @@ mkdir ~/projects/dotfiles && cd ~/projects/dotfiles && claude
     commands/
         brain-*.md                ← slash commands
 
-~/projects/[project]/
+~/Workspace/projects/[project]/
     CLAUDE.md                     ← BRIDGE: points to vault + project rules
 
-~/Documents/second-brain-vault/   ← Obsidian vault (private)
+~/Workspace/second-brain-vault/   ← Obsidian vault (private)
     [project]/                    ← one folder per project
 ```
 
@@ -113,7 +113,11 @@ For non-Claude agents: rename `CLAUDE.md` → `AGENTS.md`.
 # Update slash commands after pulling changes
 bash update.sh
 ```
-
+**Upgrading from v1.0 → v1.1** (vault path changed):
+```bash
+mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
+# Then update Vault: line in each project's CLAUDE.md
+```
 ## Language
 
 | File | Language | Audience |
@@ -128,6 +132,17 @@ User guide and architecture doc in Russian:
 - [ВТОРОЙ_МОЗГ_v1.0.md](ВТОРОЙ_МОЗГ_v1.0.md) — full architecture
 
 ## Changelog
+
+### v1.1 — 2026-06-08
+
+**Vault path moved to `~/Workspace/` — fixes iCloud Drive conflict on macOS.**
+
+- Default path: `~/Documents/second-brain-vault/` → `~/Workspace/second-brain-vault/`
+- `install.sh` now creates `~/Workspace/` if absent
+- Recommended code projects location: `~/Workspace/projects/` (not required)
+- Cross-device path consistency: same on macOS and Linux
+
+---
 
 ### v1.0 — 2026-06-01
 

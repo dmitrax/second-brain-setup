@@ -6,7 +6,7 @@ Vault health check: find issues, update cross-project connections.
 Default: current project only (`$PROJECT` from CLAUDE.md).
 With argument `--all`: entire vault.
 
-Vault: `~/Documents/second-brain-vault/`
+Vault: `~/Workspace/second-brain-vault/`
 
 ## Step 1: Orphan notes
 

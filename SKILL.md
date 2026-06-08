@@ -10,7 +10,7 @@ description: >
 # Second Brain — vault operation rules
 
 ## Vault
-Path: ~/Documents/second-brain-vault/
+Path: ~/Workspace/second-brain-vault/
 Always load at session start: 00-shared/CRITICAL_FACTS.md
 
 ## Structure

@@ -23,7 +23,7 @@ Save answer to question 6 as $REPO_VISIBILITY.
 ## Step 2: Create vault structure
 
 ```
-~/Documents/second-brain-vault/$ARGUMENTS/
+~/Workspace/second-brain-vault/$ARGUMENTS/
 ├── _PROJECT.md
 ├── taskboard.md
 ├── raw/
@@ -34,7 +34,7 @@ Save answer to question 6 as $REPO_VISIBILITY.
 ```
 
 ```bash
-VAULT=~/Documents/second-brain-vault
+VAULT=~/Workspace/second-brain-vault
 PROJECT=$ARGUMENTS
 mkdir -p "$VAULT/$PROJECT/raw"
 mkdir -p "$VAULT/$PROJECT/wiki/decisions"
@@ -107,7 +107,7 @@ CLAUDE.md contains TWO blocks: vault bridge + project rules.
 # CLAUDE.md — [PROJECT]
 
 ## Vault (Second Brain)
-~/Documents/second-brain-vault/
+~/Workspace/second-brain-vault/
 Project: [PROJECT]
 
 ### At session start
@@ -193,7 +193,7 @@ Inform the user:
 ```
 ✓ Project [PROJECT] created
 
-Vault:    ~/Documents/second-brain-vault/[PROJECT]/
+Vault:    ~/Workspace/second-brain-vault/[PROJECT]/
 CLAUDE.md: ./CLAUDE.md
 Repo:     [public → in .gitignore | private → ready to commit | none]
 

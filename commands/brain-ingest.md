@@ -6,7 +6,7 @@ Process a new source and integrate knowledge into the wiki.
 `$ARGUMENTS` = project-relative path (e.g.: `raw/README.md`, `raw/hyprland.conf`)
 
 Determine `$PROJECT` from `CLAUDE.md` → line `Project:`.
-Vault root: `~/Documents/second-brain-vault/`
+Vault root: `~/Workspace/second-brain-vault/`
 Full source path: `$VAULT/$PROJECT/$ARGUMENTS`
 
 ## Security rule

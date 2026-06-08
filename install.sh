@@ -3,7 +3,8 @@
 set -e
 
 # ─── Настройки ───────────────────────────────────────────────────────────────
-VAULT="${SECOND_BRAIN_VAULT:-$HOME/Documents/second-brain-vault}"
+VAULT="${SECOND_BRAIN_VAULT:-$HOME/Workspace/second-brain-vault}"
+mkdir -p ~/Workspace  # ensure ~/Workspace exists
 SKILL_DIR="$HOME/.claude/skills/second-brain"
 COMMANDS_DIR="$HOME/.claude/commands"
 
@@ -189,11 +190,11 @@ echo -e "Команды:  ${YELLOW}$COMMANDS_DIR/brain-*.md${NC}"
 echo ""
 echo "Следующие шаги:"
 echo "  1. Запусти guided setup — заполни профиль:"
-echo "     cd ~/projects-code && claude"
+echo "     cd ~/Workspace/projects && claude"
 echo "     /brain-setup"
 echo ""
 echo "  2. Создай первый проект:"
-echo "     mkdir ~/projects-code/[название] && cd ~/projects-code/[название]"
+echo "     mkdir ~/Workspace/projects/[название] && cd ~/Workspace/projects/[название]"
 echo "     claude"
 echo "     /brain-init [название]"
 echo ""
