@@ -29,14 +29,18 @@ Claude Code — мощный инструмент, но у него амнези
     dotfiles/                     ← знания по проекту
         _PROJECT.md               ← что, зачем, текущий статус
         taskboard.md              ← задачи проекта
+        architecture-map.md       ← карта кода (только code/mixed проекты)
         raw/                      ← сырые источники (конфиги, транскрипты)
         wiki/                     ← скомпилированные знания (пишет Claude)
+            decision-*.md         ← записи решений (неизменяемые, ADR-lite)
         sessions/                 ← логи сессий
     00-system/                    ← карта vault и связи между проектами
     00-shared/                    ← кто вы: CRITICAL_FACTS.md + SOUL.md
 ```
 
-При старте сессии Claude читает `CRITICAL_FACTS.md` + `_PROJECT.md` + `taskboard.md` (~450 токенов) и сразу знает весь контекст. Никаких объяснений.
+При старте сессии Claude читает `CRITICAL_FACTS.md` + `_PROJECT.md` + `taskboard.md`
+(~450 токенов) и сразу знает весь контекст. Для кодовых проектов также читает
+`architecture-map.md` — карту маршрутов/модулей, которая заменяет сканирование репозитория.
 
 ## Быстрый старт
 
@@ -143,10 +147,22 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 ## Документация
 
 - [WORKFLOW.md](WORKFLOW.md) — пошаговое руководство пользователя
-- [ВТОРОЙ_МОЗГ_v1.0.md](ВТОРОЙ_МОЗГ_v1.0.md) — полная архитектурная справка
+- [ВТОРОЙ_МОЗГ_v1.2.md](ВТОРОЙ_МОЗГ_v1.2.md) — полная архитектурная справка
 - [chat-skills/README_RU.md](chat-skills/README_RU.md) — скиллы для Claude.ai
 
 ## Changelog
+
+### v1.2 — 2026-06-09
+
+- **architecture-map.md** — новый файл для code/mixed проектов: маршрут/модуль → файл → источник данных → компоненты. Читается на старте каждой code-сессии; не сканируй репозиторий. `/brain-save` обновляет, `/brain-lint` проверяет свежесть.
+- **Decision notes (ADR-lite)** — `wiki/decision-<slug>-because-<reason>.md`. Неизменяемые записи с Y-statement, альтернативами и последствиями. Замещаются, а не редактируются. `/brain-save` создаёт по триггеру.
+- **Critical thinking & warn clause** во всех CLAUDE.md шаблонах: нет автолести; одна строка предупреждения перед деструктивными действиями.
+- **Tier navigation**: нет полного сканирования vault или репозитория — индекс и grep.
+- **Поле `updated:`** в frontmatter `_PROJECT.md`. Обновляется `/brain-save`. Используется stale-детектором `/brain-lint` (порог 14 дней).
+- **`/brain-lint` дополнения**: stale-детектор проектов, проверка размера, консистентность decision-заметок, свежесть architecture-map.
+- **`/brain-save` лог сессии** улучшен: добавлены секции "What worked" и "Tech debt found, not fixed".
+- Decision-заметки теперь flat в `wiki/` (удалена конвенция подпапки `wiki/decisions/`).
+- `brain-init` добавил вопрос о типе проекта (code/content/config/mixed).
 
 ### v1.1 — 2026-06-08
 

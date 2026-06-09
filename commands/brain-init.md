@@ -14,46 +14,44 @@ Ask questions sequentially, wait for each answer before proceeding:
 1. "What is this project? (one or two sentences)"
 2. "What is the concrete end goal? What does done look like?"
 3. "Current status: starting from scratch or already in progress?"
-4. "What is the stack / tools? (languages, frameworks, services, key commands)"
-5. "What are the main rules for this project? (what to always do / never do)"
-6. "Is the repository public or private? (public / private / no repo)"
+4. "What is the project type? (code / content / config / mixed)"
+5. "What is the stack / tools? (languages, frameworks, services, key commands)"
+6. "What are the main rules for this project? (what to always do / never do)"
+7. "Is the repository public or private? (public / private / no repo)"
 
-Save answer to question 6 as $REPO_VISIBILITY.
+Save answer to question 4 as $PROJECT_TYPE.
+Save answer to question 7 as $REPO_VISIBILITY.
 
 ## Step 2: Create vault structure
-
-```
-~/Workspace/second-brain-vault/$ARGUMENTS/
-├── _PROJECT.md
-├── taskboard.md
-├── raw/
-├── wiki/
-│   └── decisions/
-├── output/
-└── sessions/
-```
 
 ```bash
 VAULT=~/Workspace/second-brain-vault
 PROJECT=$ARGUMENTS
 mkdir -p "$VAULT/$PROJECT/raw"
-mkdir -p "$VAULT/$PROJECT/wiki/decisions"
+mkdir -p "$VAULT/$PROJECT/wiki"
 mkdir -p "$VAULT/$PROJECT/output"
 mkdir -p "$VAULT/$PROJECT/sessions"
-# taskboard.md created in Step 3b
+# taskboard.md and _PROJECT.md created in Step 3
 ```
+
+If $PROJECT_TYPE is `code` or `mixed` — also create `architecture-map.md` (Step 3c).
+
+**Note:** no `wiki/decisions/` subfolder. Decision notes are flat in `wiki/` with
+filename `decision-<slug>-because-<reason>.md`.
 
 ## Step 3: Create _PROJECT.md
 
 Use the user's answers. Fill in all blocks.
-Note: ## For future Claude section in English; content blocks in Russian.
+Note: `## For future Claude` section in English; content blocks in Russian.
 
 ```markdown
 ---
 tags: [project-manifest]
 created: [TODAY]
+updated: [TODAY]
 status: active
-brain-version: "1.0"
+type: [PROJECT_TYPE]
+brain-version: "1.2"
 ---
 
 ## For future Claude
@@ -72,17 +70,21 @@ Full context here: what we are building, current status, how to work.
 [ANSWER TO QUESTION 3]
 
 ## Стек / инструменты
-[ANSWER TO QUESTION 4]
+[ANSWER TO QUESTION 5]
 
 ## Стиль работы
-[ANSWER TO QUESTION 5 — preferences, not rules; rules go in CLAUDE.md]
+[ANSWER TO QUESTION 6 — preferences, not rules; rules go in CLAUDE.md]
 
 ## Ключевые решения
-→ [[wiki/decisions/]]
+[Significant decisions live as immutable decision-*.md notes in wiki/.
+List active ones here as [[wikilinks]]. If none yet — write "No major decisions made yet."]
 
 ## Последняя сессия
 [TODAY] — project initialized
 ```
+
+`updated:` is bumped by `/brain-save` on every session that changes project state.
+`/brain-lint` flags the project as stale when `updated` is more than 14 days old.
 
 ## Step 3b: Create project taskboard.md
 
@@ -91,11 +93,50 @@ File: `$VAULT/$PROJECT/taskboard.md`
 ```markdown
 # Taskboard — [PROJECT]
 
-## На этой неделе
+## In progress
 
-## Зависло / откладываю
+## Backlog
 
-## Принятые решения
+## Done
+```
+
+## Step 3c: Create architecture-map.md (code / mixed projects only)
+
+Skip this step for content and config projects.
+
+File: `$VAULT/$PROJECT/architecture-map.md`
+
+Fill from the user's answers (stack, current status). Leave clearly-marked gaps
+for Claude to complete on the first code session.
+
+```markdown
+---
+project: [PROJECT]
+updated: [TODAY]
+---
+
+# Architecture map — [PROJECT]
+
+The orientation file for code work. Read before editing code — do not scan the
+repository to rediscover structure. Rewritten in place after structural changes.
+
+## Stack
+[ANSWER TO QUESTION 5 — one line]
+
+## Routes / modules
+
+| Path or module | File | Data source | Components / deps |
+|---|---|---|---|
+| [fill on first session] | | | |
+
+## Key components / units
+- [fill on first session]
+
+## External integrations
+- [fill on first session]
+
+## Current focus
+- [ANSWER TO QUESTION 2 — what we are building toward]
 ```
 
 ## Step 4: Create CLAUDE.md in current directory
@@ -114,25 +155,37 @@ Project: [PROJECT]
 1. Read: 00-shared/CRITICAL_FACTS.md
 2. Read: [PROJECT]/_PROJECT.md
 3. Read: [PROJECT]/taskboard.md
-4. Tasks with no progress for 3+ days → flag explicitly:
+4. If code or mixed project: read [PROJECT]/architecture-map.md before any code work
+5. Do not full-scan the vault or repository. Use _PROJECT.md, architecture-map.md,
+   and grep to find specific notes — never load whole folders or scan all code.
+6. Tasks with no progress for 3+ days → flag explicitly:
    "🚨 [Task] stalled for N days. Reason: [reason]. Decompose now?"
-5. Read: [PROJECT]/wiki/ — only files relevant to the current task
+7. If raw/ contains unprocessed files — notify user before ingesting
+
+### Critical thinking & safety
+- Do not flatter or auto-agree. If an approach is weak, unrealistic, or suboptimal,
+  say so plainly: what is wrong and what would be better. Praise only when earned.
+- Before an action that can break production or destroy work (DB migration, changing
+  public URLs, deleting components, force-push, bulk deletes), warn in ONE line:
+  "Before I do this — note: [risk]. Proceed?" If confirmed, execute without further
+  hedging. One warning, not repeated. Skip the warning for mechanical tasks
+  (refactor, formatting, adding comments).
 
 ---
 
 ## Project: [PROJECT]
 
 ### Stack and tools
-[ANSWER TO QUESTION 4]
+[ANSWER TO QUESTION 5]
 
 ### Rules
-[ANSWER TO QUESTION 5 — what to always do, conventions, agreements]
+[ANSWER TO QUESTION 6 — what to always do, conventions, agreements]
 
 ### Do not
-[ANSWER TO QUESTION 5 — prohibitions, constraints, things to avoid]
+[ANSWER TO QUESTION 6 — prohibitions, constraints, things to avoid]
 ```
 
-**Important:** Block "Rules" is filled from answers to questions 4 and 5.
+**Important:** Block "Rules" is filled from answers to questions 5 and 6.
 If the user gave explicit technical rules — copy them here verbatim.
 If no rules were stated — write sensible defaults based on the stack.
 
@@ -185,7 +238,7 @@ Inform the user:
 
 **00-system/index.md** — add line in "Projects" section:
 ```
-- [[PROJECT]] — [short description from question 1], active
+- [[PROJECT]] — [short description from question 1], [PROJECT_TYPE], active
 ```
 
 ## Step 7: Report result
@@ -193,9 +246,11 @@ Inform the user:
 ```
 ✓ Project [PROJECT] created
 
-Vault:    ~/Workspace/second-brain-vault/[PROJECT]/
+Vault:     ~/Workspace/second-brain-vault/[PROJECT]/
 CLAUDE.md: ./CLAUDE.md
-Repo:     [public → in .gitignore | private → ready to commit | none]
+Type:      [PROJECT_TYPE]
+Arch map:  created / not applicable
+Repo:      [public → in .gitignore | private → ready to commit | none]
 
 Next step: place first sources in raw/
 and run /brain-ingest raw/[file]

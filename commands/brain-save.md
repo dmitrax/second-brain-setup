@@ -12,7 +12,7 @@ Triggers (if any apply → update CLAUDE.md Block 2 first):
 - New constraint: "never do Y", something broke and should not repeat
 - Workflow changed: new commands, new build/test/deploy steps
 
-If triggered: open CLAUDE.md in current directory → update Block 2 → then proceed with steps below.
+If triggered: open CLAUDE.md in current directory → update Block 2 → then proceed.
 If nothing changed: skip this step.
 
 ---
@@ -22,10 +22,15 @@ If nothing changed: skip this step.
 Read CLAUDE.md in current directory → find line `Project:` → that is `$PROJECT`.
 Vault: `~/Workspace/second-brain-vault/`
 
+## Step 0b: Bump updated date
+
+In `$VAULT/$PROJECT/_PROJECT.md` frontmatter, set `updated:` to today's date (YYYY-MM-DD).
+If the `updated:` field does not exist in frontmatter — add it.
+
 ## Step 1: Create session log
 
 File: `$VAULT/$PROJECT/sessions/[YYYY-MM-DD_HHMM]_session.md`
-(Use timestamp to avoid collision if multiple sessions per day)
+(Timestamp in filename prevents collision if multiple sessions per day.)
 
 ```markdown
 ---
@@ -40,16 +45,19 @@ project: $PROJECT
 [brief summary — 2-5 sentences in Russian]
 
 ## Decisions made
-[list of decisions or "none"]
+[list decisions made in this session — if none, write "none"]
 
-## New knowledge
-[what was learned or "none"]
+## What worked
+[prompts, approaches, commands that worked well — so the next session can reuse them]
+
+## Tech debt found, not fixed
+[issues noticed but out of scope for this session — logged here, not touched]
 
 ## Next step
-[concrete next action]
+[concrete next action for the next session]
 
 ## Affected wiki files
-[list of updated notes]
+[list of updated or created notes]
 ```
 
 ## Step 2: Update wiki
@@ -59,37 +67,91 @@ For each piece of new knowledge or decision made:
 - If no note exists — create one with AI-First format (YAML + ## For future Claude)
 - Ensure `## For future Claude` is current and in English
 
-When rewriting a note:
+When rewriting a synthesis note:
 - Update `date:` in frontmatter
 - Update `## For future Claude` if the note's use case changed
 - Remove outdated facts
 - Add new facts and [[wikilinks]]
 
+**Decision notes are an exception to rewrite:** if a new decision supersedes an old one,
+write a NEW `decision-<slug>-because-<reason>.md` and set the old note's frontmatter
+`status: superseded-by: decision-<new-slug>.md`. Never edit the body of an existing
+decision note to reverse its meaning.
+
+## Step 2b: Create decision note if triggered
+
+Trigger: a decision with rationale was made in this session.
+
+File: `$VAULT/$PROJECT/wiki/decision-<slug>-because-<reason>.md`
+
+```markdown
+---
+status: accepted
+date: [TODAY]
+supersedes:
+---
+
+In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
+
+## Context
+[what forced this decision; data/facts on hand; what was tried]
+
+## Alternatives rejected
+- Option A — rejected because [...]
+
+## Consequences
+[gains / costs / risks accepted]
+
+## Review by
+[YYYY-MM-DD — condition that would reopen this decision]
+
+## Links
+[[_PROJECT]] · related: [[wiki/...]]
+```
+
+Then add the `[[wikilink]]` to this note from `_PROJECT.md` "Key decisions" section.
+
 ## Step 3: Update _PROJECT.md
 
-In `## Последняя сессия` block:
+In the status block (`## Статус` or `## Current state`):
+Update to reflect current project state.
+
+In the last-session block (`## Последняя сессия`) if present:
 ```
 [DATE] — [one line summary of what was done]
 ```
 
-Update `## Статус` block if project status changed.
+`updated:` frontmatter field was already bumped in Step 0b.
 
 ## Step 4: Update project taskboard
 
 File: `$VAULT/$PROJECT/taskboard.md`
 
-- Completed tasks → move to `## Принятые решения` with date
-- New tasks → add to `## На этой неделе`
+- Completed tasks → move to done section with date
+- New tasks → add to backlog or in-progress
 - Stalled tasks — do NOT delete, only add date and reason
 
-## Step 5: Update index.md
+## Step 5: Update architecture map (code / mixed projects only)
+
+If this is a code or mixed project AND the codebase structure changed in this session
+(new routes, modules, components, data sources, integrations, moved files):
+
+Rewrite `$VAULT/$PROJECT/architecture-map.md` in place — update the affected rows
+or sections. Do not append. If `architecture-map.md` does not exist yet, create it
+using the project's current structure.
+
+Update the `updated:` field in its frontmatter to today's date.
+
+Skip this step entirely for content and config projects.
+
+## Step 6: Update index.md
 
 File: `$VAULT/00-system/index.md`
 
 If new notes were created — add them to the project section.
 Update `## Последние изменения` (keep last 3-5 lines).
 
-## Step 6: Check for cross-project connections
+## Step 7: Check for cross-project connections
 
 If session produced knowledge applicable to OTHER projects:
 - Add entry to `$VAULT/00-system/connections.md`
@@ -101,8 +163,10 @@ If session produced knowledge applicable to OTHER projects:
 ✓ Session saved
 
 Log:        sessions/[YYYY-MM-DD_HHMM]_session.md
-Wiki:       [N] notes updated
+Wiki:       [N] notes updated/created
+Decisions:  [K] decision notes created
+Arch map:   updated / not applicable
 Taskboard:  updated
 
-Don't forget: git add . && git commit -m "[DATE]" && git push
+Don't forget: git add -A && git commit -m "[DATE]" && git push
 ```

@@ -23,7 +23,7 @@ Find notes in `$PROJECT/wiki/` where statements contradict each other.
 Contradiction signals:
 - Same fact stated differently in two notes
 - `## For future Claude` date older than 30 days + status stable → needs verification
-- Decision in decisions/ contradicts practice described in wiki/
+- A decision note contradicts practice described in a synthesis note
 
 For each contradiction — report to user and suggest resolution.
 
@@ -53,33 +53,83 @@ Update `$VAULT/00-system/connections.md`:
 
 ## Step 6: Check _PROJECT.md
 
-- Is `## Статус` block current?
-- Is `## Последняя сессия` block up to date?
-- If not — suggest updating
+- Is the status block current?
+- Is the last-session block up to date?
+- Does the `updated:` frontmatter field exist? If missing — add it, set to today.
+- If not current — suggest updating
 
 ## Step 7: Check project taskboard
 
 Read `$VAULT/$PROJECT/taskboard.md`.
 
 Flag stale items:
-- Task in `## На этой неделе` with no updates for 14+ days
-  → suggest moving to `## Зависло` with reason
-- Task in `## Зависло` with no update for 30+ days
+- Task in active/in-progress with no updates for 14+ days
+  → suggest moving to stalled with reason
+- Task in stalled with no update for 30+ days
   → ask user: still relevant? close / delete / keep with new date?
 
 Note: especially useful with `--all` flag — catches stale tasks
 in projects that haven't been opened recently.
+
+## Step 8: Stale project detector
+
+Read `updated:` from frontmatter of `_PROJECT.md` for each project in scope.
+
+If `updated:` is more than 14 days old:
+- Flag: "Project [name] — no vault update in N days. Still active, on pause, or close?"
+
+If `updated:` field is missing from frontmatter — flag: "Project [name] — missing
+`updated:` field in _PROJECT.md. Add it and set to the date of the last session."
+
+## Step 9: Size check
+
+Read `$VAULT/$PROJECT/_PROJECT.md` and `$VAULT/$PROJECT/taskboard.md`.
+
+Flag if:
+- `_PROJECT.md` exceeds ~120 lines → suggest moving stale detail into wiki/ notes
+- Taskboard Done / completed section is unbounded (more than ~20 closed items) →
+  suggest archiving old entries to a `wiki/archive-YYYY.md` note
+
+## Step 10: Decision consistency
+
+Find all notes in `wiki/` whose filename starts with `decision-`.
+
+Check:
+- Any decision note with `status: superseded-by:` still referenced as active in
+  `_PROJECT.md` "Key decisions" section → flag the stale link, suggest updating
+- Any decision note with `status: deprecated` still referenced anywhere → same
+- `supersedes:` field points to a note that does not exist → flag broken reference
+
+## Step 11: Architecture map freshness (code / mixed projects only)
+
+If `architecture-map.md` exists in the project root:
+- Read its `updated:` frontmatter field
+- Read the date of the most recent session log in `sessions/`
+- If the session log is newer than `architecture-map.md` updated date AND that session
+  touched code (check session log "What we did" for code-related activity) →
+  flag: "architecture-map.md may be stale — last session was [date], map was updated [date]"
+
+If this is a code or mixed project and `architecture-map.md` does NOT exist:
+- Suggest creating it: "No architecture-map.md found. Create one to improve
+  code-session continuity."
+
+Skip Steps 11 for content and config projects.
 
 ## Result
 
 ```
 ✓ Lint complete: $PROJECT
 
-Orphan notes:       [N] (list)
-Contradictions:     [M] (list)
-Stale notes:        [K] (list)
-Taskboard:          [N] stale tasks flagged
-Connections.md:     updated / no changes
+Orphan notes:          [N] (list)
+Contradictions:        [M] (list)
+Stale notes:           [K] (list)
+Missing link targets:  [L] (list)
+Stale projects:        [N] (list with days since update)
+Size warnings:         [N] (list)
+Decision issues:       [N] (list)
+Architecture map:      ok / stale / missing / not applicable
+Taskboard:             [N] stale tasks flagged
+Connections.md:        updated / no changes
 
 Recommendations:
 [list of specific actions]

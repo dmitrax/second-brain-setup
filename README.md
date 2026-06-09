@@ -28,8 +28,10 @@ projects/dotfiles/        ← your code (existing repo)
     dotfiles/             ← project knowledge
         _PROJECT.md       ← what, why, current status
         taskboard.md      ← project tasks
+        architecture-map.md  ← code orientation map (code/mixed projects)
         raw/              ← source files (configs, transcripts, docs)
         wiki/             ← compiled knowledge (Claude writes this)
+            decision-*.md ← decision records (immutable, ADR-lite)
         sessions/         ← session logs
     00-system/            ← index.md, connections.md
     00-shared/            ← CRITICAL_FACTS.md, SOUL.md
@@ -37,12 +39,15 @@ projects/dotfiles/        ← your code (existing repo)
 
 At session start, Claude reads `CRITICAL_FACTS.md` + `_PROJECT.md` + `taskboard.md`
 (~450 tokens) and immediately knows the full context. No re-explaining.
+For code projects it also reads `architecture-map.md` — a route/module map that
+replaces repository scanning.
+
 
 ## Quick Start
 
 ```bash
 # 1. Clone this repo
-git clone https://github.com/[username]/second-brain-setup
+git clone https://github.com/dmitrax/second-brain-setup
 cd second-brain-setup
 
 # 2. Install (creates vault + copies slash commands to ~/.claude/)
@@ -96,6 +101,9 @@ as Claude adds `[[wikilinks]]` between notes.
 **Rewrite, not append** — when processing a new source, Claude rewrites existing
 notes instead of creating duplicates. Knowledge stays clean and current.
 
+**Decision notes** — immutable `decision-<slug>-because-<reason>.md` records in `wiki/`.
+When a decision changes, a new note supersedes the old one — nothing is deleted or rewritten.
+
 ## Chat Skills
 
 Skills for Claude.ai that complement the Claude Code commands.
@@ -125,26 +133,55 @@ For non-Claude agents: rename `CLAUDE.md` → `AGENTS.md`.
 # Update slash commands after pulling changes
 bash update.sh
 ```
+
+**Upgrading from v1.1 → v1.2:**
+```bash
+# No vault migration needed — all changes are additive.
+# Run update.sh to get the new command files:
+bash update.sh
+
+# For existing code/mixed projects, create architecture-map.md manually
+# or let Claude generate it on your next session:
+# > Создай architecture-map.md для этого проекта на основе текущей кодовой базы
+
+# Add updated: field to existing _PROJECT.md files (optional, enables stale detector):
+# updated: 2026-06-09
+```
+
 **Upgrading from v1.0 → v1.1** (vault path changed):
 ```bash
 mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 # Then update Vault: line in each project's CLAUDE.md
 ```
+
 ## Language
 
 | File | Language | Audience |
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.2.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.0.md](ВТОРОЙ_МОЗГ_v1.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.2.md](ВТОРОЙ_МОЗГ_v1.2.md) — full architecture
+
 
 ## Changelog
+
+### v1.2 — 2026-06-09
+
+- **architecture-map.md** — new file for code/mixed projects: route/module → file → data source → components. Read at session start; never scan the repo. `/brain-save` keeps it current. `/brain-lint` checks freshness.
+- **Decision notes (ADR-lite)** — `wiki/decision-<slug>-because-<reason>.md`. Immutable records with Y-statement, alternatives, consequences. Superseded not rewritten. `/brain-save` creates them on trigger.
+- **Critical thinking & warn clause** in all CLAUDE.md templates: no auto-flattery; one-line warning before destructive actions.
+- **Tier navigation** in session start: no full vault or repository scan — index + grep.
+- **`updated:` field** in `_PROJECT.md` frontmatter. Bumped by `/brain-save`. Used by `/brain-lint` stale detector (14-day threshold).
+- **`/brain-lint` additions**: stale project detector, size check, decision consistency, architecture-map freshness.
+- **`/brain-save` session log** sharpened: adds "What worked" and "Tech debt found, not fixed" sections.
+- Decision notes flat in `wiki/` (removed `wiki/decisions/` subfolder convention).
+- `brain-init` now asks for project type (code / content / config / mixed).
 
 ### v1.1 — 2026-06-08
 
@@ -159,34 +196,18 @@ User guide and architecture doc in Russian:
 - `brain-onboard` — new Claude.ai skill: onboards any project from chat context
   into the Second Brain vault (generates CLAUDE.md, _PROJECT.md, taskboard.md)
 
----
-
 ### v1.0 — 2026-06-01
 
 Initial release.
 
-**5 slash commands:**
-- `/brain-setup` — guided profile setup (CRITICAL_FACTS.md + SOUL.md)
-- `/brain-init` — create new project with full vault structure
-- `/brain-save` — save session: wiki rewrite, taskboard, session log
-- `/brain-ingest` — process source files into wiki (project-relative paths)
-- `/brain-lint` — vault health check: orphans, contradictions, stale notes, taskboard
-
-**Architecture:**
-- One vault, autonomous projects (each project is a self-contained folder)
-- `00-system/` contains only `index.md` and `connections.md`
-- `00-shared/` contains only `CRITICAL_FACTS.md` and `SOUL.md`
+- 5 slash commands: `/brain-setup`, `/brain-init`, `/brain-save`, `/brain-ingest`, `/brain-lint`
+- One vault, autonomous projects (each project is a self-contained root-level folder)
 - AI-First note format: YAML frontmatter + `## For future Claude`
 - Wikilinks rule: minimum 2 `[[links]]` per note for Obsidian graph
-
-**Security:**
 - `raw/` files treated as untrusted source material (prompt injection protection)
-- Extended `.gitignore` for secrets and databases
-- `CLAUDE.md` added to `.gitignore` for public code repos
-
-**Sync:**
 - Git-based sync across devices (no paid Obsidian Sync needed)
-- Vault path: `~/Documents/second-brain-vault/` (consistent across devices)
+
+---
 
 ## Credits
 

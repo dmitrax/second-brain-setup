@@ -82,17 +82,23 @@ status: draft
 [note content in Russian]
 ```
 
-## Step 5: If a decision is found → create in decisions/
+## Step 5: If a decision is found → create in wiki/ (flat, decision- prefix)
 
-File: `$VAULT/$PROJECT/wiki/decisions/[statement].md`
+File: `$VAULT/$PROJECT/wiki/decision-<slug>-because-<reason>.md`
+
+Name = statement answering "what was decided and why it matters":
+❌ `wiki/decisions/auth.md`
+✅ `wiki/decision-chose-supabase-auth-because-rls-per-table.md`
+
+**Decision notes are immutable.** Do not edit a decision to change it. Write a new
+decision note and set the old one's `status: superseded-by: decision-<new>.md`.
 
 ```markdown
 ---
-tags: [decision, tag]
+status: accepted
 date: [TODAY]
-project: $PROJECT
+supersedes:
 sources: ["$PROJECT/$ARGUMENTS"]
-status: stable
 ---
 
 ## For future Claude
@@ -100,19 +106,22 @@ status: stable
 **Decision:** [one line]
 **Reason:** [why]
 
-# [Decision statement]
+In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
 
 ## Context
-[why this question came up]
+[why this question came up; data on hand; what was tried]
 
-## Decision
-[what was chosen]
+## Alternatives rejected
+- Option A — rejected because [...]
 
-## Why
-[rationale]
+## Consequences
+[gains / costs / risks accepted]
 
-## Alternatives considered
-[what was evaluated and rejected]
+## Review by
+[YYYY-MM-DD — condition that would reopen this decision]
+
+## Links
+[[_PROJECT]] · [[related-wiki-note]]
 ```
 
 ## Step 6: Update system files
