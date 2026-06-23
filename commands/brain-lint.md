@@ -8,13 +8,40 @@ With argument `--all`: entire vault.
 
 Vault: `~/Workspace/second-brain-vault/`
 
+## Guard function
+
+```bash
+_obsidian_available() {
+  command -v obsidian >/dev/null 2>&1 && \
+  obsidian vault info=name >/dev/null 2>&1
+}
+```
+
+Use this guard for every CLI block below. If Obsidian is not running — fall back to filesystem logic.
+
 ## Step 1: Orphan notes
 
-Find notes in `$PROJECT/wiki/` with no incoming [[wikilinks]] from other notes.
+```bash
+if _obsidian_available; then
+  obsidian orphans  # returns notes with no incoming [[wikilinks]]
+else
+  # filesystem fallback: grep -rL for notes with no incoming links
+fi
+```
 
 For each orphan note:
 - Suggest: link it from an existing note OR add a reference from _PROJECT.md
 - Do NOT delete automatically — suggest only
+
+## Step 1b: Broken links (CLI only)
+
+```bash
+if _obsidian_available; then
+  obsidian unresolved  # [[wikilinks]] pointing to non-existent files
+  obsidian deadends    # notes with no outgoing links at all
+fi
+# Fallback: skip this step — no reliable filesystem equivalent
+```
 
 ## Step 2: Contradictions
 
@@ -109,6 +136,13 @@ If `architecture-map.md` exists in the project root:
   touched code (check session log "What we did" for code-related activity) →
   flag: "architecture-map.md may be stale — last session was [date], map was updated [date]"
 
+```bash
+if _obsidian_available; then
+  obsidian links file=architecture-map    # list all [[wikilinks]] in the map
+  obsidian unresolved                     # which of those are broken
+fi
+```
+
 If this is a code or mixed project and `architecture-map.md` does NOT exist:
 - Suggest creating it: "No architecture-map.md found. Create one to improve
   code-session continuity."
@@ -128,6 +162,7 @@ Stale projects:        [N] (list with days since update)
 Size warnings:         [N] (list)
 Decision issues:       [N] (list)
 Architecture map:      ok / stale / missing / not applicable
+Broken links (CLI):    [N] (list) / n/a (Obsidian не запущен)
 Taskboard:             [N] stale tasks flagged
 Connections.md:        updated / no changes
 

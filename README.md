@@ -160,16 +160,32 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.2.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.3.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.2.md](ВТОРОЙ_МОЗГ_v1.2.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.3.md](ВТОРОЙ_МОЗГ_v1.3.md) — full architecture
 
 
 ## Changelog
+
+### v1.3 — 2026-06-23
+
+- **Obsidian CLI integration** — optional enhancement when Obsidian 1.12.7+ is running with CLI enabled.
+- **`_obsidian_available()` guard** — every CLI call is wrapped; system falls back to filesystem if Obsidian is not running.
+- **`/brain-lint`**: Step 1 uses `obsidian orphans` when available; new Step 1b checks broken links (`obsidian unresolved`, `obsidian deadends`); Step 11 adds link validation for architecture-map; Result block reports `Broken links (CLI)`.
+- **`/brain-save`**: Step 0b uses `obsidian property:set` to update `updated:` frontmatter when CLI is available.
+- **`SKILL.md`**: new Principles rule — use `obsidian move` for renames to preserve [[backlinks]]; never rename via filesystem while Obsidian is running.
+- **`/brain-init`**: CLAUDE.md template includes `### Obsidian CLI` section.
+
+**Upgrading from v1.2 → v1.3:**
+```bash
+# No vault migration needed — all changes are additive.
+bash update.sh
+# To enable CLI: Obsidian → Settings → General → Command line interface
+```
 
 ### v1.2 — 2026-06-09
 

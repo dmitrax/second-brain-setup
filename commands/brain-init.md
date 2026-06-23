@@ -51,7 +51,7 @@ created: [TODAY]
 updated: [TODAY]
 status: active
 type: [PROJECT_TYPE]
-brain-version: "1.2"
+brain-version: "1.3"
 ---
 
 ## For future Claude
@@ -170,6 +170,11 @@ Project: [PROJECT]
   "Before I do this — note: [risk]. Proceed?" If confirmed, execute without further
   hedging. One warning, not repeated. Skip the warning for mechanical tasks
   (refactor, formatting, adding comments).
+
+### Obsidian CLI
+Requires Obsidian 1.12.7+ with CLI enabled (Settings → General → Command line interface).
+Obsidian must be running. The system works without CLI — it's optional enhancement.
+When available: use `obsidian move` for renames, `obsidian property:set` for frontmatter.
 
 ---
 

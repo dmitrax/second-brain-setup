@@ -24,7 +24,20 @@ Vault: `~/Workspace/second-brain-vault/`
 
 ## Step 0b: Bump updated date
 
-In `$VAULT/$PROJECT/_PROJECT.md` frontmatter, set `updated:` to today's date (YYYY-MM-DD).
+```bash
+_obsidian_available() {
+  command -v obsidian >/dev/null 2>&1 && \
+  obsidian vault info=name >/dev/null 2>&1
+}
+
+if _obsidian_available; then
+  obsidian property:set name=updated value=YYYY-MM-DD type=date file=_PROJECT
+else
+  # filesystem fallback: edit frontmatter directly (sed or manual write)
+  # set updated: YYYY-MM-DD in $VAULT/$PROJECT/_PROJECT.md
+fi
+```
+
 If the `updated:` field does not exist in frontmatter — add it.
 
 ## Step 1: Create session log
