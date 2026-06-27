@@ -9,7 +9,7 @@ Onboard a project into the Second Brain system (Claude Code + Obsidian vault).
 Scan the current conversation, ask only for missing information, generate a
 complete ready-to-use file package. No preamble — go straight to intake.
 
-System version: v1.2
+System version: v1.3
 
 ---
 
