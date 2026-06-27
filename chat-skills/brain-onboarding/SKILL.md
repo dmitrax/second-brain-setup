@@ -149,7 +149,9 @@ Generate with two parts — both fully filled, no placeholders.
 # CLAUDE.md — [Project Name]
 
 ## Vault
-~/Workspace/second-brain-vault/[name]/
+~/Workspace/second-brain-vault/
+
+Project: [name]
 
 ## Session start
 1. Read `~/Workspace/second-brain-vault/00-shared/CRITICAL_FACTS.md` — user profile
@@ -211,6 +213,7 @@ type: [code|content|config|mixed]
 created: [YYYY-MM-DD]
 updated: [YYYY-MM-DD]
 status: active
+brain-version: "1.3"
 ---
 
 # [Project Name]
@@ -237,6 +240,9 @@ When starting a session on this project:
 Check `taskboard.md` for current priorities.
 For code work, read `architecture-map.md` before touching the codebase.
 External reference materials are in `raw/` — process with `/brain-ingest` before using.
+
+## Последняя сессия
+[YYYY-MM-DD] — проект инициализирован
 ```
 
 `updated` is bumped by `/brain-save` on every session that changes project state.

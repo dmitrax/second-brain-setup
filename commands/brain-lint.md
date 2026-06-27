@@ -3,7 +3,7 @@
 Vault health check: find issues, update cross-project connections.
 
 ## Scope
-Default: current project only (`$PROJECT` from CLAUDE.md).
+Default: current project only. Read CLAUDE.md in current directory → find line `Project:` → that is `$PROJECT`.
 With argument `--all`: entire vault.
 
 Vault: `~/Workspace/second-brain-vault/`
