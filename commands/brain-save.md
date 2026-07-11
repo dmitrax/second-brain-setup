@@ -27,7 +27,8 @@ Vault: `~/Workspace/second-brain-vault/`
 ```bash
 _obsidian_available() {
   command -v obsidian >/dev/null 2>&1 && \
-  obsidian vault info=name >/dev/null 2>&1
+  pgrep -f -i "obsidian" >/dev/null 2>&1 && \
+  timeout 2 obsidian vault info=name >/dev/null 2>&1
 }
 
 if _obsidian_available; then

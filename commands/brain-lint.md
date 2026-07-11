@@ -13,11 +13,17 @@ Vault: `~/Workspace/second-brain-vault/`
 ```bash
 _obsidian_available() {
   command -v obsidian >/dev/null 2>&1 && \
-  obsidian vault info=name >/dev/null 2>&1
+  pgrep -f -i "obsidian" >/dev/null 2>&1 && \
+  timeout 2 obsidian vault info=name >/dev/null 2>&1
 }
 ```
 
-Use this guard for every CLI block below. If Obsidian is not running — fall back to filesystem logic.
+`pgrep` checks that the Obsidian GUI is already running before touching the `obsidian`
+binary — on Linux that binary is often just a launcher script (`exec electron ... "$@"`),
+and calling it while no instance is running cold-starts a whole new GUI process instead
+of talking over the CLI socket, which then hangs indefinitely. `timeout` is a second
+safety net in case the socket call itself stalls. If either check fails, fall back to
+filesystem logic — do not retry, do not wait longer.
 
 ## Step 1: Orphan notes
 
