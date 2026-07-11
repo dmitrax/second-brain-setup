@@ -27,7 +27,8 @@ Vault: `~/Workspace/second-brain-vault/`
 ```bash
 _obsidian_available() {
   command -v obsidian >/dev/null 2>&1 && \
-  pgrep -f -i "obsidian" >/dev/null 2>&1 && \
+  { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] || \
+    [ -L "$HOME/.config/obsidian/SingletonLock" ]; } && \
   timeout 2 obsidian vault info=name >/dev/null 2>&1
 }
 
@@ -38,6 +39,12 @@ else
   # set updated: YYYY-MM-DD in $VAULT/$PROJECT/_PROJECT.md
 fi
 ```
+
+Checks the Electron `SingletonLock` symlink (present on every OS while the GUI is
+running), not `pgrep -f "obsidian"` — that pattern matches the full command line of
+every process, including the shell process running this very guard, and always
+false-positives. Must be `-L` (symlink exists), not `-e` (resolves the target, which
+deliberately doesn't exist as a real file).
 
 If the `updated:` field does not exist in frontmatter — add it.
 

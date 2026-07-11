@@ -54,8 +54,15 @@ Public repo: github.com/dmitrax/second-brain-setup
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within v1.x
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)
-  must check the target process is already running (`pgrep`) and wrap the call in `timeout` —
-  never let an optional integration cold-start a GUI app or hang the session
+  must check the target process is already running and wrap the call in `timeout` — never
+  let an optional integration cold-start a GUI app or hang the session
+- Never use `pgrep -f` to check if a GUI app is running before shelling out to its CLI —
+  `-f` matches the full command line of every process, including the shell process running
+  the guard itself (its own invocation text contains the app name), which is a guaranteed
+  false positive. Use an OS-level marker instead — e.g. Electron apps hold a `SingletonLock`
+  symlink in their userData dir for as long as they run, on every OS; test it with `-L`
+  (symlink exists), not `-e` (which resolves the target and the target deliberately doesn't
+  exist as a real file)
 
 ### Do not
 - Commit API keys, secrets, or vault content

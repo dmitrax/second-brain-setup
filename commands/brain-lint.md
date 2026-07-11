@@ -13,17 +13,22 @@ Vault: `~/Workspace/second-brain-vault/`
 ```bash
 _obsidian_available() {
   command -v obsidian >/dev/null 2>&1 && \
-  pgrep -f -i "obsidian" >/dev/null 2>&1 && \
+  { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] || \
+    [ -L "$HOME/.config/obsidian/SingletonLock" ]; } && \
   timeout 2 obsidian vault info=name >/dev/null 2>&1
 }
 ```
 
-`pgrep` checks that the Obsidian GUI is already running before touching the `obsidian`
-binary — on Linux that binary is often just a launcher script (`exec electron ... "$@"`),
-and calling it while no instance is running cold-starts a whole new GUI process instead
-of talking over the CLI socket, which then hangs indefinitely. `timeout` is a second
-safety net in case the socket call itself stalls. If either check fails, fall back to
-filesystem logic — do not retry, do not wait longer.
+Electron writes a `SingletonLock` symlink into its userData dir for as long as the app is
+running (same mechanism on every OS) — checking it tells us the GUI is actually up before
+touching the `obsidian` binary. This must be a symlink test (`-L`), not `-e`: the link
+deliberately points at a target that doesn't exist as a real file, so `-e` always reads
+false even while Obsidian is running. Do not switch this to `pgrep -f "obsidian"` — that
+matches on the full command line of every process, including the very shell process
+running this guard (its own invocation text contains the word "obsidian"), which is a
+guaranteed false positive that then cold-starts the GUI via the call below. `timeout` is
+a second safety net in case the socket call itself stalls. If either check fails, fall
+back to filesystem logic — do not retry, do not wait longer.
 
 ## Step 1: Orphan notes
 
