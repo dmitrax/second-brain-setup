@@ -63,6 +63,12 @@ Public repo: github.com/dmitrax/second-brain-setup
   symlink in their userData dir for as long as they run, on every OS; test it with `-L`
   (symlink exists), not `-e` (which resolves the target and the target deliberately doesn't
   exist as a real file)
+- Any `[[wikilink]]` template pointing at a filename that is not unique across the vault
+  (e.g. `_PROJECT.md`, which exists once per project) must use an explicit relative path,
+  e.g. `[[../_PROJECT|_PROJECT]]` — never a bare `[[_PROJECT]]`. Obsidian resolves a bare
+  link to the first shortest-path match and silently points at the wrong project's file;
+  this shipped unnoticed in the decision-note template for 3 weeks (v1.2 → 2026-07-14) and
+  propagated into 135 vault notes
 
 ### Do not
 - Commit API keys, secrets, or vault content
