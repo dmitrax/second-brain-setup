@@ -127,7 +127,7 @@ In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
 [YYYY-MM-DD — condition that would reopen this decision]
 
 ## Links
-[[$PROJECT/_PROJECT]] · related: [[wiki/...]]
+[[../_PROJECT|_PROJECT]] · related: [[wiki/...]]
 ```
 
 Then add the `[[wikilink]]` to this note from `_PROJECT.md` "Key decisions" section.
