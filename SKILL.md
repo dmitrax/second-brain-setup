@@ -106,7 +106,9 @@ connections.md is an index for Claude only. The graph lives in [[links]] inside 
 
 **When creating any wiki note:**
 - Minimum 2 [[wikilinks]] to related notes within the project
-- Key project notes → link to [[_PROJECT]]
+- Key project notes → link to [[../_PROJECT|_PROJECT]] (relative path — multiple
+  projects share the filename `_PROJECT.md`, so a bare `[[_PROJECT]]` resolves
+  ambiguously)
 - Style or values mentioned → [[00-shared/SOUL]]
 
 **When updating an existing note (Rewrite):**
