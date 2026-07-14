@@ -121,7 +121,7 @@ In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
 [YYYY-MM-DD — condition that would reopen this decision]
 
 ## Links
-[[_PROJECT]] · [[related-wiki-note]]
+[[$PROJECT/_PROJECT]] · [[related-wiki-note]]
 ```
 
 ## Step 6: Update system files
