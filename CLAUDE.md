@@ -68,7 +68,13 @@ Public repo: github.com/dmitrax/second-brain-setup
   e.g. `[[../_PROJECT|_PROJECT]]` — never a bare `[[_PROJECT]]`. Obsidian resolves a bare
   link to the first shortest-path match and silently points at the wrong project's file;
   this shipped unnoticed in the decision-note template for 3 weeks (v1.2 → 2026-07-14) and
-  propagated into 135 vault notes
+  propagated into 135 vault notes. This is not a `_PROJECT.md`-specific bug — it recurred
+  2026-07-15 for `architecture-map.md` (14 bare links across 2 projects, confirmed live via
+  `obsidian links` resolving into a different project's file) and for wiki-notes that are
+  intentionally duplicated across two projects (5 filenames, ~12 links — same-directory
+  bare links are just as ambiguous as cross-directory ones, proximity does not disambiguate).
+  Treat "filename is unique in this one project" as never sufficient reasoning on its own —
+  check the whole vault before deciding a bare `[[link]]` is safe
 
 ### Do not
 - Commit API keys, secrets, or vault content
