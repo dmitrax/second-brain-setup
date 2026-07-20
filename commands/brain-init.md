@@ -51,7 +51,7 @@ created: [TODAY]
 updated: [TODAY]
 status: active
 type: [PROJECT_TYPE]
-brain-version: "1.3"
+brain-version: "1.4.0"
 ---
 
 ## For future Claude

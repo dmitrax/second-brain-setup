@@ -48,11 +48,15 @@ Public repo: github.com/dmitrax/second-brain-setup
 
 ### Key rules
 - After editing SKILL.md or any brain-*.md → run `update.sh` to apply changes
-- Versioning: v1.x = additive only; v2.0 = breaking change + migration script
+- Versioning: semver (MAJOR.MINOR.PATCH). PATCH = bug fixes only, no new behavior.
+  MINOR = new backward-compatible features/rules (commands, checks, templates).
+  MAJOR = breaking change + migration script. Adopted 2026-07-20 — before that,
+  tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme; those
+  are not retro-fitted.
 - Test `install.sh` in a clean temp `$HOME` before tagging a release
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
-- Do not reduce backward compatibility within v1.x
+- Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)
   must check the target process is already running and wrap the call in `timeout` — never
   let an optional integration cold-start a GUI app or hang the session

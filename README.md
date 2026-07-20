@@ -171,6 +171,24 @@ User guide and architecture doc in Russian:
 
 ## Changelog
 
+### v1.4.0 — 2026-07-20
+
+- **`_PROJECT.md` no longer duplicates wiki content** — `Current state` (status/blockers
+  only), `Последняя сессия` (now mandatory, capped at ~5 one-line entries), and the
+  file's own `For future Claude` (bounded ~15-20 lines) all link to wiki/decision notes
+  instead of restating their mechanism. Fixes a real drift found live: one project's
+  `_PROJECT.md` had grown to 519 lines by repeating full session recaps that already
+  existed in wiki notes.
+- **`/brain-lint`**: new size/duplication checks for all three sections above — flags
+  fire independent of the ~120-line threshold, catching the pattern earlier.
+- Adopted semver (see `CLAUDE.md` Key rules) — this release is the first tagged under it.
+
+**Upgrading from v1.3 → v1.4.0:**
+```bash
+# No vault migration needed — all changes are additive (new rules + lint checks).
+bash update.sh
+```
+
 ### v1.3 — 2026-06-23
 
 - **Obsidian CLI integration** — optional enhancement when Obsidian 1.12.7+ is running with CLI enabled.
