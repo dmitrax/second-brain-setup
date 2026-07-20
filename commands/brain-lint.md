@@ -127,6 +127,15 @@ Flag if:
 - `_PROJECT.md` exceeds ~120 lines → suggest moving stale detail into wiki/ notes
 - Taskboard Done / completed section is unbounded (more than ~20 closed items) →
   suggest archiving old entries to a `wiki/archive-YYYY.md` note
+- `## Current state` contains multi-sentence paragraphs that restate facts a
+  linked (or linkable) wiki/decision note already covers → flag as duplication,
+  suggest collapsing the paragraph to one line + `[[wikilink]]`
+- `## Последняя сессия` entries run longer than 1-2 lines, or the section is
+  missing while `## Current state` reads like a session-by-session log (several
+  dated paragraphs) → flag: session recaps are accumulating in the wrong
+  section; suggest adding a proper `## Последняя сессия` and moving narrative
+  out to wiki/ or the session log. This check catches the disease independent
+  of total line count — it triggers well before the ~120-line threshold does.
 
 ## Step 10: Decision consistency
 

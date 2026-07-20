@@ -134,13 +134,25 @@ Then add the `[[wikilink]]` to this note from `_PROJECT.md` "Key decisions" sect
 
 ## Step 3: Update _PROJECT.md
 
-In the status block (`## Статус` or `## Current state`):
-Update to reflect current project state.
+### Current state
+Status and open blockers only — never a session recap. If the full account of
+something already lives (or was just written this session) in a wiki note,
+`_PROJECT.md` does not restate it: replace the paragraph with a one-line pointer
+plus `[[wikilink]]`. Target ~10 lines. See
+[[decision-project-md-links-not-duplicates-wiki-because-recaps-belong-in-one-place]].
 
-In the last-session block (`## Последняя сессия`) if present:
+### Последняя сессия
+Always maintain this section — create it if it does not exist yet. Do not let
+session summaries default into "Current state" because this section is missing.
+
+Append one line, newest first:
 ```
-[DATE] — [one line summary of what was done]
+[DATE] ([HHMM]) — [one-line summary]. [[sessions/[timestamp]_session|session log]]
 ```
+Never expand an entry into a paragraph — the full account is already in the
+session log (Step 1) and, for anything durable, in a wiki note (Step 2). Keep
+only the last ~5 entries; older ones are not lost (they remain in
+`sessions/*.md`) — delete them from this list, don't archive them elsewhere.
 
 `updated:` frontmatter field was already bumped in Step 0b.
 
