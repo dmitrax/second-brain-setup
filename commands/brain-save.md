@@ -135,7 +135,9 @@ Then add the `[[wikilink]]` to this note from `_PROJECT.md` "Key decisions" sect
 ## Step 3: Update _PROJECT.md
 
 ### Current state
-Status and open blockers only — never a session recap. If the full account of
+The status block — `## Current state` in projects created since this rule, `## Статус`
+in older ones (same section, do not rename an existing heading just to match). Status
+and open blockers only — never a session recap. If the full account of
 something already lives (or was just written this session) in a wiki note,
 `_PROJECT.md` does not restate it: replace the paragraph with a one-line pointer
 plus `[[wikilink]]`. Target ~10 lines. See

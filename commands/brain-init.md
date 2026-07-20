@@ -66,7 +66,7 @@ Full context here: what we are building, current status, how to work.
 ## Цель
 [ANSWER TO QUESTION 2]
 
-## Статус
+## Current state
 [ANSWER TO QUESTION 3]
 
 ## Стек / инструменты
