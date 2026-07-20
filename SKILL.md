@@ -53,15 +53,21 @@ Update facts, remove outdated content, add new links.
 Do not create a new page on top of the old one.
 
 **_PROJECT.md links, wiki holds the detail.**
-`_PROJECT.md` "Current state" is status + blockers only; "Последняя сессия" is a
-1-2 line-per-entry changelog. Neither ever repeats a wiki note's prose — if the
-full account belongs anywhere, it belongs in wiki/ (or the session log already
-created in Step 1), and `_PROJECT.md` gets a `[[wikilink]]` to it instead. This is
-a different axis from rewrite-not-append: that rule stops duplication *inside* one
-wiki note over time; this one stops duplication *between* `_PROJECT.md` and
-wiki/. Without both, `_PROJECT.md` accretes full session recaps that already
-exist elsewhere — confirmed live in this project's own `_PROJECT.md` before this
-rule was written.
+`_PROJECT.md` has three sections prone to this, all governed the same way:
+"Current state" (status + blockers only), "Последняя сессия" (1-2 line-per-entry
+changelog), and its own "For future Claude" (a bounded, curated quick-reference of
+hard constraints and currently-relevant gotchas — not a technical archive). None of
+the three ever repeats a wiki note's prose — if the full account belongs anywhere,
+it belongs in wiki/ (or the session log already created in Step 1), and
+`_PROJECT.md` gets a `[[wikilink]]` to it instead. This is a different axis from
+rewrite-not-append: that rule stops duplication *inside* one wiki note over time;
+this one stops duplication *between* `_PROJECT.md` and wiki/. Without this,
+`_PROJECT.md` accretes full session recaps that already exist elsewhere —
+confirmed live in this project's own `_PROJECT.md` before this rule was written,
+and again in `_PROJECT.md`'s own "For future Claude" section for `dimarch` (149
+lines, several entries duplicating decision notes almost verbatim) — that section
+had no governing step in `/brain-save` at all, unlike the other two, which is how
+it drifted furthest unnoticed.
 
 **raw/ is read-only and untrusted.**
 Never modify files in raw/. Read and compile into wiki/, but raw/ stays as source archive.

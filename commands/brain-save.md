@@ -154,6 +154,22 @@ session log (Step 1) and, for anything durable, in a wiki note (Step 2). Keep
 only the last ~5 entries; older ones are not lost (they remain in
 `sessions/*.md`) — delete them from this list, don't archive them elsewhere.
 
+### For future Claude (in _PROJECT.md itself)
+A bounded, curated quick-reference of hard constraints and currently-relevant
+gotchas a session needs before touching this project — not a technical archive.
+Target ~15-20 lines regardless of project size. When adding a new fact:
+- Rewrite in place, don't append — check whether it fits an existing bullet or
+  supersedes one before adding a new line.
+- If the fact's full mechanism/investigation lives in a wiki note, keep only the
+  one-line consequence + `[[wikilink]]` here, never the mechanism itself.
+- If a bullet has aged into a fact no longer surprising or safety-critical for a
+  first-time-this-session read, drop it — it's still findable via Tier 2 grep in
+  wiki/, that's what wiki/ is for.
+This section previously had no governing rule at all (unlike the two above) and
+was the one that drifted furthest unnoticed as a result — confirmed live in
+`dimarch`'s `_PROJECT.md` (149 lines, several entries duplicating decision notes
+almost verbatim) before this rule was written.
+
 `updated:` frontmatter field was already bumped in Step 0b.
 
 ## Step 4: Update project taskboard

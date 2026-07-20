@@ -136,6 +136,12 @@ Flag if:
   section; suggest adding a proper `## Последняя сессия` and moving narrative
   out to wiki/ or the session log. This check catches the disease independent
   of total line count — it triggers well before the ~120-line threshold does.
+- `_PROJECT.md`'s own `## For future Claude` exceeds ~20 lines, or contains
+  multi-sentence entries that restate a linked (or linkable) wiki/decision
+  note's mechanism/investigation rather than just its one-line consequence →
+  flag as duplication, same fix as "Current state". This section has no
+  template default and no size guard elsewhere, so it tends to drift furthest
+  unnoticed — confirmed live in `dimarch` (149 lines before a fix was applied).
 
 ## Step 10: Decision consistency
 
