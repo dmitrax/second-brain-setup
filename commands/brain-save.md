@@ -200,7 +200,13 @@ Skip this step entirely for content and config projects.
 File: `$VAULT/00-system/index.md`
 
 If new notes were created — add them to the project section.
-Update `## Последние изменения` (keep last 3-5 lines).
+Update `## Последние изменения` — keep the last ~8-10 *entries* (not lines; each
+entry is typically multi-line). This is a vault-wide pulse across all projects,
+not a replacement for any single project's own `_PROJECT.md` history — dropping
+an entry here loses nothing, the full account stays in that project's own
+`_PROJECT.md`/`sessions/*.md`. Raised from 3-5 (2026-06) to 8-10 (2026-07-21) once
+the vault grew past ~5 concurrently active projects and the old cap started
+turning over within a single working day.
 
 ## Step 7: Check for cross-project connections
 
