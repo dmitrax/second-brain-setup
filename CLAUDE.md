@@ -82,7 +82,7 @@ Public repo: github.com/dmitrax/second-brain-setup
 - The same ambiguity applies to the `obsidian` CLI. Its `file=` argument is name-resolved
   by design — `obsidian --help`: *"file resolves by name (like wikilinks), path is exact
   (folder/note.md)"*. So never address a vault file with `file=<name>` in any command
-  (`property:set`, `move`, `links`, …); use `path=$PROJECT/<name>.md`. Project-qualifying
+  (`move`, `links`, …); use `path=$PROJECT/<name>.md`. Project-qualifying
   `file=` does not help — it is the wrong parameter, not a malformed value. With `file=`
   the CLI takes the first shortest-path match vault-wide and then *writes* to it,
   silently, exit code 0.
@@ -91,6 +91,25 @@ Public repo: github.com/dmitrax/second-brain-setup
   in the vault. Fixed in
   brain-save Step 0b, brain-lint Step 11, SKILL.md. Mutating CLI branches must also
   verify afterwards which file actually changed
+- `path=` is relative to the *active* vault, so it does not fix the same failure one
+  level up: `_obsidian_available()` must compare `obsidian vault info=name` against
+  `basename "$VAULT"`, not just check its exit code. Exit code alone confirms only that
+  *some* vault is open — with another vault switched on in the GUI, a write lands there,
+  silently, exit 0. Derive the expected name from `$VAULT`, never hardcode it (v1.5.0)
+- Never use `obsidian property:set` to write into a vault file. It does not edit the one
+  field given — it parses the entire frontmatter and re-serializes it, rewriting every
+  other property: quotes stripped (`"1.4.3"` → `1.4.3`), inline lists expanded to block
+  form (`tags: [session]`, the format every note here uses), and numeric-looking values
+  reinterpreted (`007` → `7`, actual data loss). No warning, exit 0. Measured 2026-07-22
+  on a probe file. Edit frontmatter directly instead — it touches one line and cannot
+  reformat anything else. The CLI stays for read-only queries (`orphans`, `unresolved`,
+  `deadends`, `links`) and `move`
+- Decision-note supersession is TWO fields — `status: superseded` plus `superseded-by:
+  <file>`. The old one-line `status: superseded-by: <file>` form is invalid YAML (a
+  double colon is a compact nested mapping, which the parser rejects), so Obsidian
+  cannot read that note's frontmatter at all and it silently drops out of every property
+  query. Shipped in the template from the start; found 2026-07-22 in 2 live notes, both
+  fixed. Whole vault re-checked with a YAML parser afterwards: 393 blocks, 0 invalid
 
 ### Do not
 - Commit API keys, secrets, or vault content

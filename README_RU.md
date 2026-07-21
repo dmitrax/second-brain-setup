@@ -149,10 +149,31 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 ## Документация
 
 - [WORKFLOW.md](WORKFLOW.md) — пошаговое руководство пользователя
-- [ВТОРОЙ_МОЗГ_v1.4.0.md](ВТОРОЙ_МОЗГ_v1.4.0.md) — полная архитектурная справка
+- [ВТОРОЙ_МОЗГ_v1.5.0.md](ВТОРОЙ_МОЗГ_v1.5.0.md) — полная архитектурная справка
 - [chat-skills/README_RU.md](chat-skills/README_RU.md) — скиллы для Claude.ai
 
 ## Changelog
+
+### v1.5.0 — 2026-07-22
+
+- **`_obsidian_available()` теперь проверяет, *какой* vault открыт** — сверяет
+  `obsidian vault info=name` с `basename "$VAULT"`, а не только exit code. Все пути CLI
+  относительны активному vault, поэтому переключённый в GUI другой vault молча уводил
+  записи туда — exit 0, без предупреждения. Ожидаемое имя выводится из пути к vault,
+  не хардкодится.
+- **Step 0b в `/brain-save` больше не использует `obsidian property:set`** — правит поле
+  `updated:` напрямую. `property:set` пересобирает *весь* frontmatter: снимает кавычки
+  (`"1.4.3"` → `1.4.3`), разворачивает инлайн-списки в блочные (`tags: [session]`) и
+  переинтерпретирует числоподобные значения (`007` → `7` — потеря данных). Guard в
+  `/brain-save` больше не нужен вовсе; в `/brain-lint` он остаётся для read-only запросов.
+- **Supersession decision-заметок — теперь два поля**: `status: superseded` и
+  `superseded-by: <файл>`. Прежняя однострочная форма `status: superseded-by: <файл>`
+  была невалидным YAML (двойное двоеточие), из-за чего Obsidian вообще не мог прочитать
+  frontmatter такой заметки. `/brain-lint` Step 10 теперь помечает legacy-форму.
+
+**Обновление с v1.4.x → v1.5.0:** запусти `update.sh`. Существующие заметки с
+однострочной формой `status: superseded-by:` продолжают работать как текст, но невидимы
+для property-запросов — раздели их на два поля (`/brain-lint` их покажет).
 
 ### v1.4.0 — 2026-07-20
 
@@ -175,10 +196,11 @@ bash update.sh
 ### v1.3 — 2026-06-23
 
 - **Obsidian CLI интеграция** — опциональное усиление, когда запущен Obsidian 1.12.7+ с включённым CLI.
-- **Guard `_obsidian_available()`** — каждый CLI-вызов обёрнут; система откатывается на файловую систему, если Obsidian не запущен.
+- **Guard `_obsidian_available()`** — каждый CLI-вызов обёрнут; система откатывается на файловую
+  систему, если Obsidian не запущен или если открыт не тот vault, с которым работает команда.
 - **`/brain-lint`**: Step 1 использует `obsidian orphans` когда доступен; новый Step 1b проверяет битые ссылки (`obsidian unresolved`, `obsidian deadends`); Step 11 добавляет проверку ссылок для architecture-map; Result-блок сообщает `Broken links (CLI)`.
-- **`/brain-save`**: Step 0b использует `obsidian property:set` для обновления `updated:` во frontmatter, когда CLI доступен.
-  Адресация через `path=` (точный путь) — `file=` резолвится по имени как wikilink и попал бы в `_PROJECT.md` чужого проекта.
+- **`/brain-save`**: Step 0b правит поле `updated:` во frontmatter напрямую и не использует CLI вовсе
+  (с v1.5.0 — `property:set` пересобирал весь frontmatter и терял данные).
 - **`SKILL.md`**: новое правило в Principles — переименования через `obsidian move` сохраняют [[backlinks]]; никогда не переименовывать через файловую систему пока Obsidian запущен.
 - **`/brain-init`**: шаблон CLAUDE.md включает секцию `### Obsidian CLI`.
 

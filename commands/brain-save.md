@@ -24,41 +24,30 @@ Vault: `~/Workspace/second-brain-vault/`
 
 ## Step 0b: Bump updated date
 
-```bash
-_obsidian_available() {
-  command -v obsidian >/dev/null 2>&1 && \
-  { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] || \
-    [ -L "$HOME/.config/obsidian/SingletonLock" ]; } && \
-  timeout 2 obsidian vault info=name >/dev/null 2>&1
-}
+Edit `$VAULT/$PROJECT/_PROJECT.md` frontmatter directly — set `updated:` to today.
+If the field does not exist, add it.
 
-if _obsidian_available; then
-  obsidian property:set name=updated value=YYYY-MM-DD type=date path=$PROJECT/_PROJECT.md
-else
-  # filesystem fallback: edit frontmatter directly (sed or manual write)
-  # set updated: YYYY-MM-DD in $VAULT/$PROJECT/_PROJECT.md
-fi
+**Do not use `obsidian property:set` here.** It does not edit the one field it is
+given: it parses the whole frontmatter and re-serializes it, rewriting every other
+property in the process. Measured 2026-07-22 on a probe file:
+
+```
+version: "1.4.3"              ->  version: 1.4.3        quotes stripped
+tags: [session, obsidian-cli] ->  tags:                 inline list expanded to block
+                                    - session             (the format every note here uses)
+                                    - obsidian-cli
+count: 007                    ->  count: 7              value changed — data loss
 ```
 
-Checks the Electron `SingletonLock` symlink (present on every OS while the GUI is
-running), not `pgrep -f "obsidian"` — that pattern matches the full command line of
-every process, including the shell process running this very guard, and always
-false-positives. Must be `-L` (symlink exists), not `-e` (resolves the target, which
-deliberately doesn't exist as a real file).
+Nothing warns about this and the exit code is 0. Editing the file directly touches
+one line and cannot reformat anything else. This is the only vault write that used
+the CLI at all, so `/brain-save` no longer needs the `_obsidian_available` guard —
+`/brain-lint` still uses it for its read-only queries.
 
-Use `path=` (exact path, extension included), never `file=`. The CLI documents this
-itself: *"file resolves by name (like wikilinks), path is exact (folder/note.md)"* —
-so `file=_PROJECT` picks the first shortest-path match across the whole vault, and
-`_PROJECT.md` exists once per project. It then writes `updated:` into some *other*
-project's file and exits 0. Verified live 2026-07-22: a save in one project stamped
-the date into a different project's `_PROJECT.md`, caught only by `git status`.
-Project-qualifying `file=` is NOT a fix — that argument is name-resolved by design.
-
-After the CLI branch runs, verify it hit the right file (`git status` in the vault,
-or re-read `$VAULT/$PROJECT/_PROJECT.md`). If the wrong file changed — revert it and
-use the filesystem fallback.
-
-If the `updated:` field does not exist in frontmatter — add it.
+A second reason not to reach for the CLI here: `property:set` reports success on
+frontmatter it failed to parse. On a file carrying the old `status: superseded-by: x`
+form (invalid YAML — see Step 2) it prints a parse error to stderr, writes nothing,
+and still exits 0.
 
 ## Step 1: Create session log
 
@@ -107,8 +96,18 @@ When rewriting a synthesis note:
 - Add new facts and [[wikilinks]]
 
 **Decision notes are an exception to rewrite:** if a new decision supersedes an old one,
-write a NEW `decision-<slug>-because-<reason>.md` and set the old note's frontmatter
-`status: superseded-by: decision-<new-slug>.md`. Never edit the body of an existing
+write a NEW `decision-<slug>-because-<reason>.md` and mark the old note's frontmatter:
+
+```yaml
+status: superseded
+superseded-by: decision-<new-slug>.md
+```
+
+Two separate fields. The old one-line form `status: superseded-by: decision-x.md` is
+**not valid YAML** — a double colon is a nested mapping in compact form, which the
+parser rejects. Obsidian then treats the whole frontmatter as unparseable: the note
+drops out of property queries, and `obsidian property:set` on it prints a parse error
+to stderr, writes nothing, and still exits 0. Never edit the body of an existing
 decision note to reverse its meaning.
 
 ## Step 2b: Create decision note if triggered

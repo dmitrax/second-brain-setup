@@ -91,7 +91,9 @@ Name = statement answering "what was decided and why it matters":
 ✅ `wiki/decision-chose-supabase-auth-because-rls-per-table.md`
 
 **Decision notes are immutable.** Do not edit a decision to change it. Write a new
-decision note and set the old one's `status: superseded-by: decision-<new>.md`.
+decision note and mark the old one `status: superseded` + `superseded-by:
+decision-<new>.md` (two fields — the one-line `status: superseded-by: x` form is
+invalid YAML and makes the whole frontmatter unparseable).
 
 ```markdown
 ---

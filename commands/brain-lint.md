@@ -11,11 +11,13 @@ Vault: `~/Workspace/second-brain-vault/`
 ## Guard function
 
 ```bash
+VAULT="$HOME/Workspace/second-brain-vault"
+
 _obsidian_available() {
   command -v obsidian >/dev/null 2>&1 && \
   { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] || \
     [ -L "$HOME/.config/obsidian/SingletonLock" ]; } && \
-  timeout 2 obsidian vault info=name >/dev/null 2>&1
+  [ "$(timeout 2 obsidian vault info=name 2>/dev/null)" = "$(basename "$VAULT")" ]
 }
 ```
 
@@ -29,6 +31,15 @@ running this guard (its own invocation text contains the word "obsidian"), which
 guaranteed false positive that then cold-starts the GUI via the call below. `timeout` is
 a second safety net in case the socket call itself stalls. If either check fails, fall
 back to filesystem logic — do not retry, do not wait longer.
+
+The guard compares `vault info=name` against the vault we actually mean, instead of
+just checking its exit code. Exit code alone confirms only that *some* vault is open.
+Every CLI path is relative to the **active** vault, so `path=` does not protect against
+this: with another vault switched on in the GUI, a write lands there — silently, exit 0,
+the same failure class as the `file=`/`path=` bug one level up. The expected name is
+derived from `$VAULT` via `basename`, never hardcoded — the path is already known to
+every command, and a hardcoded name would break for anyone whose vault directory is
+named differently.
 
 ## Step 1: Orphan notes
 
@@ -149,10 +160,16 @@ Flag if:
 Find all notes in `wiki/` whose filename starts with `decision-`.
 
 Check:
-- Any decision note with `status: superseded-by:` still referenced as active in
+- Any decision note with `status: superseded` still referenced as active in
   `_PROJECT.md` "Key decisions" section → flag the stale link, suggest updating
 - Any decision note with `status: deprecated` still referenced anywhere → same
-- `supersedes:` field points to a note that does not exist → flag broken reference
+- `supersedes:` / `superseded-by:` points to a note that does not exist → flag
+  broken reference
+- Any note still carrying the legacy one-line `status: superseded-by: x` form →
+  flag it: that is invalid YAML (double colon = nested mapping in compact form),
+  so Obsidian cannot parse the frontmatter at all and the note silently drops out
+  of every property query. Fix by splitting into `status: superseded` +
+  `superseded-by: x`
 
 ## Step 11: Architecture map freshness (code / mixed projects only)
 

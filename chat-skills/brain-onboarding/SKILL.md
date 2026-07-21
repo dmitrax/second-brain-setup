@@ -9,7 +9,7 @@ Onboard a project into the Second Brain system (Claude Code + Obsidian vault).
 Scan the current conversation, ask only for missing information, generate a
 complete ready-to-use file package. No preamble — go straight to intake.
 
-System version: v1.4.0
+System version: v1.5.0
 
 ---
 
@@ -65,11 +65,12 @@ place when understanding changes (never duplicated).
 **Decision notes (ADR-lite)** — a record of a decision that future Claude must not
 re-litigate. Created by `/brain-save` when a decision with rationale appears.
 - File name: `decision-<slug>-because-<reason>.md` (flat in `wiki/`)
-- Frontmatter: `status` (`accepted` | `superseded-by: decision-...` | `deprecated`), `date`, `supersedes`
+- Frontmatter: `status` (`accepted` | `superseded` | `deprecated`), `date`, `supersedes`,
+  plus `superseded-by` as its own field when superseded
 - Body: a one-line Y-statement — *"In context of X, facing Y, we chose Z to achieve W, accepting V"* — then `## Context`, `## Alternatives rejected`, `## Consequences`, `## Review by`.
 - **Immutable.** Do not edit a decision to change it. Write a new decision note and
-  set the old one's `status: superseded-by: <new note>`. This is the explicit
-  exception to rewrite-not-append.
+  mark the old one `status: superseded` + `superseded-by: <new note>` (two fields).
+  This is the explicit exception to rewrite-not-append.
 
 ---
 
@@ -213,7 +214,7 @@ type: [code|content|config|mixed]
 created: [YYYY-MM-DD]
 updated: [YYYY-MM-DD]
 status: active
-brain-version: "1.4.0"
+brain-version: "1.5.0"
 ---
 
 # [Project Name]

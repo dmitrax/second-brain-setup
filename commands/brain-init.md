@@ -51,7 +51,7 @@ created: [TODAY]
 updated: [TODAY]
 status: active
 type: [PROJECT_TYPE]
-brain-version: "1.4.0"
+brain-version: "1.5.0"
 ---
 
 ## For future Claude
@@ -174,7 +174,10 @@ Project: [PROJECT]
 ### Obsidian CLI
 Requires Obsidian 1.12.7+ with CLI enabled (Settings → General → Command line interface).
 Obsidian must be running. The system works without CLI — it's optional enhancement.
-When available: use `obsidian move` for renames, `obsidian property:set` for frontmatter.
+Behind the `_obsidian_available()` guard: use `obsidian move` for renames — it is the
+only mutating CLI call left, so it needs the guard that also verifies *which* vault is
+active, not just that the CLI exists. Never use `property:set` for
+frontmatter — it re-serializes the whole block and loses data; edit the file directly.
 Address files with `path=<project>/<name>.md` (exact), never `file=<name>` — `file=`
 resolves by name like a wikilink and silently targets another project's file.
 

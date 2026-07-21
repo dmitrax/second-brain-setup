@@ -160,16 +160,38 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.4.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.5.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.4.0.md](ВТОРОЙ_МОЗГ_v1.4.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.5.0.md](ВТОРОЙ_МОЗГ_v1.5.0.md) — full architecture
 
 
 ## Changelog
+
+### v1.5.0 — 2026-07-22
+
+- **`_obsidian_available()` now verifies *which* vault is open**, comparing
+  `obsidian vault info=name` against `basename "$VAULT"` instead of only checking the
+  exit code. Every CLI path is relative to the active vault, so a different vault
+  switched on in the GUI silently redirected writes — exit 0, no warning. The expected
+  name is derived from the vault path, never hardcoded.
+- **`/brain-save` Step 0b no longer uses `obsidian property:set`** — it edits the
+  `updated:` frontmatter field directly. `property:set` re-serializes the *entire*
+  frontmatter: it strips quotes (`"1.4.3"` → `1.4.3`), expands inline lists to block
+  form (`tags: [session]`), and reinterprets numeric-looking values (`007` → `7`, real
+  data loss). `/brain-save` no longer needs the guard at all; `/brain-lint` keeps it
+  for read-only queries.
+- **Decision-note supersession is now two fields** — `status: superseded` plus
+  `superseded-by: <file>`. The previous one-line `status: superseded-by: <file>` was
+  invalid YAML (double colon = compact nested mapping), which made Obsidian unable to
+  parse that note's frontmatter at all. `/brain-lint` Step 10 now flags the legacy form.
+
+**Upgrading from v1.4.x → v1.5.0:** run `update.sh`. Existing notes using the one-line
+`status: superseded-by:` form keep working as text but stay invisible to property
+queries — split them into two fields (`/brain-lint` will point them out).
 
 ### v1.4.0 — 2026-07-20
 
@@ -192,10 +214,11 @@ bash update.sh
 ### v1.3 — 2026-06-23
 
 - **Obsidian CLI integration** — optional enhancement when Obsidian 1.12.7+ is running with CLI enabled.
-- **`_obsidian_available()` guard** — every CLI call is wrapped; system falls back to filesystem if Obsidian is not running.
+- **`_obsidian_available()` guard** — every CLI call is wrapped; system falls back to filesystem
+  if Obsidian is not running, or if the open vault is not the one the command means.
 - **`/brain-lint`**: Step 1 uses `obsidian orphans` when available; new Step 1b checks broken links (`obsidian unresolved`, `obsidian deadends`); Step 11 adds link validation for architecture-map; Result block reports `Broken links (CLI)`.
-- **`/brain-save`**: Step 0b uses `obsidian property:set` to update `updated:` frontmatter when CLI is available.
-  Addressed via `path=` (exact) — `file=` resolves by name like a wikilink and would hit another project's `_PROJECT.md`.
+- **`/brain-save`**: Step 0b edits the `updated:` frontmatter field directly and uses no CLI at all
+  (since v1.5.0 — `property:set` re-serialized the whole frontmatter and lost data).
 - **`SKILL.md`**: new Principles rule — use `obsidian move` for renames to preserve [[backlinks]]; never rename via filesystem while Obsidian is running.
 - **`/brain-init`**: CLAUDE.md template includes `### Obsidian CLI` section.
 
