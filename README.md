@@ -195,6 +195,7 @@ bash update.sh
 - **`_obsidian_available()` guard** — every CLI call is wrapped; system falls back to filesystem if Obsidian is not running.
 - **`/brain-lint`**: Step 1 uses `obsidian orphans` when available; new Step 1b checks broken links (`obsidian unresolved`, `obsidian deadends`); Step 11 adds link validation for architecture-map; Result block reports `Broken links (CLI)`.
 - **`/brain-save`**: Step 0b uses `obsidian property:set` to update `updated:` frontmatter when CLI is available.
+  Addressed via `path=` (exact) — `file=` resolves by name like a wikilink and would hit another project's `_PROJECT.md`.
 - **`SKILL.md`**: new Principles rule — use `obsidian move` for renames to preserve [[backlinks]]; never rename via filesystem while Obsidian is running.
 - **`/brain-init`**: CLAUDE.md template includes `### Obsidian CLI` section.
 

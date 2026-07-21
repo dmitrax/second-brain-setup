@@ -178,6 +178,7 @@ bash update.sh
 - **Guard `_obsidian_available()`** — каждый CLI-вызов обёрнут; система откатывается на файловую систему, если Obsidian не запущен.
 - **`/brain-lint`**: Step 1 использует `obsidian orphans` когда доступен; новый Step 1b проверяет битые ссылки (`obsidian unresolved`, `obsidian deadends`); Step 11 добавляет проверку ссылок для architecture-map; Result-блок сообщает `Broken links (CLI)`.
 - **`/brain-save`**: Step 0b использует `obsidian property:set` для обновления `updated:` во frontmatter, когда CLI доступен.
+  Адресация через `path=` (точный путь) — `file=` резолвится по имени как wikilink и попал бы в `_PROJECT.md` чужого проекта.
 - **`SKILL.md`**: новое правило в Principles — переименования через `obsidian move` сохраняют [[backlinks]]; никогда не переименовывать через файловую систему пока Obsidian запущен.
 - **`/brain-init`**: шаблон CLAUDE.md включает секцию `### Obsidian CLI`.
 

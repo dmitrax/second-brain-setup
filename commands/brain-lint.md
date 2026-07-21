@@ -165,7 +165,9 @@ If `architecture-map.md` exists in the project root:
 
 ```bash
 if _obsidian_available; then
-  obsidian links file=architecture-map    # list all [[wikilinks]] in the map
+  # path= (exact), not file= — file= resolves by name like a wikilink and would
+  # hit the first architecture-map.md in the vault, i.e. another project's
+  obsidian links path=$PROJECT/architecture-map.md   # list all [[wikilinks]] in the map
   obsidian unresolved                     # which of those are broken
 fi
 ```

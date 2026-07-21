@@ -33,7 +33,7 @@ _obsidian_available() {
 }
 
 if _obsidian_available; then
-  obsidian property:set name=updated value=YYYY-MM-DD type=date file=_PROJECT
+  obsidian property:set name=updated value=YYYY-MM-DD type=date path=$PROJECT/_PROJECT.md
 else
   # filesystem fallback: edit frontmatter directly (sed or manual write)
   # set updated: YYYY-MM-DD in $VAULT/$PROJECT/_PROJECT.md
@@ -45,6 +45,18 @@ running), not `pgrep -f "obsidian"` — that pattern matches the full command li
 every process, including the shell process running this very guard, and always
 false-positives. Must be `-L` (symlink exists), not `-e` (resolves the target, which
 deliberately doesn't exist as a real file).
+
+Use `path=` (exact path, extension included), never `file=`. The CLI documents this
+itself: *"file resolves by name (like wikilinks), path is exact (folder/note.md)"* —
+so `file=_PROJECT` picks the first shortest-path match across the whole vault, and
+`_PROJECT.md` exists once per project. It then writes `updated:` into some *other*
+project's file and exits 0. Verified live 2026-07-22: a save in one project stamped
+the date into a different project's `_PROJECT.md`, caught only by `git status`.
+Project-qualifying `file=` is NOT a fix — that argument is name-resolved by design.
+
+After the CLI branch runs, verify it hit the right file (`git status` in the vault,
+or re-read `$VAULT/$PROJECT/_PROJECT.md`). If the wrong file changed — revert it and
+use the filesystem fallback.
 
 If the `updated:` field does not exist in frontmatter — add it.
 

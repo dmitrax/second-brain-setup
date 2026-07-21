@@ -79,6 +79,18 @@ Public repo: github.com/dmitrax/second-brain-setup
   bare links are just as ambiguous as cross-directory ones, proximity does not disambiguate).
   Treat "filename is unique in this one project" as never sufficient reasoning on its own —
   check the whole vault before deciding a bare `[[link]]` is safe
+- The same ambiguity applies to the `obsidian` CLI. Its `file=` argument is name-resolved
+  by design — `obsidian --help`: *"file resolves by name (like wikilinks), path is exact
+  (folder/note.md)"*. So never address a vault file with `file=<name>` in any command
+  (`property:set`, `move`, `links`, …); use `path=$PROJECT/<name>.md`. Project-qualifying
+  `file=` does not help — it is the wrong parameter, not a malformed value. With `file=`
+  the CLI takes the first shortest-path match vault-wide and then *writes* to it,
+  silently, exit code 0.
+  Confirmed live 2026-07-22: a `/brain-save` Step 0b run in one project stamped
+  `updated:` into a different project's `_PROJECT.md`; caught only by `git status`
+  in the vault. Fixed in
+  brain-save Step 0b, brain-lint Step 11, SKILL.md. Mutating CLI branches must also
+  verify afterwards which file actually changed
 
 ### Do not
 - Commit API keys, secrets, or vault content
