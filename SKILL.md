@@ -117,6 +117,13 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
 - **Immutable.** To change a decision: write a NEW decision note and mark the old
   one `status: superseded` + `superseded-by: <new note>`. Never rewrite the body of
   an existing decision note. This is the explicit exception to rewrite-not-append.
+- **Reversing only part of a decision's scope** still uses plain `status: superseded`
+  on the old note — never a made-up value like `partially-superseded-by <note>`.
+  `status` answers one binary question (is this note still the authority?), not how
+  much changed; a hedged enum value is invisible to every status-based query, the
+  same failure shape as the legacy one-line form above. Put the nuance in the new
+  note's body instead: it must restate the parts of the old scope that still hold,
+  not just the delta, so a reader needs only the new note for current policy.
 - **Partially stale decision — `corrected-by:`.** When the decision itself still
   holds but a *supporting fact* in its body has since been disproved, the note is
   neither accepted-as-written nor superseded. Add `corrected-by: <note>` to its

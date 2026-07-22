@@ -110,6 +110,27 @@ drops out of property queries, and `obsidian property:set` on it prints a parse 
 to stderr, writes nothing, and still exits 0. Never edit the body of an existing
 decision note to reverse its meaning.
 
+### When the new decision only reverses PART of the old one's scope
+
+Plain two-field supersession still applies — `status: superseded` on the old note,
+`superseded-by:` pointing at the new one. Do **not** invent a status value like
+`partially-superseded-by <note>` to hedge this: `status` answers one binary question,
+"is this note still the current authority?" — never "how much of it changed." A
+made-up enum value is a schema violation with the same shape as the legacy
+`status: superseded-by: x` bug above: a fact smuggled into a field that cannot hold it,
+invisible to every property query that filters on `status`.
+
+Found live 2026-07-22 in `puzzlebot-voronka`: a decision retiring all video from block
+group `03-O-biznese` was later partly reversed — video restored for sub-blocks 005-007,
+while 001-004 stayed video-free. The note recording the reversal is written correctly
+already, and this is the rule to follow: **its body restates the full current policy
+for the whole scope, not just the delta.** It says explicitly that 001-004 remain
+video-free, even though that part didn't change. A reader who opens only the new note
+gets complete current policy; nothing sends them back to the old note to reconstruct
+what still applies. The old note keeps `status: superseded` — it stopped being the
+authority for any part of its original scope the moment a newer note took over that
+scope, even the part it left unchanged.
+
 ### When only a supporting fact went stale — `corrected-by:`
 
 Supersession is the wrong tool when the decision still stands and only one fact

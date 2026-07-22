@@ -178,6 +178,16 @@ Check:
   so Obsidian cannot parse the frontmatter at all and the note silently drops out
   of every property query. Fix by splitting into `status: superseded` +
   `superseded-by: x`
+- `status:` holding any value other than `accepted` / `superseded` / `deprecated` →
+  flag it, whatever the value — most likely a hedge like `partially-superseded-by
+  <note>` invented to avoid picking `superseded`. `status` is invisible to every
+  property query once it holds an off-schema value, same failure shape as the legacy
+  form above. Fix: `status: superseded` + `superseded-by:` on the old note, and move
+  the nuance of what changed into the *new* note's body — restating the parts of the
+  old scope that still hold, not just the delta, so the new note alone is enough for
+  current policy. Found live 2026-07-22 in `puzzlebot-voronka`
+  (`decision-replace-o-biznese-videos-with-faceless-formats-because-no-production-resource-yet`
+  carried `status: partially-superseded-by decision-restore-video-...`); fixed on sight
 - `corrected-by:` points to a note that does not exist → flag broken reference
 - A note that declares itself a correction of record for another note (its body says
   so, or it is the target of a `corrected-by:`) while the corrected note carries no
