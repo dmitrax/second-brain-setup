@@ -174,7 +174,9 @@ Project: [PROJECT]
 ### Obsidian CLI
 Requires Obsidian 1.12.7+ with CLI enabled (Settings → General → Command line interface).
 Obsidian must be running. The system works without CLI — it's optional enhancement.
-Behind the `_obsidian_available()` guard: use `obsidian move` for renames — it is the
+Behind the `_obsidian_available()` guard (its definition lives in `/brain-lint` Step 0 —
+read it from there and run it verbatim; do not reconstruct it from memory, every clause
+in it encodes a separate incident): use `obsidian move` for renames — it is the
 only mutating CLI call left, so it needs the guard that also verifies *which* vault is
 active, not just that the CLI exists. Never use `property:set` for
 frontmatter — it re-serializes the whole block and loses data; edit the file directly.

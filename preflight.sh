@@ -126,11 +126,31 @@ fi
 # -e вместо -L (target симлинка намеренно не существует), запись в чужой vault (сверка имени).
 for f in "${TARGETS[@]}"; do
     name=$(basename "$f")
+    # Два независимых условия. Отличить прозаическое ПРЕДПИСАНИЕ вызова от прозаического
+    # ЗАПРЕТА ("Do not use obsidian property:set") грепом нельзя, поэтому:
+    #   а) реальные вызовы считаем только в code-блоках;
+    #   б) любое упоминание guard'а обязывает файл его определить или явно сослаться
+    #      на источник — это и ловит brain-init.md, который требует `obsidian move`
+    #      под guard'ом словами, не давая самого guard'а.
     calls=$(code_blocks "$f" | grep -cE "^[[:space:]]*(if |\[|.*\$\()?[[:space:]]*obsidian " || true)
-    [ "$calls" -eq 0 ] && continue
+    mentions_guard=$(grep -c "_obsidian_available()" "$f" || true)
+    [ "$calls" -eq 0 ] && [ "$mentions_guard" -eq 0 ] && continue
 
-    if ! grep -q "_obsidian_available()" "$f"; then
-        fail "$name вызывает obsidian, но не определяет _obsidian_available()"
+    if [ "$mentions_guard" -eq 0 ]; then
+        fail "$name вызывает obsidian в code-блоке, но не упоминает _obsidian_available()"
+        continue
+    fi
+    # Определение (а не только упоминание) — иначе guard существует лишь как отсылка
+    # к функции, которой в этом контексте нет.
+    if ! grep -qE "_obsidian_available\(\)[[:space:]]*\{" "$f"; then
+        # Отсылкой считаем упоминание /brain-lint в пределах двух строк от имени guard'а —
+        # формулировки в тексте меняются, а адрес источника обязан быть рядом.
+        if grep -A2 "_obsidian_available()" "$f" | grep -q "/brain-lint"; then
+            pass "$name: guard не определён, но есть явная отсылка к источнику"
+        else
+            fail "$name: ссылается на _obsidian_available() без определения и без отсылки" \
+                 "guard существует как код только в brain-lint.md; здесь он лишь назван"
+        fi
         continue
     fi
     guard=$(sed -n '/_obsidian_available()/,/^}/p' "$f")
