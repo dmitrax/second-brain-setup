@@ -129,6 +129,29 @@ Public repo: github.com/dmitrax/second-brain-setup
   cannot read that note's frontmatter at all and it silently drops out of every property
   query. Shipped in the template from the start; found 2026-07-22 in 2 live notes, both
   fixed. Whole vault re-checked with a YAML parser afterwards: 393 blocks, 0 invalid
+- `status:` on a decision note holds exactly one of three values —
+  `accepted` / `superseded` / `deprecated` — never a hedge like
+  `partially-superseded-by <note>` for a decision that only reversed part of its
+  original scope. `status` answers one binary question (still the authority, or not);
+  degree of change belongs in the *new* note's body, which must restate the parts of
+  the old scope that still hold, not just the delta. An off-schema value is invisible
+  to every `status`-based property query — same failure shape as the legacy
+  one-line supersession form above. Found live 2026-07-22 in `puzzlebot-voronka`;
+  `brain-lint` Step 10 now flags any `status:` value outside the three
+- Partially-stale decision note (the decision holds, one supporting fact in its body
+  has since been disproved) uses `corrected-by: <note>` in the old note's frontmatter,
+  `status` and body untouched. Not `superseded` — that would falsely retire a rule
+  still in force. The marker must sit in the note being corrected, not only as a
+  backlink from the new note: a backlink is invisible to a reader who has not yet
+  found the correction, which is precisely the reader being misled
+- `/brain-lint`'s `_PROJECT.md` size check counts **prose sections only** (`Current
+  state`/`Статус`, `Последняя сессия`, `For future Claude`, ~60-line budget), never
+  total file length. The earlier ~120-line total-size threshold summed prose (which
+  the rule forbids) together with link-list sections (`Key decisions` etc., which grow
+  legitimately with a project's decision count) — a well-kept large project could rank
+  as a worse violator than a small one hiding real duplication. Measured 2026-07-22:
+  `dimarch` carried 36 lines of legitimate decision links against 65 wiki notes while
+  its actual defect (141 lines of prose) hid inside the same total
 
 ### Do not
 - Commit API keys, secrets, or vault content
