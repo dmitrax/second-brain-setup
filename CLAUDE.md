@@ -43,7 +43,7 @@ Public repo: github.com/dmitrax/second-brain-setup
 
 ### Stack
 - Markdown files (`SKILL.md`, `commands/brain-*.md`) — slash command definitions
-- Bash scripts (`install.sh`, `update.sh`) — installation and update automation
+- Bash scripts (`install.sh`, `update.sh`, `preflight.sh`) — install, update, release gate
 - No external dependencies
 
 ### Key rules
@@ -53,7 +53,26 @@ Public repo: github.com/dmitrax/second-brain-setup
   MAJOR = breaking change + migration script. Adopted 2026-07-20 — before that,
   tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme; those
   are not retro-fitted.
-- Test `install.sh` in a clean temp `$HOME` before tagging a release
+- **Release gate — a tag requires all three, in order (adopted 2026-07-22):**
+  1. `bash preflight.sh` is green. It checks the repo against every mechanical rule in
+     this Block 2 and installs into a clean temp `$HOME`. Never tag on a red preflight,
+     and never "fix" it by loosening a check — each check encodes a live incident.
+  2. `/brain-lint --all` has been run on the real vault *with the change applied via
+     `update.sh`*. Editing `commands/*.md` changes nothing until `update.sh` runs, so a
+     lint run before it validates the previous version.
+  3. **The change has survived at least one session other than the one that wrote it.**
+     No tag in the same session as the code. v1.4.3 and v1.5.0 both shipped on
+     2026-07-22, the second fixing what the first missed; five tags in three days, each
+     patching its predecessor. Writing a rule is not evidence the rule works — using it
+     is. Version numbers are cheap, but a released defect propagates into every vault.
+  Rationale: preflight catches mechanical violations, lint catches vault-level ones, and
+  the waiting period catches design errors, which neither script can see. Three of the
+  four bugs in v1.4.3/v1.5.0 were one-line greps that no one had written; the fourth was
+  a design error found only by using the thing.
+- Every rule added to this Block 2 must come with a machine check in `preflight.sh`
+  where one is expressible. A rule that lives only as prose is a rule that survives
+  exactly as long as the next session's attention — that is how the same
+  "name instead of path" class of bug shipped three separate times
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version

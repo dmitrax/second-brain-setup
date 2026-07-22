@@ -110,6 +110,30 @@ drops out of property queries, and `obsidian property:set` on it prints a parse 
 to stderr, writes nothing, and still exits 0. Never edit the body of an existing
 decision note to reverse its meaning.
 
+### When only a supporting fact went stale — `corrected-by:`
+
+Supersession is the wrong tool when the decision still stands and only one fact
+inside its body has been disproved (a CLI advantage that no longer exists, a
+threshold that has since moved, a measurement that later turned out wrong).
+Marking such a note `superseded` would falsely retire a rule that is still in force;
+leaving it untouched lets a future session read the stale fact as current.
+
+Add one field to the old note's frontmatter — nothing else changes:
+
+```yaml
+status: accepted
+corrected-by: decision-<slug>.md
+```
+
+Rules:
+- `status` stays as it was. `corrected-by:` is orthogonal to supersession.
+- The **body is not edited.** Immutability is unchanged.
+- Multiple corrections accumulate as a YAML list, newest last.
+- The correcting note names the stale fact explicitly, so a reader can tell which
+  part of the old note to distrust rather than doubting all of it.
+- The marker belongs in the old note. A backlink from the new note is not a
+  substitute: it is only visible to a reader who already found the correction.
+
 ## Step 2b: Create decision note if triggered
 
 Trigger: a decision with rationale was made in this session.

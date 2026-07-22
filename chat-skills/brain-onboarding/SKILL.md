@@ -1,6 +1,6 @@
 ---
 name: brain-onboard
-description: Onboard any project into the Second Brain system (Claude Code + Obsidian vault). Invoke in any chat — the skill scans conversation context, asks only for missing info, and generates a ready-to-use package: CLAUDE.md (fully filled), _PROJECT.md, taskboard.md, a setup script, and — for code projects — an architecture map. Use when transitioning a project from chat to Claude Code, connecting an existing project to the vault, or starting a new project with full context.
+description: "Onboard any project into the Second Brain system (Claude Code + Obsidian vault). Invoke in any chat — the skill scans conversation context, asks only for missing info, and generates a ready-to-use package: CLAUDE.md (fully filled), _PROJECT.md, taskboard.md, a setup script, and — for code projects — an architecture map. Use when transitioning a project from chat to Claude Code, connecting an existing project to the vault, or starting a new project with full context."
 ---
 
 # Skill: Brain Onboarding

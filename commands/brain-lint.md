@@ -135,7 +135,15 @@ If `updated:` field is missing from frontmatter — flag: "Project [name] — mi
 Read `$VAULT/$PROJECT/_PROJECT.md` and `$VAULT/$PROJECT/taskboard.md`.
 
 Flag if:
-- `_PROJECT.md` exceeds ~120 lines → suggest moving stale detail into wiki/ notes
+- `_PROJECT.md`'s **prose sections** together exceed ~60 lines → suggest moving stale
+  detail into wiki/ notes. Count only `## Current state` (or `## Статус`),
+  `## Последняя сессия` and `## For future Claude`; skip blank lines. Do **not** count
+  link-list sections (`## Key decisions` / `## Ключевые решения`, `## Source projects`,
+  `## Рабочие файлы`) — those grow linearly with the project's decision count and
+  violate no rule, so folding them into a total-size threshold makes a well-kept large
+  project look like a violator. Measured 2026-07-22: `dimarch` carries 36 lines of
+  legitimate decision links against 65 wiki notes, while its actual defect sits in
+  `## Current state` (141 lines of prose). Total file size is not the signal — prose is
 - Taskboard Done / completed section is unbounded (more than ~20 closed items) →
   suggest archiving old entries to a `wiki/archive-YYYY.md` note
 - `## Current state` (or `## Статус` in older projects — same section) contains
@@ -147,7 +155,7 @@ Flag if:
   dated paragraphs) → flag: session recaps are accumulating in the wrong
   section; suggest adding a proper `## Последняя сессия` and moving narrative
   out to wiki/ or the session log. This check catches the disease independent
-  of total line count — it triggers well before the ~120-line threshold does.
+  of size — it triggers well before the ~60-line prose budget does.
 - `_PROJECT.md`'s own `## For future Claude` exceeds ~20 lines, or contains
   multi-sentence entries that restate a linked (or linkable) wiki/decision
   note's mechanism/investigation rather than just its one-line consequence →
@@ -170,6 +178,15 @@ Check:
   so Obsidian cannot parse the frontmatter at all and the note silently drops out
   of every property query. Fix by splitting into `status: superseded` +
   `superseded-by: x`
+- `corrected-by:` points to a note that does not exist → flag broken reference
+- A note that declares itself a correction of record for another note (its body says
+  so, or it is the target of a `corrected-by:`) while the corrected note carries no
+  `corrected-by:` field → flag the missing marker. The correction is then visible
+  only from the new note, which leaves the stale fact unmarked for anyone reading
+  the old one — the exact failure the field exists to prevent
+- `corrected-by:` on a note whose `status:` is `superseded` → flag as redundant:
+  a superseded note is already retired wholesale, the finer-grained marker adds
+  nothing and suggests one of the two fields was set by mistake
 
 ## Step 11: Architecture map freshness (code / mixed projects only)
 

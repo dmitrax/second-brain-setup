@@ -8,6 +8,25 @@ mkdir -p ~/Workspace  # ensure ~/Workspace exists
 SKILL_DIR="$HOME/.claude/skills/second-brain"
 COMMANDS_DIR="$HOME/.claude/commands"
 
+# Неинтерактивный режим: когда stdin не терминал (CI, preflight.sh, pipe) или задан
+# SECOND_BRAIN_NONINTERACTIVE=1 — все вопросы пропускаются и берутся значения по
+# умолчанию. Без этого `set -e` + `read` роняли скрипт на первом же вопросе при EOF,
+# из-за чего установку нельзя было проверить иначе как руками с клавиатуры.
+if [ -t 0 ] && [ -z "$SECOND_BRAIN_NONINTERACTIVE" ]; then
+    INTERACTIVE=1
+else
+    INTERACTIVE=0
+fi
+
+# ask <промпт> <имя переменной> — спрашивает только в интерактивном режиме
+ask() {
+    if [ "$INTERACTIVE" = "1" ]; then
+        read -r -p "$1" "$2" || true
+    else
+        printf -v "$2" '%s' ""
+    fi
+}
+
 # ─── Цвета для вывода ────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -19,7 +38,7 @@ echo ""
 
 # ─── Спросить vault path если не задан ───────────────────────────────────────
 echo -e "Путь к vault: ${YELLOW}$VAULT${NC}"
-read -p "Изменить? (Enter = оставить, или введи новый путь): " CUSTOM_VAULT
+ask "Изменить? (Enter = оставить, или введи новый путь): " CUSTOM_VAULT
 if [ -n "$CUSTOM_VAULT" ]; then
     VAULT="$CUSTOM_VAULT"
 fi
@@ -164,7 +183,7 @@ fi
 # ─── Git инициализация ────────────────────────────────────────────────────────
 echo ""
 if [ ! -d "$VAULT/.git" ]; then
-    read -p "Инициализировать Git в vault? (y/n): " INIT_GIT
+    ask "Инициализировать Git в vault? (y/n): " INIT_GIT
     if [ "$INIT_GIT" = "y" ]; then
         cd "$VAULT"
         git init
@@ -172,7 +191,7 @@ if [ ! -d "$VAULT/.git" ]; then
         git commit -m "init: Second Brain vault"
         echo -e "  ${GREEN}✓${NC} Git инициализирован"
         echo ""
-        read -p "Добавить remote репозиторий? (Enter = пропустить, или вставь URL): " REMOTE_URL
+        ask "Добавить remote репозиторий? (Enter = пропустить, или вставь URL): " REMOTE_URL
         if [ -n "$REMOTE_URL" ]; then
             git remote add origin "$REMOTE_URL"
             echo -e "  ${GREEN}✓${NC} Remote добавлен: $REMOTE_URL"

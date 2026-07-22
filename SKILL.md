@@ -117,6 +117,17 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
 - **Immutable.** To change a decision: write a NEW decision note and mark the old
   one `status: superseded` + `superseded-by: <new note>`. Never rewrite the body of
   an existing decision note. This is the explicit exception to rewrite-not-append.
+- **Partially stale decision — `corrected-by:`.** When the decision itself still
+  holds but a *supporting fact* in its body has since been disproved, the note is
+  neither accepted-as-written nor superseded. Add `corrected-by: <note>` to its
+  frontmatter, leaving `status: accepted` and the body untouched. The correcting note
+  states what specifically is no longer true.
+  Frontmatter is metadata about the record, not the record — the same reason
+  supersession is allowed to write `status` into an immutable note.
+  The marker must sit in the **old** note: a reader who opens it must learn the fact
+  is stale there and then. A backlink from the new note does not achieve this — it is
+  visible only to someone who already found the correction, while the reader being
+  misled is precisely the one who did not.
 
 ## Tier navigation
 
