@@ -234,6 +234,26 @@ if [ -f "$ZIP" ] && [ -f "$ZIP_SRC" ] && command -v unzip >/dev/null 2>&1; then
     fi
 fi
 
+# ─── 9. Conventional Commits с даты принятия правила ─────────────────────────
+# Adopted 2026-07-23. История до этой даты не переписывается задним числом —
+# тот же принцип, что и у semver выше. release: — свой тип этого репо для
+# коммитов-тегов (см. `release: adopt semver, tag v1.4.0`).
+CC_CUTOFF="2026-07-23"
+CC_TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release'
+hits=""
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    hash="${line%% *}"
+    msg="${line#* }"
+    echo "$msg" | grep -qE "^($CC_TYPES)(\([a-zA-Z0-9_.-]+\))?!?: .+" || \
+        hits+="$hash: $msg"$'\n'
+done < <(git -C "$SCRIPT_DIR" log --no-merges --since="$CC_CUTOFF 00:00:00" --format="%h %s" 2>/dev/null)
+if [ -n "$hits" ]; then
+    fail "коммиты с $CC_CUTOFF не соответствуют Conventional Commits" "$hits"
+else
+    pass "коммиты с $CC_CUTOFF соответствуют Conventional Commits"
+fi
+
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
 echo ""
 echo -e "${BLUE}[2/3] Скрипты${NC}"

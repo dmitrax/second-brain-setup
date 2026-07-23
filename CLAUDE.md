@@ -53,6 +53,11 @@ Public repo: github.com/dmitrax/second-brain-setup
   MAJOR = breaking change + migration script. Adopted 2026-07-20 — before that,
   tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme; those
   are not retro-fitted.
+- Commit messages follow Conventional Commits: `<type>(<scope>)?!?: <description>`,
+  type one of `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release`
+  (`release` is this repo's own type, used for tag commits — see git log). Adopted
+  2026-07-23; commits before that date are not retro-fitted, same as semver above.
+  Checked by preflight.sh, scoped to commits since the adoption date.
 - **Release gate — a tag requires all three, in order (adopted 2026-07-22):**
   1. `bash preflight.sh` is green. It checks the repo against every mechanical rule in
      this Block 2 and installs into a clean temp `$HOME`. Never tag on a red preflight,
