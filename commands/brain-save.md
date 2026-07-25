@@ -15,6 +15,14 @@ Triggers (if any apply → update CLAUDE.md Block 2 first):
 If triggered: open CLAUDE.md in current directory → update Block 2 → then proceed.
 If nothing changed: skip this step.
 
+**Write only what cannot expire, and phrase it so it cannot.** Apply the expiry test
+from `SKILL.md` ("What belongs where"): anything that can be false tomorrow — a version,
+a status, what is pinned or committed, which phase is active — goes to `_PROJECT.md` /
+`taskboard.md` / the session log, never here. A gotcha resolved this session goes in as
+a *method* ("check X with `ldd`, not `pacman -Si`"), not as a *state* ("X is pinned").
+Never open a `## Current state` section here, and never append a dated session
+paragraph — this file is read in full every session, before the topic is known.
+
 ---
 
 ## Identify current project

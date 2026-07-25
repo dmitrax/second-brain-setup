@@ -190,6 +190,40 @@ When user says any of the following → suggest updating CLAUDE.md Block 2:
 
 Response pattern: "Это стоит добавить в CLAUDE.md как постоянное правило. Обновить?"
 
+**What belongs where — one fact, one home.**
+Three memories are read at different moments, so a fact copied across them does not
+become easier to find; the copies drift, and a stale copy is worse than no copy because
+it is trusted exactly as much as a fresh one.
+
+| Memory | Read when | Holds |
+|---|---|---|
+| project `CLAUDE.md` | every session, automatically, before the topic is known | facts that do **not** expire |
+| vault | on demand, via `_PROJECT.md` + grep | everything that changes |
+| auto-memory (`~/.claude/projects/*/memory/`) | on recall, by relevance | the user, not the project |
+
+The test is expiry, not importance — **can this be false tomorrow?** Versions, statuses,
+what is pinned, what is committed, which phase is active: all change, all go to the vault.
+Hardware limits, resolved gotchas, conventions, prohibitions: all stay put, all go to
+`CLAUDE.md`.
+
+Three ways this goes wrong in practice:
+- **A rule must be phrased so it cannot expire.** Not "libcava is pinned" (rots in days)
+  but "judge whether a `-git` package was rebuilt by `ldd` on the binary, never
+  `pacman -Si`" (stays true). One discovery, two phrasings, only one survives.
+- **A durable fact found mid-session goes straight into the rules**, never into a dated
+  paragraph "for now" — prose written as chronicle stays chronicle, and the rule buried
+  in it stops being findable.
+- **Parked questions are a third kind**, not state: "user dislikes this design, do not
+  propose point-fixes, revisit the concept". It is an instruction about behaviour —
+  it belongs in `CLAUDE.md` next to the rules.
+
+Never give a project `CLAUDE.md` a `## Current state` / `## Статус` section, and never
+let dated session entries pile up in it — `_PROJECT.md`, `taskboard.md` and session logs
+exist for that. Measured on `dimarch` 2026-07-25: that section had reached 490 lines of
+chronicle and carried six facts the vault had already corrected (repo count, a script
+renamed two weeks earlier, a finished task still listed as unwritten) — all of them wrong,
+in the file that loads first, every single session.
+
 ## Commands
 - `/brain-setup` — first-time setup (CRITICAL_FACTS.md + SOUL.md)
 - `/brain-init [name]` — create new project (includes architecture-map.md for code/mixed)

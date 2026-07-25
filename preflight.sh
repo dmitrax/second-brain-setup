@@ -254,6 +254,39 @@ else
     pass "коммиты с $CC_CUTOFF соответствуют Conventional Commits"
 fi
 
+# ─── 10. Шаблон CLAUDE.md не заводит секцию состояния ────────────────────────
+# Найдено 2026-07-25 на живом dimarch: `## Current state` в проектном CLAUDE.md
+# разросся до 490 строк датированной хроники и вёз 6 фактов, которые vault уже
+# исправил. Файл грузится целиком каждую сессию, до того как известна тема, —
+# состоянию там не место. Проверяем именно fenced-блок Step 4 (шаблон CLAUDE.md):
+# у шаблона _PROJECT.md в этом же файле секция `## Current state` легитимна.
+CLAUDE_TPL=$(awk '
+    /^## Step 4: Create CLAUDE.md/ { seen = 1; next }
+    !seen { next }
+    /^[[:space:]]*```/ { fence++; if (fence == 2) exit; next }
+    fence == 1 { print }
+' "$SCRIPT_DIR/commands/brain-init.md")
+if [ -z "$CLAUDE_TPL" ]; then
+    fail "не найден шаблон CLAUDE.md в brain-init.md Step 4 — проверка не сработала"
+elif echo "$CLAUDE_TPL" | grep -qE '^#{2,3} +(Current state|Статус)'; then
+    fail "шаблон CLAUDE.md в brain-init.md завёл секцию состояния — она принадлежит _PROJECT.md"
+else
+    pass "шаблон CLAUDE.md не заводит секцию состояния"
+fi
+
+# ─── 11. Критерий разделения трёх памятей на месте ───────────────────────────
+# Правило существует только пока его текст есть в промптах: SKILL.md несёт сам
+# критерий, brain-save применяет его в Step 0 при правке CLAUDE.md Block 2.
+missing=""
+grep -qi 'What belongs where' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет раздела «What belongs where»"$'\n'
+grep -qi 'can this be false tomorrow' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет expiry-теста"$'\n'
+grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0 не ссылается на expiry-тест"$'\n'
+if [ -n "$missing" ]; then
+    fail "потерян критерий «что живёт в CLAUDE.md, а что в vault»" "$missing"
+else
+    pass "критерий разделения памятей на месте (SKILL.md + brain-save Step 0)"
+fi
+
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
 echo ""
 echo -e "${BLUE}[2/3] Скрипты${NC}"

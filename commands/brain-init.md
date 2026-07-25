@@ -201,6 +201,12 @@ resolves by name like a wikilink and silently targets another project's file.
 If the user gave explicit technical rules — copy them here verbatim.
 If no rules were stated — write sensible defaults based on the stack.
 
+**The template has no status section on purpose.** This file loads in full at every
+session start, before the topic is known, so it holds only what cannot expire — rules,
+prohibitions, hardware limits, resolved gotchas. Project status lives in `_PROJECT.md`
+and `taskboard.md`. Do not add `## Current state` / `## Статус` here later either;
+see `SKILL.md`, "What belongs where".
+
 Stack-specific rule examples:
 - Arch Linux: "backup before editing any config", "AUR only via [manager]"
 - Python: "virtual environment mandatory", "type hints for public functions"
@@ -227,6 +233,13 @@ Inform the user:
     File stored locally only — will not be pushed to GitHub.
     On other devices, recreate it with /brain-init.
 ```
+
+**Consequence to state out loud, not just record:** an ignored `CLAUDE.md` has no git
+history, no diff at commit time, and no review — so anything wrong in it drifts
+invisibly and indefinitely. That is a second, independent reason nothing expiring may
+be written there (see `SKILL.md`, "What belongs where"): the vault is versioned and
+this file is not. Confirmed live on `dimarch` 2026-07-25 — six stale facts, none of
+which any commit would ever have shown.
 
 **If $REPO_VISIBILITY = "private":**
 

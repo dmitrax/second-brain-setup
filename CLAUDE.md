@@ -78,6 +78,18 @@ Public repo: github.com/dmitrax/second-brain-setup
   where one is expressible. A rule that lives only as prose is a rule that survives
   exactly as long as the next session's attention — that is how the same
   "name instead of path" class of bug shipped three separate times
+- A project `CLAUDE.md` holds only facts that cannot expire; anything that changes lives
+  in the vault. The test is expiry, not importance — "the active phase is X" is important
+  and stale within a week, a GTK CSS gotcha is minor and true forever. This extends to
+  wording: a rule must be phrased so it cannot rot ("check with `ldd`, never `pacman -Si`",
+  not "libcava is pinned"). Never open a `## Current state` section in a project
+  `CLAUDE.md` and never let dated session entries pile up there — the file loads in full
+  every session, before the topic is known, and (for public repos) sits in `.gitignore`,
+  so nothing in it is ever seen changing. Measured 2026-07-25 on `dimarch`: 1080 lines,
+  490 of them dated chronicle, carrying 6 facts the vault had already corrected — a
+  script renamed two weeks earlier, a finished task listed as unwritten, a repo count
+  off by one. Checked by preflight 10-11.
+  [[decision-claude-md-holds-invariants-vault-holds-state-because-copies-drift-silently]]
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
