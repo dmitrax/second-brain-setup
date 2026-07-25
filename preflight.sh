@@ -276,15 +276,38 @@ fi
 
 # ─── 11. Критерий разделения трёх памятей на месте ───────────────────────────
 # Правило существует только пока его текст есть в промптах: SKILL.md несёт сам
-# критерий, brain-save применяет его в Step 0 при правке CLAUDE.md Block 2.
+# критерий, brain-save применяет его в Step 0a при правке CLAUDE.md Block 2.
 missing=""
 grep -qi 'What belongs where' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет раздела «What belongs where»"$'\n'
 grep -qi 'can this be false tomorrow' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет expiry-теста"$'\n'
-grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0 не ссылается на expiry-тест"$'\n'
+grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0a не ссылается на expiry-тест"$'\n'
 if [ -n "$missing" ]; then
     fail "потерян критерий «что живёт в CLAUDE.md, а что в vault»" "$missing"
 else
-    pass "критерий разделения памятей на месте (SKILL.md + brain-save Step 0)"
+    pass "критерий разделения памятей на месте (SKILL.md + brain-save Step 0a)"
+fi
+
+# ─── 12. Синхронизация vault до записи ───────────────────────────────────────
+# Общие реестры 00-system/*.md правит каждая сессия на каждой машине, поэтому
+# запись поверх устаревшего checkout гарантирует конфликт на push. Шаг обязан
+# стоять ДО первой записи (иначе он бесполезен) и не имеет права блокировать
+# сохранение при недоступной сети — несохранённая сессия дороже отложенного sync.
+BS="$SCRIPT_DIR/commands/brain-save.md"
+missing=""
+grep -q 'pull --rebase' "$BS" || missing+="brain-save.md: нет шага с git pull --rebase"$'\n'
+grep -q 'timeout .*git .*pull' "$BS" || missing+="brain-save.md: pull не обёрнут в timeout — недоступный remote повесит сессию"$'\n'
+# Шаг синхронизации должен предшествовать первой записи в vault (Step 0b правит frontmatter)
+sync_ln=$(grep -n 'pull --rebase --autostash' "$BS" | head -1 | cut -d: -f1)
+write_ln=$(grep -n '^## Step 0b' "$BS" | head -1 | cut -d: -f1)
+if [ -z "$sync_ln" ] || [ -z "$write_ln" ]; then
+    missing+="brain-save.md: не найден шаг синхронизации или Step 0b — проверка порядка не сработала"$'\n'
+elif [ "$sync_ln" -ge "$write_ln" ]; then
+    missing+="brain-save.md: sync стоит после первой записи в vault (строка $sync_ln против Step 0b на $write_ln)"$'\n'
+fi
+if [ -n "$missing" ]; then
+    fail "потерян шаг синхронизации vault перед записью" "$missing"
+else
+    pass "vault синхронизируется до первой записи, pull под timeout"
 fi
 
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────

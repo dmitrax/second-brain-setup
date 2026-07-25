@@ -2,7 +2,43 @@
 
 Save the current session to the vault. Execute steps in strict order.
 
-## Step 0: Check if CLAUDE.md needs updating
+## Identify current project
+
+Read CLAUDE.md in current directory → find line `Project:` → that is `$PROJECT`.
+Vault: `~/Workspace/second-brain-vault/` → that is `$VAULT`.
+
+## Step 0: Sync the vault before writing anything
+
+The vault is shared across machines, and some of its files are append-only registries
+that *every* session on *any* machine edits — `00-system/index.md`,
+`00-system/connections.md`, and the project's own `_PROJECT.md`. Writing this session
+on top of a stale checkout guarantees a conflict at push time, in exactly those files,
+every time. Pull first and the same write is a fast-forward.
+
+Run before any vault write:
+
+```bash
+git -C "$VAULT" rev-parse --git-dir >/dev/null 2>&1   # not a git repo -> skip this step
+git -C "$VAULT" remote | grep -q .                    # no remote      -> skip this step
+timeout 30 git -C "$VAULT" pull --rebase --autostash
+```
+
+Outcome rules:
+- **Not a git repo, or no remote** → skip silently. A local-only vault is a supported
+  setup; never run `git init` or add a remote on the user's behalf.
+- **Pull succeeds** → proceed to Step 0a.
+- **Network unreachable, or `timeout` fires** → warn in one line and proceed anyway.
+  An unsaved session is a worse loss than a deferred sync, and the push at the end
+  surfaces the divergence. Never let an unreachable remote block the save.
+- **Rebase stops on a conflict** → stop, write nothing, report which files conflict
+  and hand it to the user. Writing this session into a tree that is mid-rebase mixes
+  two sessions' edits into one unreviewable diff, and the conflict markers land inside
+  the notes themselves.
+
+`--autostash` covers the common case of a previous session that edited the vault but
+never committed: that work is set aside, the rebase runs, and it is restored on top.
+
+## Step 0a: Check if CLAUDE.md needs updating
 
 Before saving, quickly check — did this session change anything that belongs in CLAUDE.md Block 2?
 
@@ -24,11 +60,6 @@ Never open a `## Current state` section here, and never append a dated session
 paragraph — this file is read in full every session, before the topic is known.
 
 ---
-
-## Identify current project
-
-Read CLAUDE.md in current directory → find line `Project:` → that is `$PROJECT`.
-Vault: `~/Workspace/second-brain-vault/`
 
 ## Step 0b: Bump updated date
 
@@ -291,3 +322,12 @@ Taskboard:  updated
 
 Don't forget: git add -A && git commit -m "[DATE]" && git push
 ```
+
+The push should fast-forward, because Step 0 pulled before the session was written.
+If it is still rejected, another machine pushed *during* this session — run
+`git -C "$VAULT" pull --rebase` and resolve. In the append-only registries
+(`00-system/index.md`, `00-system/connections.md`) the resolution is almost always
+"keep both sides": merge the entries and preserve each file's existing order —
+`index.md` is reverse-chronological, `connections.md` chronological. Do not
+resurrect an entry the other side deliberately dropped: Step 6 trims `index.md` to
+the last ~8-10, so an entry missing on one side may have been rotated out, not lost.

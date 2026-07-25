@@ -90,6 +90,20 @@ Public repo: github.com/dmitrax/second-brain-setup
   script renamed two weeks earlier, a finished task listed as unwritten, a repo count
   off by one. Checked by preflight 10-11.
   [[decision-claude-md-holds-invariants-vault-holds-state-because-copies-drift-silently]]
+- A command that writes to the vault syncs it *before its first write* — `timeout N git -C
+  "$VAULT" pull --rebase --autostash`, skipped silently when the vault is not a git repo or
+  has no remote (a local-only vault is a supported setup). The vault is shared across
+  machines and several of its files are append-only registries that every session on every
+  machine edits — `00-system/index.md`, `00-system/connections.md`, each project's
+  `_PROJECT.md` — so writing on top of a stale checkout conflicts at push time by
+  construction, in exactly those files, every time; pull first and the same write is a
+  fast-forward. Two failure modes to get right, both found the hard way on 2026-07-26 when
+  three such files conflicted at once: an unreachable remote must **not** block the save
+  (warn in one line and proceed — an unsaved session is a worse loss than a deferred sync),
+  and a conflict mid-rebase must stop the write entirely, or the markers land inside the
+  notes themselves. A sync step placed after the first write is not a weaker version of
+  this rule, it is inert — preflight 12 checks presence, `timeout`, and that ordering.
+  [[decision-vault-syncs-before-write-because-shared-registries-conflict-at-push]]
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
