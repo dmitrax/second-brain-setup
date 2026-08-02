@@ -90,7 +90,8 @@ When renaming a wiki note or moving a file:
     `basename "$VAULT"`. Paths are relative to the *active* vault, so `path=` alone
     does not help: with another vault switched on in the GUI, the rename lands there —
     silently, exit 0. Never call `move` after only checking that the CLI exists.
-- Fallback: grep for all [[references]] and update manually.
+- Fallback: `grep -rF "[[old-name]]" .` for all references, then update manually.
+  `-F` is not optional here — see "Searching the vault" below.
 Never rename files by directly editing the filesystem when Obsidian is running —
 this breaks [[wikilinks]] without Obsidian knowing.
 
@@ -138,12 +139,32 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
 
 ## Tier navigation
 
-Do NOT full-scan the vault on every session. Use the index and grep:
+Do NOT full-scan the vault on every session. Use the index and search:
 - Tier 1 (always at start): CRITICAL_FACTS.md, _PROJECT.md, taskboard.md,
   and architecture-map.md for code/mixed projects
 - Tier 2 (on demand): wiki/ notes relevant to the current task — find via index.md
-  or `grep -r "keyword" wiki/`
+  or a search (below)
 - Never load entire wiki/ folders when looking for one specific topic
+
+**Searching the vault — always pick `-F` or `-E`, never a bare search.**
+A pattern given to `grep` with neither flag is read as a *basic* regex, where `|`,
+`+`, `?` and `()` are ordinary characters while `[...]` is a character class. Both
+mistakes are silent and exit normally, so the session trusts whatever came back:
+- **Literal text** — note names, `[[wikilinks]]`, exact phrases → `grep -rF`.
+  Measured on a ~500-note vault: the literal string `[[architecture-map]]` searched
+  without `-F` reported 304 files, because the brackets matched as a character class;
+  the true count is 17. Eighteen times the noise, and the session reads the wrong notes.
+- **Alternation or quantifiers** — `a|b`, `x+`, `(y|z)` → `grep -rE`.
+  Same vault: `docker|colima` searched without `-E` found 1 file; with `-E`, 37.
+  A near-empty result reads as "the vault knows nothing about this" and the session
+  moves on — the most expensive failure this system has, because it silently
+  discards the memory it exists to provide.
+
+This is about the pattern, not the tool. Any search that accepts only regex (the
+built-in Grep tool included) needs the literal form escaped — `\[\[name\]\]` — since
+there is no `-F` to pass. Verify a surprising count before believing it: re-run the
+same search the other way and compare. Two answers that disagree by an order of
+magnitude mean the flag was wrong, not that the vault is empty.
 
 
 

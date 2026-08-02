@@ -47,7 +47,9 @@ named differently.
 if _obsidian_available; then
   obsidian orphans  # returns notes with no incoming [[wikilinks]]
 else
-  # filesystem fallback: grep -rL for notes with no incoming links
+  # filesystem fallback, per note: grep -rlF "[[<basename>]]" "$VAULT" — no hits = orphan.
+  # -F is mandatory. Without it the brackets read as a character class, almost every
+  # file "matches", and the step reports zero orphans — a false green, not an error.
 fi
 ```
 
