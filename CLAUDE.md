@@ -183,6 +183,31 @@ Public repo: github.com/dmitrax/second-brain-setup
   as a worse violator than a small one hiding real duplication. Measured 2026-07-22:
   `dimarch` carried 36 lines of legitimate decision links against 65 wiki notes while
   its actual defect (141 lines of prose) hid inside the same total
+- A vault search always carries `-F` (literal: note names, `[[wikilinks]]`, exact
+  phrases) or `-E` (alternation, quantifiers) — never a bare `grep -r`. Without a flag
+  the pattern is a *basic* regex: `[...]` is a character class while `|`, `+`, `?` and
+  `()` are ordinary characters, so the same command is wrong in both directions and
+  silent in both, with a normal exit code. Measured 2026-08-02 on the live vault:
+  literal `[[architecture-map]]` → 304 files without `-F` against 17 with it; pattern
+  `docker|colima` → 1 file without `-E` against 37 with it. The second shape is the
+  expensive one — a near-empty result reads as "the vault has nothing on this" and the
+  session moves on, discarding the memory this system exists to provide. The rule is
+  deliberately stricter than the defect: the flag is required even where the pattern is
+  obviously harmless, because "does this pattern contain a metacharacter" needs
+  judgement on every call while "is the flag there" needs none. `rg` is not prescribed —
+  the package states no external dependencies, and prescribing it would make ripgrep
+  mandatory for everyone who installs. Documenting the broken form inside `SKILL.md` or
+  `commands/*.md` is itself a violation; describe it in words. Checked by preflight 13.
+  [[decision-vault-search-declares-literal-or-pattern-because-a-bare-grep-is-wrong-both-ways]]
+- Repo scripts run on `bash` 3.2 — macOS ships it as `/bin/bash` and it is one of the
+  two working machines. No `mapfile`/`readarray`, no `declare -A`, no `${var^^}`: all
+  are bash 4+. This is not style. `preflight.sh` used `mapfile`, so on Mac the array
+  stayed unbound, checks 5-6 received empty input and **printed a pass without ever
+  running** — the release gate was silently blind on half the fleet from 2026-07-22 to
+  2026-08-02, on exactly the two classes that had already shipped to 135 notes. From
+  which the general rule: a check must fail hard when its input is empty. Green means
+  "ran and found nothing", never "did not run" — a check that cannot tell those apart
+  is worse than an absent one, because its green is trusted. Checked by preflight 14.
 
 ### Do not
 - Commit API keys, secrets, or vault content
