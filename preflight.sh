@@ -169,7 +169,15 @@ done
 # ─── 5. Legacy-форма supersession ────────────────────────────────────────────
 # `status: superseded-by: x` — двойное двоеточие, невалидный YAML: Obsidian не читает
 # frontmatter такой заметки целиком и она выпадает из всех property-запросов.
-mapfile -t ALL_MD < <(find "$SCRIPT_DIR" -name '*.md' -not -path '*/.git/*')
+# Читаем список без `mapfile`: он появился в bash 4.0, а на macOS /bin/bash — 3.2.
+# До 2026-08-02 здесь стоял mapfile, и на Mac проверки 5-6 не выполнялись ВООБЩЕ:
+# массив оставался unbound, grep получал пустой вход, обе печатали ✓. Ворота релиза
+# сами были ложно-зелёными на одной из двух рабочих машин.
+ALL_MD=()
+while IFS= read -r _f; do ALL_MD+=("$_f"); done < <(find "$SCRIPT_DIR" -name '*.md' -not -path '*/.git/*')
+if [ "${#ALL_MD[@]}" -eq 0 ]; then
+    fail "не найдено ни одного .md — проверки 5-6 не отработали (пустой вход, не чистый репозиторий)"
+fi
 hits=$(strip_inline_code "${ALL_MD[@]}" | grep "status:[[:space:]]*superseded-by:" || true)
 if [ -n "$hits" ]; then
     fail "legacy-форма supersession в одну строку (невалидный YAML)" "$hits"
