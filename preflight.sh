@@ -233,6 +233,39 @@ if [ -f "$LIBSH" ]; then
     # version обязана что-то печатать всегда: нет файла VERSION -> "unknown", не пусто.
     [ -n "$(bash "$LIBSH" version 2>/dev/null)" ] ||
         problems+="version не печатает ничего (должна хотя бы unknown)"$'\n'
+
+    # archive: перенос Done в архив. Проверяем ровно то, ради чего он писался —
+    # что ничего не теряется и не дублируется, и что чужие секции не тронуты.
+    printf -- '## In progress\n- [x] закрытый подпункт живой задачи\n- [ ] сама задача\n\n## Done\n- [x] 2026-06-01 — старая\n      её вторая строка\n- ✅ 2026-07-01 — галочкой\n- [x] 2026-12-01 — новая\n- [x] без даты\n\n## Backlog\n- [ ] хвост\n' > "$TMPLIB/tb.md"
+    printf -- '# Архив\n' > "$TMPLIB/ar.md"
+    # dry-run обязан ничего не писать
+    bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 || true
+    [ "$(grep -c . "$TMPLIB/ar.md")" -eq 1 ] ||
+        problems+="archive: dry-run записал в архив"$'\n'
+    bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before 2026-08-01 --apply >/dev/null 2>&1 ||
+        problems+="archive: упал на нормальном входе"$'\n'
+    grep -q '2026-06-01' "$TMPLIB/ar.md" || problems+="archive: не перенёс старую запись"$'\n'
+    grep -q 'её вторая строка' "$TMPLIB/ar.md" || problems+="archive: потерял продолжение записи"$'\n'
+    grep -q '2026-07-01' "$TMPLIB/ar.md" || problems+="archive: не знает маркер ✅"$'\n'
+    grep -q '2026-12-01' "$TMPLIB/tb.md" || problems+="archive: унёс свежую запись"$'\n'
+    grep -q 'без даты' "$TMPLIB/tb.md" || problems+="archive: унёс запись без даты"$'\n'
+    grep -q 'закрытый подпункт' "$TMPLIB/tb.md" || problems+="archive: тронул секцию In progress"$'\n'
+    grep -q 'хвост' "$TMPLIB/tb.md" || problems+="archive: потерял секцию после Done"$'\n'
+    grep -q '2026-06-01' "$TMPLIB/tb.md" && problems+="archive: продублировал запись (осталась в таскборде)"$'\n'
+    # Кривая дата и отсутствие файла — отказ, а не «ничего не нашёл».
+    bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before вчера >/dev/null 2>&1 &&
+        problems+="archive: принял неверный формат даты"$'\n'
+    bash "$LIBSH" archive "$TMPLIB/nope.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 &&
+        problems+="archive: принял несуществующий таскборд"$'\n'
+    # Обе страховки archive проверяются грепом, а не запуском, сознательно: пока
+    # остальной код верен, их отключение не даёт наблюдаемого эффекта — в том и
+    # смысл страховки. Наблюдаем их наличие.
+    grep -q 'refused — .*moved.*kept' "$LIBSH" ||
+        problems+="archive: снята сверка числа записей до/после"$'\n'
+    grep -q 'refused — line balance off' "$LIBSH" ||
+        problems+="archive: снята сверка числа строк"$'\n'
+    grep -q 'done_sec && /\^\[\[:space:\]\]\*-' "$LIBSH" ||
+        problems+="archive: счёт записей идёт не по секции Done"$'\n'
     # vault-sync: локальный vault без remote — штатный сетап, обязан пропустить с 0.
     mkdir -p "$TMPLIB/v" && git -C "$TMPLIB/v" init -q 2>/dev/null
     bash "$LIBSH" vault-sync "$TMPLIB/v" >/dev/null 2>&1 ||
@@ -637,6 +670,11 @@ grep -qF '[x]' "$BL" || missing+="brain-lint.md: счётчик Done не зна
 # матчила описание находки и потому не заметила бы удаление кода.
 grep -qE '^[[:space:]]*prog=\$\(' "$BL" ||
     missing+="brain-lint.md: нет замера размера секции In progress (переменная prog=)"$'\n'
+# Счётчик Done обязан считать ВНУТРИ секции Done. Замерено 2026-08-03: по всему файлу
+# goprofi-voronka давал 83 против 19, dimarch 31 против 8, собственный таскборд 65
+# против 5 — закрытые подпункты открытых задач считались архивируемыми записями.
+grep -qE 'done_n=\$\(awk' "$BL" ||
+    missing+="brain-lint.md: счётчик Done считает по всему файлу, не по секции Done"$'\n'
 grep -qE 'prog.*(-gt|exceeds).*[0-9]{2,}' "$BL" ||
     missing+="brain-lint.md: у секции In progress нет порога"$'\n'
 grep -qiE 'Done alone is the wrong measure|не только Done' "$BL" ||

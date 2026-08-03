@@ -34,7 +34,109 @@ usage: brain.sh <command> [args]
                                and nothing else. Adds the key if absent.
   version                      print the installed version (from the VERSION file
                                written by install.sh/update.sh), or "unknown".
+  archive <taskboard> <archive> --before <YYYY-MM-DD> [--apply]
+                               move closed entries older than the date from the
+                               taskboard's Done section into the archive note.
+                               Dry-run unless --apply. Refuses on any imbalance.
 USAGE
+}
+
+# ── archive ──────────────────────────────────────────────────────────────────
+# Moving Done entries used to mean the model reading several hundred lines and
+# retyping them almost verbatim — measured 2026-07-22, it ate most of a session,
+# and the first attempt silently duplicated three entries. Cutting text is not a
+# language task: the model picks the boundary (a date), the script moves the
+# bytes. Nothing is summarised, reworded or dropped here by design.
+#
+# An entry starts at `- [x] YYYY-MM-DD` or `- ✅ YYYY-MM-DD` and continues through
+# every following line until the next such marker — both forms exist across
+# projects, and a counter that knows only one reports zero for the other.
+archive_done() {
+    tb="${1:-}"; ar="${2:-}"; before="${3:-}"; apply="${4:-}"
+    [ -f "$tb" ] || { echo "archive: no taskboard at '${tb:-}'" >&2; return 1; }
+    [ -f "$ar" ] || { echo "archive: no archive note at '${ar:-}'" >&2; return 1; }
+    case "$before" in
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;;
+        *) echo "archive: --before needs YYYY-MM-DD, got '${before:-}'" >&2; return 1 ;;
+    esac
+
+    work="${TMPDIR:-/tmp}/brain-archive.$$"
+    mkdir -p "$work" || return 1
+    awk -v before="$before" -v w="$work" '
+        BEGIN { part = "head" }
+        # Section boundaries: Done starts at its heading, ends at the next ## heading.
+        /^## / {
+            if (part == "done") { part = "tail" }
+            else if ($0 ~ /^## (Done|Завершено)/) { print > (w "/head"); part = "done"; next }
+        }
+        part != "done" { print > (w "/" part); next }
+        {
+            # New entry? `- [x] 2026-08-03` / `- ✅ 2026-08-03`
+            if ($0 ~ /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/) {
+                d = ""
+                if (match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/))
+                    d = substr($0, RSTART, RLENGTH)
+                # No date -> keep. Never move what we cannot date.
+                dest = (d != "" && d < before) ? "moved" : "kept"
+                n[dest]++
+            }
+            if (dest == "") { print > (w "/head"); next }   # prose before the first entry
+            print > (w "/" dest)
+        }
+        END {
+            print n["moved"] + 0 > (w "/n_moved")
+            print n["kept"]  + 0 > (w "/n_kept")
+        }
+    ' "$tb" || { rm -rf "$work"; return 1; }
+
+    for f in head kept moved tail n_moved n_kept; do : > "$work/$f.z"; done
+    for f in head kept moved tail; do [ -f "$work/$f" ] || : > "$work/$f"; done
+    n_moved=$(cat "$work/n_moved" 2>/dev/null || echo 0)
+    n_kept=$(cat "$work/n_kept" 2>/dev/null || echo 0)
+
+    # Balance check before touching anything. The first hand-rolled archiving in
+    # this repo duplicated three entries; a count that does not add up means stop.
+    # Count inside the Done section only, by a separate pass: closed items also
+    # appear under In progress (sub-items of an open task), and counting the whole
+    # file compares two different populations — which is exactly what the first
+    # version of this check did, and it refused on a perfectly good taskboard.
+    total_before=$(awk '
+        /^## / { done_sec = ($0 ~ /^## (Done|Завершено)/); next }
+        done_sec && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+        END { print n + 0 }
+    ' "$tb")
+    if [ "$((n_moved + n_kept))" -ne "$total_before" ]; then
+        echo "archive: refused — $n_moved moved + $n_kept kept != $total_before in file" >&2
+        rm -rf "$work"; return 1
+    fi
+
+    echo "archive: $n_moved entries older than $before, $n_kept stay (of $total_before)"
+    if [ "$apply" != "--apply" ]; then
+        echo "archive: dry-run, nothing written (pass --apply)"
+        rm -rf "$work"; return 0
+    fi
+    if [ "$n_moved" -eq 0 ]; then
+        echo "archive: nothing to move"; rm -rf "$work"; return 0
+    fi
+
+    cp "$tb" "$work/tb.bak"; cp "$ar" "$work/ar.bak"
+    cat "$work/head" "$work/kept" "$work/tail" > "$work/tb.new" || { rm -rf "$work"; return 1; }
+    { cat "$ar"; echo; cat "$work/moved"; } > "$work/ar.new" || { rm -rf "$work"; return 1; }
+
+    # Every moved line must exist in the new archive, and the taskboard must have
+    # shrunk by exactly what the archive gained.
+    moved_lines=$(grep -c . "$work/moved")
+    tb_before=$(grep -c . "$tb"); ar_before=$(grep -c . "$ar")
+    tb_after=$(grep -c . "$work/tb.new"); ar_after=$(grep -c . "$work/ar.new")
+    if [ "$((tb_before - tb_after))" -ne "$moved_lines" ] ||
+       [ "$((ar_after - ar_before))" -ne "$moved_lines" ]; then
+        echo "archive: refused — line balance off (taskboard -$((tb_before - tb_after)), archive +$((ar_after - ar_before)), moved $moved_lines)" >&2
+        rm -rf "$work"; return 1
+    fi
+
+    mv "$work/tb.new" "$tb" && mv "$work/ar.new" "$ar"
+    echo "archive: moved $n_moved entries ($moved_lines lines) into $(basename "$ar")"
+    rm -rf "$work"
 }
 
 # ── version ──────────────────────────────────────────────────────────────────
@@ -167,6 +269,18 @@ case "${1:-}" in
     vault-sync)         shift; vault_sync "${1:-}" ;;
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
+    archive)            shift
+                        a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
+                        shift 2 2>/dev/null
+                        while [ $# -gt 0 ]; do
+                            case "$1" in
+                                --before) shift; a_before="${1:-}" ;;
+                                --apply)  a_apply="--apply" ;;
+                                *) echo "archive: unknown option '$1'" >&2; exit 64 ;;
+                            esac
+                            shift
+                        done
+                        archive_done "$a_tb" "$a_ar" "$a_before" "$a_apply" ;;
     -h|--help|help|"")  usage ;;
     *)                  echo "brain.sh: unknown command '$1'" >&2; usage >&2; exit 64 ;;
 esac

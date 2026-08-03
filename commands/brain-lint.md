@@ -200,7 +200,12 @@ Flag if:
 
   ```bash
   tb="$VAULT/$PROJECT/taskboard.md"
-  done_n=$(grep -cE '^[[:space:]]*-[[:space:]]*(\[x\]|✅)' "$tb")
+  # Count closed entries INSIDE the Done section only — a closed sub-item under an
+  # open task is not an archivable entry, and counting the whole file mixes two
+  # different populations (measured 2026-08-03: 65 file-wide against 5 in Done).
+  done_n=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+                d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+                END { print n + 0 }' "$tb")
   total=$(grep -c . "$tb")
   # size of ## In progress: from its heading to the next ## heading
   prog=$(awk '/^## /{p = ($0 ~ /In progress|В работе/)} p' "$tb" | grep -c .)
