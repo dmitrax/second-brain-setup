@@ -257,15 +257,40 @@ if [ -f "$LIBSH" ]; then
         problems+="archive: принял неверный формат даты"$'\n'
     bash "$LIBSH" archive "$TMPLIB/nope.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 &&
         problems+="archive: принял несуществующий таскборд"$'\n'
-    # Обе страховки archive проверяются грепом, а не запуском, сознательно: пока
-    # остальной код верен, их отключение не даёт наблюдаемого эффекта — в том и
-    # смысл страховки. Наблюдаем их наличие.
+    # Наличие обеих страховок — грепом.
     grep -q 'refused — .*moved.*kept' "$LIBSH" ||
         problems+="archive: снята сверка числа записей до/после"$'\n'
     grep -q 'refused — line balance off' "$LIBSH" ||
         problems+="archive: снята сверка числа строк"$'\n'
     grep -q 'done_sec && /\^\[\[:space:\]\]\*-' "$LIBSH" ||
         problems+="archive: счёт записей идёт не по секции Done"$'\n'
+    # А работают ли они — проверяется ЗАПУСКОМ на намеренно сломанной копии.
+    # Иначе страховка непроверяема по построению: пока остальной код верен, её
+    # отключение не даёт наблюдаемого эффекта, и «она есть» подтверждается только
+    # тем, что строка кода на месте. Ломаем парсер так, чтобы одна запись пропала,
+    # и требуем: отказ (ненулевой код) И оба файла нетронуты.
+    # Разделитель sed — `#`: в тексте замены есть `||`, и с `|` sed падает, оставляя
+    # пустой файл. Пустая «сломанная копия» ничего не делает, выходит с 0 и читается
+    # как «страховка пропустила» — поймано на себе 2026-08-03. Отсюда три проверки
+    # ниже: копия непуста, отличается от оригинала и синтаксически валидна.
+    sed 's#print > (w "/" dest)#if (!(dest == "moved" \&\& n["moved"] == 1)) print > (w "/" dest)#' \
+        "$LIBSH" > "$TMPLIB/broken.sh" 2>/dev/null
+    if [ ! -s "$TMPLIB/broken.sh" ] ||
+       cmp -s "$TMPLIB/broken.sh" "$LIBSH" ||
+       ! bash -n "$TMPLIB/broken.sh" 2>/dev/null; then
+        problems+="archive: не удалось собрать сломанную копию — страховка не проверена"$'\n'
+    fi
+    printf -- '## Done\n- [x] 2026-01-01 — первая\n- [x] 2026-02-01 — вторая\n- [x] 2026-12-01 — свежая\n' > "$TMPLIB/tb2.md"
+    printf -- '# Архив\n' > "$TMPLIB/ar2.md"
+    tb2_sum=$(command cksum < "$TMPLIB/tb2.md"); ar2_sum=$(command cksum < "$TMPLIB/ar2.md")
+    if bash "$TMPLIB/broken.sh" archive "$TMPLIB/tb2.md" "$TMPLIB/ar2.md" \
+            --before 2026-08-01 --apply >/dev/null 2>&1; then
+        problems+="archive: сломанный парсер ТЕРЯЕТ запись, а страховка пропустила это"$'\n'
+    fi
+    [ "$(command cksum < "$TMPLIB/tb2.md")" = "$tb2_sum" ] ||
+        problems+="archive: при отказе таскборд всё равно изменён"$'\n'
+    [ "$(command cksum < "$TMPLIB/ar2.md")" = "$ar2_sum" ] ||
+        problems+="archive: при отказе архив всё равно изменён"$'\n'
     # vault-sync: локальный vault без remote — штатный сетап, обязан пропустить с 0.
     mkdir -p "$TMPLIB/v" && git -C "$TMPLIB/v" init -q 2>/dev/null
     bash "$LIBSH" vault-sync "$TMPLIB/v" >/dev/null 2>&1 ||
