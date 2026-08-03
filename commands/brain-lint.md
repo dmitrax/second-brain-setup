@@ -343,10 +343,51 @@ If this is a code or mixed project and `architecture-map.md` does NOT exist:
 
 Skip Steps 11 for content and config projects.
 
+## Step 12: Diff the findings against the previous lint
+
+Run **every** check above in full, every time. Do not narrow them to changed files:
+measured 2026-08-03, a full YAML pass over 646 frontmatter blocks costs 0.19s and the
+ambiguous-link sweep 0.1s. The machine half of a lint is free, and skipping files is how
+a check starts reporting a clean vault it never looked at.
+
+What is expensive is *this session* re-reading and re-judging findings that have been
+parked since July. So the incremental part is here, at the end: collect every finding as
+one line, `key<TAB>detail`, and diff it against the previous run.
+
+```bash
+BRAIN="$HOME/.claude/skills/second-brain/lib/brain.sh"
+BASE="$VAULT/00-system/lint-baseline.txt"
+# ... produce findings on stdout, one per line ...
+printf '%s\n' "$FINDINGS" | bash "$BRAIN" lint-diff "$BASE" --seal
+```
+
+Keys must be **stable and free of changing numbers** — `prose-budget<TAB>goprofi-voronka`,
+not `prose-budget-154`. The number belongs in the detail, which is displayed but not
+compared; put it in the key and a known problem re-reports as new every time it moves.
+Suggested keys: `prose-budget|<project>`, `ffc-budget|<project>`, `taskboard-size|<project>`,
+`taskboard-done|<project>`, `map-stale|<project>`, `stale-draft|<path>`, `orphan|<path>`,
+`unresolved|<path>`, `ambiguous-link|<path>`, `zone-missing|<project>`, `decision-schema|<path>`.
+
+Report in this order: **NEW first** — that is this session's regression and the only part
+that usually needs action; then GONE (something was fixed, confirm it was deliberate);
+then the count of unchanged, which is parked debt and needs no re-litigation.
+
+`--seal` rewrites the baseline, so pass it only on a run whose findings you have actually
+reported to the user. A sealed baseline silently becomes "known" for every future run —
+sealing a run nobody read is how a finding disappears without ever being seen.
+
+The baseline lives in the vault, so a lint on one machine informs the next lint on the
+other. Full re-litigation of everything is still available: delete the baseline, or read
+it directly — it is a plain text file.
+
 ## Result
 
 ```
 ✓ Lint complete: $PROJECT
+
+NEW since last lint:   [N] ← this session's regression, act on these
+GONE since last lint:  [N] ← fixed; confirm it was deliberate
+Known, unchanged:      [N] ← parked debt, listed in the baseline, do not re-litigate
 
 Orphan notes:          [N] (list)
 Contradictions:        [M] (list)

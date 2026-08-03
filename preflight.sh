@@ -257,6 +257,43 @@ if [ -f "$LIBSH" ]; then
         problems+="archive: принял неверный формат даты"$'\n'
     bash "$LIBSH" archive "$TMPLIB/nope.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 &&
         problems+="archive: принял несуществующий таскборд"$'\n'
+    # lint-diff: ключ сравнивается, деталь только показывается. Проверяем ровно это —
+    # иначе известная находка с изменившимся числом каждый раз считалась бы новой,
+    # а смысл механизма в том, чтобы отделять регрессию от припаркованного долга.
+    printf 'prose-budget\tgoprofi: 154\nmap-stale\tcadrika\n' > "$TMPLIB/f1.txt"
+    command cat "$TMPLIB/f1.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" --seal >/dev/null 2>&1 ||
+        problems+="lint-diff: упал на первом прогоне"$'\n'
+    [ -s "$TMPLIB/base.txt" ] || problems+="lint-diff: --seal не записал baseline"$'\n'
+    # деталь изменилась, ключ тот же -> находка НЕ новая
+    printf 'prose-budget\tgoprofi: 999\nmap-stale\tcadrika\n' > "$TMPLIB/f2.txt"
+    out=$(command cat "$TMPLIB/f2.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" 2>&1)
+    case "$out" in
+        *NEW*) problems+="lint-diff: изменившееся число сделало известную находку новой"$'\n' ;;
+    esac
+    # новый ключ -> новая находка; исчезнувший -> GONE
+    printf 'prose-budget\tgoprofi: 154\nzone-missing\tgoprofi\n' > "$TMPLIB/f3.txt"
+    out=$(command cat "$TMPLIB/f3.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" 2>&1)
+    case "$out" in
+        *"+ zone-missing"*) : ;;
+        *) problems+="lint-diff: не заметил новую находку"$'\n' ;;
+    esac
+    case "$out" in
+        *"- map-stale"*) : ;;
+        *) problems+="lint-diff: не заметил исчезнувшую находку"$'\n' ;;
+    esac
+    # без --seal baseline обязан остаться прежним
+    grep -q 'zone-missing' "$TMPLIB/base.txt" &&
+        problems+="lint-diff: записал baseline без --seal"$'\n'
+    # шаг обязан быть в промпте, иначе код есть, а вызывать его некому
+    LINTMD="$SCRIPT_DIR/commands/brain-lint.md"
+    # Паттерн с двоеточием, а не голое «Step 12»: подстрока матчит и «Step 12z», из-за
+    # чего негативный тест на переименование шага проходил как зелёный (третий случай
+    # ловушки с подстрокой за сессию — см. также vault-sync-DISABLED).
+    grep -qE '^## Step 12:' "$LINTMD" || problems+="brain-lint.md: нет шага сверки с baseline (12)"$'\n'
+    grep -qF 'lint-diff' "$LINTMD" || problems+="brain-lint.md: шаг 12 не вызывает lint-diff"$'\n'
+    grep -qiE 'in full, every time|Do not narrow them' "$LINTMD" ||
+        problems+="brain-lint.md: потеряно требование гонять проверки полностью"$'\n'
+
     # Наличие обеих страховок — грепом.
     grep -q 'refused — .*moved.*kept' "$LIBSH" ||
         problems+="archive: снята сверка числа записей до/после"$'\n'

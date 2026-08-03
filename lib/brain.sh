@@ -38,7 +38,85 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  lint-diff <baseline> [--seal]
+                               read findings on stdin (one per line, `key<TAB>detail`),
+                               print what is NEW and what is GONE against the baseline,
+                               and how many are unchanged. --seal rewrites the baseline.
 USAGE
+}
+
+# ── lint-diff ────────────────────────────────────────────────────────────────
+# Measured 2026-08-03: a full YAML pass over 646 frontmatter blocks takes 0.19s and
+# the ambiguous-link sweep 0.1s — the machine half of a lint costs nothing, so
+# there is nothing to save by scanning fewer files. What actually costs is the
+# session re-reading and re-judging every finding, including the ones parked since
+# July. So the incremental part belongs here: run every check in full, then show
+# only the delta against the previous run.
+#
+# This is also what separates a one-off debt payment from routine upkeep — the two
+# were indistinguishable before, which made a whole day's cost look like today's tax.
+#
+# A finding is `key<TAB>detail`: the key is stable (type + object) and is what gets
+# compared; the detail may carry changing numbers and is only displayed. Putting a
+# number in the key would report a known problem as new every time it moves.
+lint_diff() {
+    base="${1:-}"; seal="${2:-}"
+    [ -n "$base" ] || { echo "lint-diff: need a baseline path" >&2; return 1; }
+
+    cur="${TMPDIR:-/tmp}/brain-lint-cur.$$"
+    cat > "$cur"
+    # Ключи обязаны быть уникальными: тип + объект. Два разных объекта под одним
+    # ключом («stale-draft» на три разных файла) схлопываются, и починка одного из
+    # них диффу не видна — ключ остаётся на месте. Поймано на первом же живом
+    # baseline, где я сам написал тип без объекта.
+    dup=$(cut -f1 "$cur" | sort | uniq -d)
+    if [ -n "$dup" ]; then
+        echo "lint-diff: ключи не уникальны — добавьте объект в ключ:" >&2
+        printf '%s\n' "$dup" | sed 's/^/  /' >&2
+        rm -f "$cur"; return 1
+    fi
+
+    if [ ! -s "$cur" ] && [ ! -f "$base" ]; then
+        # No findings and no baseline is a legitimate first clean run, but an empty
+        # stdin usually means the caller's pipeline broke. Say which one it is.
+        echo "lint-diff: no findings on stdin and no baseline yet — nothing to compare"
+        [ "$seal" = "--seal" ] && : > "$base"
+        rm -f "$cur"; return 0
+    fi
+    if [ ! -f "$base" ]; then
+        echo "lint-diff: no baseline at $base — treating all $(grep -c . "$cur") findings as new"
+        sed 's/^/  NEW  /' "$cur"
+        [ "$seal" = "--seal" ] && cp "$cur" "$base"
+        rm -f "$cur"; return 0
+    fi
+
+    cut_keys() { cut -f1 "$1" | sort -u; }
+    new_keys="${TMPDIR:-/tmp}/brain-lint-new.$$"
+    gone_keys="${TMPDIR:-/tmp}/brain-lint-gone.$$"
+    comm -23 <(cut_keys "$cur") <(cut_keys "$base") > "$new_keys"
+    comm -13 <(cut_keys "$cur") <(cut_keys "$base") > "$gone_keys"
+
+    n_new=$(grep -c . "$new_keys"); n_gone=$(grep -c . "$gone_keys")
+    n_same=$(( $(cut_keys "$cur" | grep -c .) - n_new ))
+
+    if [ "$n_new" -gt 0 ]; then
+        echo "NEW since last lint ($n_new):"
+        while read -r k; do
+            [ -n "$k" ] || continue
+            awk -F'\t' -v k="$k" '$1 == k { print "  + " $1 (NF > 1 ? " — " $2 : "") }' "$cur"
+        done < "$new_keys"
+    fi
+    if [ "$n_gone" -gt 0 ]; then
+        echo "GONE since last lint ($n_gone):"
+        sed 's/^/  - /' "$gone_keys"
+    fi
+    echo "known and unchanged: $n_same (parked debt, not this session's regression)"
+
+    if [ "$seal" = "--seal" ]; then
+        cp "$cur" "$base"
+        echo "baseline updated: $base"
+    fi
+    rm -f "$cur" "$new_keys" "$gone_keys"
 }
 
 # ── archive ──────────────────────────────────────────────────────────────────
@@ -269,6 +347,7 @@ case "${1:-}" in
     vault-sync)         shift; vault_sync "${1:-}" ;;
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
+    lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
                         shift 2 2>/dev/null
