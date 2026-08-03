@@ -376,6 +376,19 @@ then the count of unchanged, which is parked debt and needs no re-litigation.
 reported to the user. A sealed baseline silently becomes "known" for every future run —
 sealing a run nobody read is how a finding disappears without ever being seen.
 
+**A changed key set produces fake deltas, and they are recognisable.** The baseline
+compares keys, so renaming a check's key — or adding and dropping checks between runs —
+shows up as a NEW and a GONE for what is one unchanged finding. Measured 2026-08-03 on
+the first real run: three GONE entries (`zone-missing`, `stalled-task`, `vault-junk`) were
+not fixed at all; one had been renamed to `key-uniformity` and two came from checks the
+run did not perform. The tell is a GONE with no memory of anyone fixing it, often paired
+with a suspiciously similar NEW. When the check set changes, say so explicitly in the
+report and re-seal deliberately — never let the reader believe debt was cleared.
+
+Corollary: a finding that stops being *produced* is indistinguishable from one that was
+*fixed*. So dropping a check silently retires every finding it owned. If a check is
+removed on purpose, say which findings leave with it.
+
 The baseline lives in the vault, so a lint on one machine informs the next lint on the
 other. Full re-litigation of everything is still available: delete the baseline, or read
 it directly — it is a plain text file.
