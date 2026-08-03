@@ -34,7 +34,10 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     mkdir -p "$SKILL_DIR/lib"
     cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
     chmod +x "$SKILL_DIR/lib/brain.sh"
-    echo -e "  ${GREEN}✓${NC} lib/brain.sh → $SKILL_DIR/lib/"
+    # Записать версию рядом со скриптом: без этого установленная система не знает
+    # своей версии и не может предупредить, что отстала от vault.
+    printf '%s\n' "$VERSION" > "$SKILL_DIR/lib/VERSION"
+    echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($VERSION) → $SKILL_DIR/lib/"
 else
     echo -e "  ${YELLOW}!${NC} lib/brain.sh not found — commands will fall back to no-CLI"
 fi

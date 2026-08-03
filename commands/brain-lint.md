@@ -196,8 +196,31 @@ Flag if:
   project look like a violator. Measured 2026-07-22: `dimarch` carries 36 lines of
   legitimate decision links against 65 wiki notes, while its actual defect sits in
   `## Current state` (141 lines of prose). Total file size is not the signal — prose is
-- Taskboard Done / completed section is unbounded (more than ~20 closed items) →
-  suggest archiving old entries to a `wiki/archive-YYYY.md` note
+- Taskboard health — count it, do not eyeball it, and count **both** markers:
+
+  ```bash
+  tb="$VAULT/$PROJECT/taskboard.md"
+  done_n=$(grep -cE '^[[:space:]]*-[[:space:]]*(\[x\]|✅)' "$tb")
+  total=$(grep -c . "$tb")
+  # size of ## In progress: from its heading to the next ## heading
+  prog=$(awk '/^## /{p = ($0 ~ /In progress|В работе/)} p' "$tb" | grep -c .)
+  echo "done=$done_n total=$total in-progress=$prog"
+  ```
+
+  Flag if `done_n` exceeds ~20 → archive old entries to `wiki/archive-YYYY.md`.
+  Flag if `prog` exceeds ~300 lines. Flag if `total` exceeds ~600 lines.
+
+  **Both markers are required.** Projects use `- [x]` and `- ✅` interchangeably, and a
+  check that knows only one silently reports zero for a project using the other —
+  `cadrika` carried 16 closed items invisible to the count, and the threshold would not
+  have fired at 100.
+
+  **Done alone is the wrong measure.** A taskboard is unhealthy when it is unreadable,
+  and closed items are only one way to get there. Measured 2026-08-03:
+  `goprofi-voronka` passed as healthy on Done while running 2199 lines, 1091 of them in
+  `## In progress` — a section no session can hold in context, so new tasks get appended
+  blind and duplicates accumulate. Same distortion that was fixed for `_PROJECT.md`,
+  where total size was replaced by a prose budget: measure the part that hurts.
 - `## Current state` (or `## Статус` in older projects — same section) contains
   multi-sentence paragraphs that restate facts a linked (or linkable) wiki/decision
   note already covers → flag as duplication, suggest collapsing the paragraph to

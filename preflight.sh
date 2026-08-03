@@ -212,16 +212,27 @@ if [ -f "$LIBSH" ]; then
     # ровно то, чем property:set портил данные (кавычки, инлайн-списки, 007 -> 7).
     printf -- '---\ntags: [session, x]\nversion: "1.4.3"\nupdated: 2026-01-01\ncount: 007\n---\n\nbody\n' \
         > "$TMPLIB/a.md"
-    bash "$LIBSH" stamp-updated "$TMPLIB/a.md" 2026-08-03 >/dev/null 2>&1 ||
-        problems+="stamp-updated упал на нормальном файле"$'\n'
-    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-updated не проставил дату"$'\n'
-    grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-updated развернул инлайн-список"$'\n'
-    grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-updated снял кавычки"$'\n'
-    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-updated переписал 007"$'\n'
+    bash "$LIBSH" stamp-field "$TMPLIB/a.md" updated 2026-08-03 >/dev/null 2>&1 ||
+        problems+="stamp-field упал на нормальном файле"$'\n'
+    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-field не проставил дату"$'\n'
+    grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-field развернул инлайн-список"$'\n'
+    grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-field снял кавычки"$'\n'
+    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field переписал 007"$'\n'
+    # Отсутствующий ключ добавляется, существующие не трогаются.
+    bash "$LIBSH" stamp-field "$TMPLIB/a.md" brain-version '"v1.7.0"' >/dev/null 2>&1 ||
+        problems+="stamp-field не добавил отсутствующий ключ"$'\n'
+    grep -q '^brain-version: "v1.7.0"$' "$TMPLIB/a.md" || problems+="stamp-field не записал brain-version"$'\n'
+    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field испортил соседний ключ при добавлении"$'\n'
+    # Ключ с посторонними символами — отказ, иначе можно вписать что угодно в блок.
+    bash "$LIBSH" stamp-field "$TMPLIB/a.md" 'weird: key' x >/dev/null 2>&1 &&
+        problems+="stamp-field принял ключ с посторонними символами"$'\n'
     # Файла без frontmatter трогать нельзя.
     printf -- '# no frontmatter\n' > "$TMPLIB/b.md"
-    bash "$LIBSH" stamp-updated "$TMPLIB/b.md" 2026-08-03 >/dev/null 2>&1 &&
-        problems+="stamp-updated принял файл без frontmatter"$'\n'
+    bash "$LIBSH" stamp-field "$TMPLIB/b.md" updated 2026-08-03 >/dev/null 2>&1 &&
+        problems+="stamp-field принял файл без frontmatter"$'\n'
+    # version обязана что-то печатать всегда: нет файла VERSION -> "unknown", не пусто.
+    [ -n "$(bash "$LIBSH" version 2>/dev/null)" ] ||
+        problems+="version не печатает ничего (должна хотя бы unknown)"$'\n'
     # vault-sync: локальный vault без remote — штатный сетап, обязан пропустить с 0.
     mkdir -p "$TMPLIB/v" && git -C "$TMPLIB/v" init -q 2>/dev/null
     bash "$LIBSH" vault-sync "$TMPLIB/v" >/dev/null 2>&1 ||
@@ -235,10 +246,35 @@ if [ -f "$LIBSH" ]; then
         problems+="vault-sync принял несуществующий путь"$'\n'
     rm -rf "$TMPLIB"
     if [ -n "$problems" ]; then
-        fail "lib/brain.sh: vault-sync/stamp-updated ведут себя неверно" "$problems"
+        fail "lib/brain.sh: vault-sync/stamp-field ведут себя неверно" "$problems"
     else
-        pass "lib/brain.sh: stamp-updated щадит соседние поля, vault-sync различает исходы"
+        pass "lib/brain.sh: stamp-field щадит соседние поля, vault-sync различает исходы"
     fi
+fi
+
+# ─── 4d. Версия не хардкодится в шаблонах ────────────────────────────────────
+# `brain-version:` был мёртвым полем: литерал в шаблоне brain-init, который надо было
+# править руками при каждом релизе — и не правили. Замерено 2026-08-03: 8 проектов
+# несут "1.3", два "1.5.0", ни один 1.6.0, и ни одна команда поле не читала.
+# Теперь версия берётся из установленного VERSION, а /brain-save её штампует.
+missing=""
+if grep -qE '^brain-version:[[:space:]]*"[0-9]' "$SCRIPT_DIR/commands/brain-init.md"; then
+    missing+="brain-init.md: brain-version захардкожен литералом — при релизе разойдётся молча"$'\n'
+fi
+grep -q 'BRAIN_VERSION' "$SCRIPT_DIR/commands/brain-init.md" ||
+    missing+="brain-init.md: в шаблоне нет подстановки версии"$'\n'
+grep -qE 'brain\.sh" version|brain\.sh version' "$SCRIPT_DIR/commands/brain-init.md" ||
+    missing+="brain-init.md: не сказано, откуда брать версию (вызов brain.sh version)"$'\n'
+grep -q 'stamp-field .*brain-version' "$SCRIPT_DIR/commands/brain-save.md" ||
+    missing+="brain-save.md: brain-version не штампуется — поле снова станет мёртвым"$'\n'
+for s in install.sh update.sh; do
+    grep -q 'lib/VERSION' "$SCRIPT_DIR/$s" ||
+        missing+="$s: не пишет lib/VERSION — установленная система не знает своей версии"$'\n'
+done
+if [ -n "$missing" ]; then
+    fail "версия системы не отслеживается (мёртвое поле brain-version)" "$missing"
+else
+    pass "версия берётся из установленного VERSION и штампуется при сохранении"
 fi
 
 # ─── 5. Legacy-форма supersession ────────────────────────────────────────────
@@ -585,6 +621,68 @@ else
     pass "шаблоны объявлены минимумом, шаг поиска локальных ключей до записи, lint 10b на месте"
 fi
 
+# ─── 17. Счётчик таскборда видит оба маркера и мерит не только Done ──────────
+# Два дефекта одного класса «зелёное ≠ проверенное», найдены 2026-08-03.
+# (1) Счётчик искал только `- [x]`, а cadrika пишет `- ✅` — её 16 закрытых пунктов
+#     были невидимы, порог не сработал бы и на сотне.
+# (2) Порог считал только Done, поэтому goprofi-voronka проходил как здоровый при
+#     2131 строке, из них 1074 в `## In progress` — секция, которую сессия не может
+#     удержать в контексте, отчего задачи дописываются вслепую и дублируются.
+# Тот же перекос чинили у _PROJECT.md, заменив общий размер бюджетом прозы.
+missing=""
+BL="$SCRIPT_DIR/commands/brain-lint.md"
+grep -qF '✅' "$BL" || missing+="brain-lint.md: счётчик Done не знает маркер ✅"$'\n'
+grep -qF '[x]' "$BL" || missing+="brain-lint.md: счётчик Done не знает маркер [x]"$'\n'
+# Ищем сам замер, а не слова «In progress» в прозе: первая редакция этой проверки
+# матчила описание находки и потому не заметила бы удаление кода.
+grep -qE '^[[:space:]]*prog=\$\(' "$BL" ||
+    missing+="brain-lint.md: нет замера размера секции In progress (переменная prog=)"$'\n'
+grep -qE 'prog.*(-gt|exceeds).*[0-9]{2,}' "$BL" ||
+    missing+="brain-lint.md: у секции In progress нет порога"$'\n'
+grep -qiE 'Done alone is the wrong measure|не только Done' "$BL" ||
+    missing+="brain-lint.md: потеряно правило «мерить не только Done»"$'\n'
+if [ -n "$missing" ]; then
+    fail "счётчик таскборда снова слеп (маркер или метрика)" "$missing"
+else
+    pass "счётчик таскборда видит [x] и ✅, мерит Done + In progress + размер"
+fi
+
+# ─── 18. Код-блоки промптов исполняются оболочкой сессии (на macOS — zsh) ────
+# Планка bash 3.2 (проверка 14) закрывает *.sh — у них свой shebang. Но fenced-блоки
+# внутри SKILL.md и commands/*.md исполняет оболочка сессии, а на Маке это zsh.
+# Замерено 2026-08-03, оба раза с ложной зеленью: `[ "$a" \< "$b" ]` в zsh падает с
+# `condition expected` (шаг проверки версии карты напечатал «ok» по всем проектам,
+# включая отставший), а `for p in $LIST` не делит переменную на слова (весь список
+# обработался как одна строка). Граница проведена так: всё, что требует специфики
+# оболочки, живёт в lib/brain.sh (свой shebang, гарантированный bash); в блоках
+# промптов — только то, что одинаково в bash и zsh.
+hits=""
+for f in "${TARGETS[@]}"; do
+    blocks=$(code_blocks "$f")
+    h=""
+    # `\<` / `\>` в [ ]: в zsh это перенаправление, а не сравнение строк
+    echo "$blocks" | grep -nE '\[[^]]*\\[<>]' >/dev/null 2>&1 &&
+        h+="  \\< или \\> внутри [ ] — в zsh это не сравнение"$'\n'
+    # словоделение неквотированной переменной: в zsh его нет
+    echo "$blocks" | grep -nE 'for [A-Za-z_]+ in \$[A-Za-z_{]' >/dev/null 2>&1 &&
+        h+="  for ... in \$VAR — в zsh переменная не делится на слова"$'\n'
+    # ${var:0:1} — разная семантика индексации
+    echo "$blocks" | grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*:[0-9]+:[0-9]+\}' >/dev/null 2>&1 &&
+        h+="  \${var:N:M} — индексация различается"$'\n'
+    # массивы: индексация с 0 в bash и с 1 в zsh
+    echo "$blocks" | grep -nE '\$\{[A-Za-z_]+\[[@*]\]\}' >/dev/null 2>&1 &&
+        h+="  массивы — индексация с 0 в bash и с 1 в zsh, выносить в lib/"$'\n'
+    # builtins, которых в zsh нет вовсе
+    echo "$blocks" | grep -nE '\b(map''file|read''array|declare -''A|shopt)\b' >/dev/null 2>&1 &&
+        h+="  bash-only builtin — выносить в lib/brain.sh"$'\n'
+    [ -n "$h" ] && hits+="$(basename "$f"):"$'\n'"$h"
+done
+if [ -n "$hits" ]; then
+    fail "конструкция, расходящаяся между bash и zsh, в code-блоке промпта" "$hits"
+else
+    pass "код-блоки промптов переносимы между bash и zsh (5 классов не встречаются)"
+fi
+
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
 echo ""
 echo -e "${BLUE}[2/3] Скрипты${NC}"
@@ -615,6 +713,7 @@ else
     for expected in \
         ".claude/skills/second-brain/SKILL.md" \
         ".claude/skills/second-brain/lib/brain.sh" \
+        ".claude/skills/second-brain/lib/VERSION" \
         ".claude/commands/brain-setup.md" \
         ".claude/commands/brain-init.md" \
         ".claude/commands/brain-save.md" \
@@ -630,7 +729,7 @@ else
     if [ -n "$missing" ]; then
         fail "install.sh не создал ожидаемые файлы" "$missing"
     else
-        pass "все 12 ожидаемых файлов на месте"
+        pass "все 13 ожидаемых файлов на месте"
     fi
 
     # update.sh поверх установки, дважды — должен быть идемпотентен

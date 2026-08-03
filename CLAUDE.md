@@ -135,6 +135,30 @@ Public repo: github.com/dmitrax/second-brain-setup
   crossed both zones) and a decision note tagged `zone: backend` (it was about delivery).
   A copied value is silently wrong, which is worse than an absent field. Checked by
   preflight 16.
+- Code blocks inside `SKILL.md` and `commands/*.md` are executed by the **session's**
+  shell, which is zsh on macOS — the bash 3.2 floor above covers only `*.sh`, which carry
+  their own shebang. So the boundary is: anything needing shell specifics goes into
+  `lib/brain.sh`; what stays in a prompt block must behave identically in bash and zsh.
+  Measured 2026-08-03, both failures silently green: `[ "$a" \< "$b" ]` fails in zsh with
+  `condition expected` (a map-freshness step printed "ok" for every project, including one
+  that was behind), and `for p in $LIST` does not word-split in zsh (the whole list was
+  processed as a single string). Checked by preflight 18 for five classes: `\<`/`\>` in
+  `[ ]`, unquoted word-splitting, `${var:N:M}`, arrays (0-indexed in bash, 1-indexed in
+  zsh), and bash-only builtins.
+- The installed system must be able to state its own version: `install.sh`/`update.sh`
+  write `lib/VERSION`, `brain.sh version` reads it, `/brain-init` stamps the real value
+  instead of a literal, and `/brain-save` re-stamps `brain-version:` on every save. A
+  version that is written once at project creation and then read by nobody is not a
+  record, it is decoration — measured 2026-08-03: 8 projects claimed `1.3`, two `1.5.0`,
+  none the released 1.6.0, and the literal in the template had to be hand-edited at every
+  release, which of course did not happen. Checked by preflight 4d.
+- A count over vault files states which markers it counts, and counts all of them.
+  Projects write closed tasks as both `- [x]` and `- ✅`; a counter that knows one reports
+  zero for a project using the other — `cadrika` had 16 closed items invisible to the
+  threshold, which would not have fired at 100. And a threshold must measure the part that
+  hurts: counting only Done passed `goprofi-voronka` as healthy at 2131 lines with 1091 in
+  `## In progress`. Same distortion already fixed once for `_PROJECT.md`, where total size
+  was replaced by a prose budget. Checked by preflight 17.
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version

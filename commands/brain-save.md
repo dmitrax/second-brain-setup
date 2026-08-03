@@ -65,12 +65,23 @@ paragraph — this file is read in full every session, before the topic is known
 ## Step 0b: Bump updated date
 
 ```bash
-bash "$BRAIN" stamp-updated "$VAULT/$PROJECT/_PROJECT.md" "$(date +%F)"
+PM="$VAULT/$PROJECT/_PROJECT.md"
+bash "$BRAIN" stamp-field "$PM" updated "$(date +%F)"
+bash "$BRAIN" stamp-field "$PM" brain-version "\"$(bash "$BRAIN" version)\""
 ```
 
-Sets `updated:` to today, adding the field if it is absent. It rewrites that one line and
-refuses a file with no frontmatter, so it cannot reformat anything else. Verify afterwards
-that the file it printed is the one you meant.
+Each call rewrites one line, adds the key if absent, and refuses a file with no
+frontmatter — it cannot reformat anything else. Verify afterwards that the file it
+printed is the one you meant.
+
+**Why `brain-version` is stamped here.** It used to be written once by `/brain-init` from
+a hardcoded literal and then read or updated by nobody — a field that recorded the version
+a project was *created* under, drifting silently from the version actually in use
+(measured 2026-08-03: 8 projects on `1.3`, two on `1.5.0`, none on 1.6.0). Stamping the
+real installed version on every save turns it into a fact: if a machine has been running
+an un-updated copy, the vault now shows it, with dates, instead of everyone assuming the
+fleet is in sync. If the value it prints is lower than what other projects in the vault
+carry, say so in one line — that machine skipped `update.sh`.
 
 **Do not use `obsidian property:set` here.** It does not edit the one field it is
 given: it parses the whole frontmatter and re-serializes it, rewriting every other

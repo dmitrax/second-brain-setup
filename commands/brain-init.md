@@ -63,6 +63,19 @@ filename `decision-<slug>-because-<reason>.md`.
 Use the user's answers. Fill in all blocks.
 Note: `## For future Claude` section in English; content blocks in Russian.
 
+`[BRAIN_VERSION]` is the **actual installed version**, never a literal typed here:
+
+```bash
+bash "$HOME/.claude/skills/second-brain/lib/brain.sh" version
+```
+
+Until v1.7.0 this template carried a hardcoded `brain-version: "1.5.0"`, which had to be
+edited by hand at every release and of course was not — so every project created after
+v1.6.0 would have been stamped with a version it never ran. Measured 2026-08-03: 8
+projects claim `1.3`, two claim `1.5.0`, none claim 1.6.0, and no command reads or
+updates the field. It is stamped by `/brain-save` from now on, which is what makes it
+mean something.
+
 ```markdown
 ---
 tags: [project-manifest]
@@ -70,7 +83,7 @@ created: [TODAY]
 updated: [TODAY]
 status: active
 type: [PROJECT_TYPE]
-brain-version: "1.5.0"
+brain-version: "[BRAIN_VERSION]"
 ---
 
 ## For future Claude

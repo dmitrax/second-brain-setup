@@ -30,9 +30,25 @@ usage: brain.sh <command> [args]
                                exit 0 synced or skipped on purpose
                                exit 2 remote unreachable  -> warn, keep going
                                exit 3 rebase conflict     -> stop, write nothing
-  stamp-updated <file> <date>  set `updated:` in a file's frontmatter, touching
-                               that one line and nothing else.
+  stamp-field <file> <k> <v>   set one frontmatter key, touching that one line
+                               and nothing else. Adds the key if absent.
+  version                      print the installed version (from the VERSION file
+                               written by install.sh/update.sh), or "unknown".
 USAGE
+}
+
+# ── version ──────────────────────────────────────────────────────────────────
+# The installed system used to have no way to state its own version: update.sh
+# computed one, printed it to stdout and wrote it nowhere. So no command could
+# say "this machine runs 1.3 while the vault is already on 1.6.0 — run
+# update.sh", and the drift stayed invisible until something behaved oddly.
+brain_version() {
+    v="$(dirname "$0")/VERSION"
+    if [ -r "$v" ]; then
+        head -1 "$v"
+    else
+        echo "unknown"
+    fi
 }
 
 # ── obsidian-available ───────────────────────────────────────────────────────
@@ -108,44 +124,49 @@ vault_sync() {
 # parses the whole frontmatter and re-serializes it — quotes stripped, inline
 # lists expanded to block form, `007` reinterpreted as `7`. No warning, exit 0.
 # This touches one line and cannot reformat anything else.
-stamp_updated() {
+stamp_field() {
     file="${1:-}"
-    date_val="${2:-}"
+    key="${2:-}"
+    val="${3:-}"
     if [ ! -f "$file" ]; then
-        echo "stamp-updated: no such file: ${file:-}" >&2
+        echo "stamp-field: no such file: ${file:-}" >&2
         return 1
     fi
-    if [ -z "$date_val" ]; then
-        echo "stamp-updated: no date given" >&2
+    if [ -z "$key" ] || [ -z "$val" ]; then
+        echo "stamp-field: need <file> <key> <value>" >&2
         return 1
     fi
+    case "$key" in
+        *[!A-Za-z0-9_-]*) echo "stamp-field: refusing odd key '$key'" >&2; return 1 ;;
+    esac
     head -1 "$file" | grep -q '^---$' || {
-        echo "stamp-updated: $file has no frontmatter block" >&2; return 1; }
+        echo "stamp-field: $file has no frontmatter block" >&2; return 1; }
 
     tmp="$file.brain-tmp.$$"
-    awk -v d="$date_val" '
+    awk -v k="$key" -v d="$val" '
         NR == 1 { print; next }
         !done_fm && /^---[[:space:]]*$/ {
-            if (!seen) { print "updated: " d }      # no updated: field -> add one
+            if (!seen) { print k ": " d }           # key absent -> add it
             done_fm = 1; print; next
         }
-        !done_fm && /^updated:/ { print "updated: " d; seen = 1; next }
+        !done_fm && index($0, k ":") == 1 { print k ": " d; seen = 1; next }
         { print }
     ' "$file" > "$tmp" || { rm -f "$tmp"; return 1; }
 
     # Refuse to install a result that lost the frontmatter or the file body.
     if [ ! -s "$tmp" ]; then
-        rm -f "$tmp"; echo "stamp-updated: refused, result was empty" >&2; return 1
+        rm -f "$tmp"; echo "stamp-field: refused, result was empty" >&2; return 1
     fi
     mv "$tmp" "$file"
-    grep -m1 '^updated:' "$file"
+    grep -m1 "^$key:" "$file"
 }
 
 case "${1:-}" in
     obsidian-available) shift; obsidian_available "${1:-}" ;;
     vault-name)         timeout 2 obsidian vault info=name 2>/dev/null || true ;;
     vault-sync)         shift; vault_sync "${1:-}" ;;
-    stamp-updated)      shift; stamp_updated "${1:-}" "${2:-}" ;;
+    stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
+    version)            brain_version ;;
     -h|--help|help|"")  usage ;;
     *)                  echo "brain.sh: unknown command '$1'" >&2; usage >&2; exit 64 ;;
 esac

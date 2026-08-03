@@ -66,7 +66,11 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     mkdir -p "$SKILL_DIR/lib"
     cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
     chmod +x "$SKILL_DIR/lib/brain.sh"
-    echo -e "  ${GREEN}✓${NC} lib/brain.sh → $SKILL_DIR/lib/"
+    # Версия пишется рядом со скриптом: иначе установленная система не знает своей
+    # версии и не может сказать, что отстала от того, что уже лежит в vault.
+    INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always 2>/dev/null || echo "v1.0-dev")
+    printf '%s\n' "$INSTALLED_VERSION" > "$SKILL_DIR/lib/VERSION"
+    echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($INSTALLED_VERSION) → $SKILL_DIR/lib/"
 else
     echo -e "  ${YELLOW}!${NC} lib/brain.sh не найден — команды будут работать без CLI"
 fi
