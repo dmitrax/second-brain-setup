@@ -128,7 +128,21 @@ Public repo: github.com/dmitrax/second-brain-setup
   intentionally duplicated across two projects (5 filenames, ~12 links — same-directory
   bare links are just as ambiguous as cross-directory ones, proximity does not disambiguate).
   Treat "filename is unique in this one project" as never sufficient reasoning on its own —
-  check the whole vault before deciding a bare `[[link]]` is safe
+  check the whole vault before deciding a bare `[[link]]` is safe.
+  **A correct bare link goes bad on its own, with no edit to it.** Uniqueness is a property
+  of the vault at read time, not of the link at write time: the moment a second project
+  creates a file with the same basename, every existing bare link to that name — in the
+  *older* project, written when the name was unique — becomes ambiguous. Measured
+  2026-08-03: five `puzzlebot-voronka` notes from 06-28…07-04 carried 33 correct bare links
+  until `goprofi-voronka` was created 07-29 reusing those five filenames, three days after
+  a full lint had declared the vault clean of this class. So the trigger is not authoring
+  discipline, and no amount of care at write time prevents it — the only defence is a
+  vault-wide sweep that re-asks "is this basename still unique", which is why it lives in
+  `/brain-lint` Step 4b (checked by preflight 15) and runs on every lint, not only for new
+  projects. Corollary for the author of the *new* file: reusing a basename from another
+  project is itself the breaking change — check first, and if you reuse it anyway, fix the
+  older project's bare links in the same pass.
+  [[decision-name-uniqueness-is-read-time-because-a-new-project-breaks-old-correct-links]]
 - The same ambiguity applies to the `obsidian` CLI. Its `file=` argument is name-resolved
   by design — `obsidian --help`: *"file resolves by name (like wikilinks), path is exact
   (folder/note.md)"*. So never address a vault file with `file=<name>` in any command

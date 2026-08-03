@@ -388,6 +388,33 @@ else
     pass "скрипты совместимы с bash 3.2 (4 конструкции bash 4+ не встречаются)"
 fi
 
+# ─── 15. /brain-lint сам ищет неоднозначные ссылки по всему vault ────────────
+# Проверка 6 выше грепает РЕПОЗИТОРИЙ — шаблоны в SKILL.md и commands/. Аудитора
+# самого vault у этого класса не было вовсе: все четыре починки (135+ ссылок,
+# 07-14, 07-15, 07-26 и сегодня) делались разовыми скриптами, поэтому класс и
+# возвращался — постоянного инструмента, который его видит, не существовало.
+# Хуже: 2026-08-03 замерено, что дисциплина автора тут вообще ни при чём. Пять
+# заметок puzzlebot-voronka от 06-28…07-04 несли 33 ВЕРНЫЕ голые ссылки, пока
+# 07-29 не появился goprofi-voronka с теми же пятью именами — ссылки стали
+# неоднозначными задним числом, без правки в них, через три дня после того, как
+# линт объявил vault чистым по этому классу. Значит ловится только регулярным
+# vault-wide свипом «а имя всё ещё уникально», и Step 4b обязан существовать.
+missing=""
+LINT="$SCRIPT_DIR/commands/brain-lint.md"
+[ -s "$LINT" ] || fail "commands/brain-lint.md пуст или отсутствует — проверка 15 не отработала"
+grep -qF 'Step 4b' "$LINT" || missing+="brain-lint.md: нет шага 4b (свип неоднозначных ссылок)"$'\n'
+grep -qF 'uniq -d' "$LINT" || missing+="brain-lint.md: шаг 4b не ищет неуникальные basename (uniq -d)"$'\n'
+grep -qE 'grep -rn?F' "$LINT" || missing+="brain-lint.md: шаг 4b ищет без -F"$'\n'
+grep -qiE 'whole vault regardless of scope|vault-wide' "$LINT" ||
+    missing+="brain-lint.md: шаг 4b не объявлен vault-wide (в рамках проекта он слеп)"$'\n'
+grep -qiE 'already exists in another project|not unique across the whole vault' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: правило сужено до _PROJECT.md — потерян ретроактивный случай"$'\n'
+if [ -n "$missing" ]; then
+    fail "неоднозначные ссылки не проверяются в vault (класс возвращался 4 раза)" "$missing"
+else
+    pass "/brain-lint Step 4b свипает vault на неоднозначные ссылки, правило в SKILL.md общее"
+fi
+
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
 echo ""
 echo -e "${BLUE}[2/3] Скрипты${NC}"

@@ -89,6 +89,44 @@ Find notes where:
 Find [[wikilinks]] in note bodies pointing to non-existent files.
 For each — suggest creating the page or fixing the link.
 
+## Step 4b: Ambiguous links (bare [[name]] where the name is not unique)
+
+A `[[wikilink]]` that names a file whose basename exists more than once in the vault
+resolves to the first shortest-path match — silently, and to a file in whatever project
+Obsidian picked. Every such link needs an explicit path instead
+(`[[project/wiki/note|note]]`, `[[../_PROJECT|_PROJECT]]`).
+
+Run over the whole vault regardless of scope. A link is broken by the *existence of a
+duplicate name anywhere*, so a project-scoped run cannot see its own breakage:
+
+```bash
+cd "$VAULT" || exit 1
+find . -name '*.md' -not -path './.git/*' | sed 's|.*/||; s|\.md$||' | sort | uniq -d |
+while read -r name; do
+  grep -rnF --include='*.md' "[[$name]]" . |
+    grep -v '/sessions/' | grep -v '/archive-'
+done
+```
+
+`-F` is mandatory — the pattern is full of brackets. `sessions/` and `archive-*` are
+history and are not rewritten. Report every hit; do not auto-fix.
+
+**This check exists because the class recurs without anyone writing a bad link.** A name
+is unique when the link is written and stops being unique later, the moment a second
+project creates a file with the same basename — at which point already-correct links in
+the *older* project become ambiguous, with no edit to them and no signal anywhere.
+Measured 2026-08-03: five `puzzlebot-voronka` notes written 2026-06-28…07-04 carried 33
+correct bare links until `goprofi-voronka` was created 2026-07-29 reusing those five
+filenames. The vault had been linted clean of this class three days earlier. So the
+trigger is not authoring discipline and cannot be caught at write time by review — only a
+vault-wide sweep that re-asks "is this name still unique" finds it. Run it on every lint,
+not only when a project is new.
+
+False positives are notes that *document* this bug and quote the bare form as an example,
+inside backticks or a fenced block. Exclude those by filename; never relax the grep to
+skip lines containing a backtick — a real bare link and an unrelated backtick share a line
+often enough (confirmed live in `goprofi-voronka/_PROJECT.md`).
+
 ## Step 5: Cross-project connections (update connections.md)
 
 Read wiki/ of all projects (if `--all`) or current project.

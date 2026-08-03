@@ -173,9 +173,18 @@ connections.md is an index for Claude only. The graph lives in [[links]] inside 
 
 **When creating any wiki note:**
 - Minimum 2 [[wikilinks]] to related notes within the project
-- Key project notes → link to [[../_PROJECT|_PROJECT]] (relative path — multiple
-  projects share the filename `_PROJECT.md`, so a bare `[[_PROJECT]]` resolves
-  ambiguously)
+- Any link whose target basename is not unique across the whole vault → explicit path,
+  never a bare name: [[../_PROJECT|_PROJECT]], [[project/wiki/note|note]]. Obsidian
+  resolves a bare [[name]] to the first shortest-path match and silently points at
+  another project's file. This is not a `_PROJECT.md` rule — it applies to
+  `architecture-map`, `taskboard`, and to any wiki note deliberately duplicated across
+  two projects. Being in the same directory does not disambiguate anything
+- **Creating a note whose basename already exists in another project silently breaks
+  that project's existing links.** They were correct when written; they become ambiguous
+  the moment the duplicate appears, with no edit to them. So before reusing a filename
+  from another project, check the vault — and if you do reuse it, fix the older
+  project's bare links to that name in the same pass. `/brain-lint` Step 4b sweeps for
+  this vault-wide
 - Style or values mentioned → [[00-shared/SOUL]]
 
 **When updating an existing note (Rewrite):**
