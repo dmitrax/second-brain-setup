@@ -32,6 +32,11 @@ test-home/
 tmp/
 *.test/
 
+# ── Release-gate tooling ──────────────────────────────────
+# preflight.sh check 7 needs a Python with PyYAML. Provisioned locally, never
+# committed: python3 -m venv .venv && .venv/bin/pip install pyyaml
+.venv/
+
 # ── Safety net: secrets ───────────────────────────────────
 .env
 .env.*

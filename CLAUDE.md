@@ -208,6 +208,20 @@ Public repo: github.com/dmitrax/second-brain-setup
   which the general rule: a check must fail hard when its input is empty. Green means
   "ran and found nothing", never "did not run" — a check that cannot tell those apart
   is worse than an absent one, because its green is trusted. Checked by preflight 14.
+- The empty-input rule above binds every check that depends on a tool, not just the
+  ones that read a file list. A check whose tool is missing must fail, never skip:
+  "the tool is absent" and "the repo is clean" are different facts, and only one of
+  them is worth a green. `preflight.sh` check 7 did `import yaml / except ImportError:
+  sys.exit(0)`, so on a machine without PyYAML it printed a pass having parsed nothing —
+  the same defect as `mapfile`, one function further down the same file, found 2026-08-03
+  the day after the rule was written. From which the second-order lesson: a new rule is
+  not done when it is written, only when the existing code has been swept for the class
+  it names. Concretely — `preflight.sh` needs a Python with PyYAML and looks for one in
+  order (`$PYTHON`, repo-local `.venv/bin/python`, `python3`), failing loudly when none
+  has it; provision with `python3 -m venv .venv && .venv/bin/pip install pyyaml`, and
+  keep `.venv/` in `.gitignore`. This is a dev-only dependency of the release gate and
+  does not touch the package's "no external dependencies" claim — `install.sh` ships
+  `SKILL.md` and `commands/` only, never `preflight.sh`.
 
 ### Do not
 - Commit API keys, secrets, or vault content

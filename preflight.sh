@@ -198,16 +198,36 @@ else
 fi
 
 # ─── 7. Валидность YAML во frontmatter ───────────────────────────────────────
-if command -v python3 >/dev/null 2>&1; then
-    bad=$(python3 - "$SCRIPT_DIR" <<'PY' 2>/dev/null || true
+# Проверка обязана падать, когда выполнить её нечем или не на чем. До 2026-08-03
+# отсутствие python3 пропускало её молча и целиком, а отсутствующий PyYAML давал
+# `sys.exit(0)` — на macOS, где модуль не установлен, она печатала ✓, не разобрав
+# ни одного блока. Ровно тот же класс, что `mapfile` в проверках 5-6, и найден он
+# был в ту же неделю, одной функцией ниже. Зелёное обязано означать «выполнено и
+# чисто», никогда «не выполнено». Ср. проверку 14 и правило пустого входа.
+# Кандидаты интерпретатора по порядку: явный $PYTHON, репозиторный .venv,
+# системный python3. Берётся первый, у которого PyYAML реально импортируется —
+# «python3 нашёлся» и «проверку есть чем выполнить» это разные факты, и раньше
+# скрипт путал их в пользу зелёного. .venv лежит в .gitignore и заводится один
+# раз: python3 -m venv .venv && .venv/bin/pip install pyyaml
+PYBIN=""
+for cand in "${PYTHON:-}" "$SCRIPT_DIR/.venv/bin/python" python3; do
+    [ -n "$cand" ] || continue
+    command -v "$cand" >/dev/null 2>&1 || continue
+    "$cand" -c 'import yaml' >/dev/null 2>&1 || continue
+    PYBIN="$cand"
+    break
+done
+if [ -z "$PYBIN" ]; then
+    fail "нет интерпретатора с PyYAML — проверка YAML не выполнена" \
+         "завести: python3 -m venv .venv && .venv/bin/pip install pyyaml"
+else
+    out=$("$PYBIN" - "$SCRIPT_DIR" 2>/dev/null <<'PY'
 import sys, pathlib
-try:
-    import yaml
-except ImportError:
-    sys.exit(0)
+import yaml
 root = pathlib.Path(sys.argv[1])
-for p in root.rglob("*.md"):
-    if ".git" in p.parts:
+n = 0
+for p in sorted(root.rglob("*.md")):
+    if ".git" in p.parts or ".venv" in p.parts:
         continue
     text = p.read_text(encoding="utf-8", errors="replace")
     if not text.startswith("---"):
@@ -215,16 +235,22 @@ for p in root.rglob("*.md"):
     end = text.find("\n---", 3)
     if end == -1:
         continue
+    n += 1
     try:
         yaml.safe_load(text[3:end])
     except Exception as e:
         print(f"{p.relative_to(root)}: {str(e).splitlines()[0]}")
+print("PARSED %d" % n)
 PY
 )
+    parsed=$(echo "$out" | sed -n 's/^PARSED //p')
+    bad=$(echo "$out" | grep -v '^PARSED ')
     if [ -n "$bad" ]; then
         fail "невалидный YAML во frontmatter" "$bad"
+    elif [ -z "$parsed" ] || [ "$parsed" -eq 0 ]; then
+        fail "проверка YAML не нашла ни одного frontmatter-блока — вход пуст, а не чист"
     else
-        pass "frontmatter во всех .md парсится"
+        pass "frontmatter во всех .md парсится ($parsed блоков)"
     fi
 fi
 
