@@ -94,16 +94,45 @@ frontmatter it failed to parse. On a file carrying the old `status: superseded-b
 form (invalid YAML — see Step 2) it prints a parse error to stderr, writes nothing,
 and still exits 0.
 
+## Step 0c: Find this project's local frontmatter conventions
+
+Do this **before** writing anything below. Some projects require frontmatter keys this
+package knows nothing about — `goprofi-voronka` requires `zone:` on session logs and
+decision notes, because that repo is a monorepo split into zones.
+
+```bash
+# keys used by the most recent session log of this project
+ls -1 "$VAULT/$PROJECT/sessions/"*.md 2>/dev/null | tail -1 | xargs -r awk '
+  /^---$/ {n++; next} n==1 && /^[a-zA-Z_-]+:/ {print}'
+grep -nE 'frontmatter|zone:|обязательн|required' "$PROJECT_CLAUDE_MD" 2>/dev/null | head
+```
+
+Take the **keys** from what you find; derive each **value** for the entry you are
+writing. Never copy a value across — in the session that surfaced this, the session log
+needed `zone: root` (it crossed both zones) while the decision note written minutes
+later needed `zone: backend` (it was about delivery). Copying the key with its old value
+would have been silently wrong, which is worse than omitting it.
+
+If nothing turns up, the templates below are complete as written.
+
 ## Step 1: Create session log
 
 File: `$VAULT/$PROJECT/sessions/[YYYY-MM-DD_HHMM]_session.md`
 (Timestamp in filename prevents collision if multiple sessions per day.)
+
+**This frontmatter is a minimum, not the full list.** Add whatever Step 0c turned up for
+this project. The reason this is spelled out: the rule requiring `zone:` was loaded in
+context the whole session — it sits in `goprofi-voronka/CLAUDE.md`, read at every session
+start — and the field was still missed, because at the moment of writing a fenced block
+with three keys reads as exhaustive. An explicit template at hand beats a rule read two
+hundred messages ago, so the template has to say out loud that it is incomplete.
 
 ```markdown
 ---
 tags: [session]
 date: [TODAY]
 project: $PROJECT
+# + any project-specific keys found in Step 0c (e.g. zone:)
 ---
 
 # Session [YYYY-MM-DD_HHMM]
@@ -206,11 +235,19 @@ Trigger: a decision with rationale was made in this session.
 
 File: `$VAULT/$PROJECT/wiki/decision-<slug>-because-<reason>.md`
 
+**Minimum frontmatter, same as Step 1** — add this project's local keys from Step 0c,
+and derive each value *for this note*, not for the session. These are two separate
+judgements made minutes apart: the same session produced a log tagged `zone: root`
+(it crossed both zones) and a decision note tagged `zone: backend` (it was about
+delivery). Re-deciding per entry is the whole point; carrying the value over from the
+log defeats it silently.
+
 ```markdown
 ---
 status: accepted
 date: [TODAY]
 supersedes:
+# + any project-specific keys found in Step 0c (e.g. zone:), value derived for THIS note
 ---
 
 In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.

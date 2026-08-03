@@ -250,6 +250,47 @@ Check:
   a superseded note is already retired wholesale, the finer-grained marker adds
   nothing and suggests one of the two fields was set by mistake
 
+## Step 10b: Frontmatter key consistency within a project
+
+A project may require keys this package knows nothing about — `goprofi-voronka` puts
+`zone:` on session logs and decision notes because that repo is split into zones. Nothing
+enforces such a local convention, so it erodes silently: the `/brain-save` template shows
+its own keys and reads as exhaustive at the moment of writing.
+
+The set of frontmatter keys must be uniform inside a project. A key carried by most
+earlier entries but absent from a newer one is a finding:
+
+```bash
+cd "$VAULT/$PROJECT/sessions" 2>/dev/null || exit 0
+keys() { awk '/^---$/ {c++; next} c==1 && /^[A-Za-z_-]+:/ {sub(/:.*/,""); print}' "$1" | sort -u; }
+n=$(ls -1 *.md 2>/dev/null | wc -l)
+[ "$n" -lt 3 ] && exit 0          # too few entries to call anything a convention
+conv=$(mktemp)                    # not $TMPDIR — unset on most Linux setups
+for f in *.md; do keys "$f"; done | sort | uniq -c |
+  awk -v n="$n" '$1 > n * 0.6 {print $2}' > "$conv"
+for f in *.md; do
+  have=$(keys "$f")
+  while read -r k; do
+    printf '%s\n' "$have" | grep -qxF "$k" || echo "$f: missing '$k'"
+  done < "$conv"
+done
+rm -f "$conv"
+```
+
+Run the same over `wiki/decision-*.md`, which carry their own convention separately.
+
+Report; do not auto-fill. The **key** is mechanical, the **value** is a judgement that
+has to be made per entry — the session that surfaced this wrote a log tagged
+`zone: root` (it crossed both zones) and, minutes later, a decision note tagged
+`zone: backend` (it was about delivery). Copying a value from the previous entry would
+be silently wrong, which is worse than the missing field.
+
+The 60% threshold treats a key as a convention only when most entries carry it, so a
+one-off experimental key never becomes a rule. Measured 2026-08-03: `goprofi-voronka`
+had 4 logs of 55 and 2 decision notes of 100 missing `zone:`, the most recent two on
+2026-08-01 — the same day, twice. Every other project came back uniform on
+`date/project/tags`.
+
 ## Step 11: Architecture map freshness (code / mixed projects only)
 
 If `architecture-map.md` exists in the project root:

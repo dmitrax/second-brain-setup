@@ -119,6 +119,22 @@ Public repo: github.com/dmitrax/second-brain-setup
   created before the rule) and the `CLAUDE.md` template in `/brain-init` (guarantees
   execution in new ones). Checked by preflight 12b.
   [[decision-vault-syncs-before-write-because-shared-registries-conflict-at-push]]
+- A frontmatter template in any command is a **minimum, and must say so in the template
+  itself**, with a step that looks up the project's local keys placed *before* the first
+  write. A project may require keys this package cannot know — `goprofi-voronka` puts
+  `zone:` on session logs and decision notes because that repo is split into zones. The
+  defect this encodes is not "the template forgot a field": the rule requiring `zone:`
+  sits in that project's `CLAUDE.md` and is loaded at every session start, and the field
+  was still missed, repeatedly (measured 2026-08-03: 4 session logs of 55 and 2 decision
+  notes of 100, the last two on 08-01, twice in one day). **An explicit template at hand
+  beats a rule read two hundred messages ago** — so the fix lives in the template, at the
+  point of writing, not in more prose elsewhere. Split the work by what is mechanical:
+  the **key** carries over and is checkable (`/brain-lint` Step 10b flags a key most
+  earlier entries carry and a new one lacks), the **value** is a judgement to be made per
+  entry and must never be copied — the same session wrote a log tagged `zone: root` (it
+  crossed both zones) and a decision note tagged `zone: backend` (it was about delivery).
+  A copied value is silently wrong, which is worse than an absent field. Checked by
+  preflight 16.
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
