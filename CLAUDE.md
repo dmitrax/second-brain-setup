@@ -7,6 +7,10 @@
 ~/Workspace/second-brain-vault/second-brain-setup/
 
 ## Session start
+0. Sync the vault BEFORE reading anything below — it is shared across machines,
+   and a stale checkout reads as current (files are there and look fresh):
+   `bash "$HOME/.claude/skills/second-brain/lib/brain.sh" vault-sync "$HOME/Workspace/second-brain-vault"`
+   Exit 0 → proceed. 2 → say so in one line and proceed. 3 → conflict, stop and report.
 1. Read `~/Workspace/second-brain-vault/00-shared/CRITICAL_FACTS.md` — user profile
 2. Read `~/Workspace/second-brain-vault/second-brain-setup/_PROJECT.md` — project overview
 3. Read `~/Workspace/second-brain-vault/second-brain-setup/taskboard.md` — current tasks
