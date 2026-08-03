@@ -68,7 +68,11 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     chmod +x "$SKILL_DIR/lib/brain.sh"
     # Версия пишется рядом со скриптом: иначе установленная система не знает своей
     # версии и не может сказать, что отстала от того, что уже лежит в vault.
-    INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always 2>/dev/null || echo "v1.0-dev")
+    # --dirty: обычный порядок работы — правка → update.sh (обкатать) → коммит, так что
+    # без него VERSION фиксирует describe ДО коммита и молча отстаёт от установленного
+    # кода. Замерено 2026-08-03: _PROJECT.md получил -10-g34f5287 при фактических
+    # -12-g9a657fe. Суффикс -dirty делает отставание видимым в самом штампе.
+    INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
     printf '%s\n' "$INSTALLED_VERSION" > "$SKILL_DIR/lib/VERSION"
     echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($INSTALLED_VERSION) → $SKILL_DIR/lib/"
 else

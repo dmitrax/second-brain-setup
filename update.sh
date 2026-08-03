@@ -7,7 +7,10 @@ set -e
 SKILL_DIR="$HOME/.claude/skills/second-brain"
 COMMANDS_DIR="$HOME/.claude/commands"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always 2>/dev/null || echo "v1.0-dev")
+# --dirty: правка → update.sh → коммит — обычный порядок, и без суффикса штамп
+# фиксирует describe ДО коммита, отставая от кода, который на самом деле установлен
+# (замерено 2026-08-03: -10-g34f5287 против фактических -12-g9a657fe).
+VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

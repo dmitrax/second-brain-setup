@@ -158,6 +158,19 @@ Public repo: github.com/dmitrax/second-brain-setup
   processed as a single string). Checked by preflight 18 for five classes: `\<`/`\>` in
   `[ ]`, unquoted word-splitting, `${var:N:M}`, arrays (0-indexed in bash, 1-indexed in
   zsh), and bash-only builtins.
+- The sibling class, and the one a shebang does **not** fix: a command name does not
+  guarantee the tool. Measured 2026-08-03 on the working Mac — `date` and `xargs`
+  resolve to GNU builds from Homebrew's `gnubin`, while `ls` and `grep` are shell
+  functions injected by the harness; one name, three sources, none of them knowable
+  from inside a prompt. `#!/bin/bash` fixes the *shell*, not `PATH`, so `lib/brain.sh`
+  receives exactly the same binaries — which is why the boundary drawn for the zsh
+  class above does not help here. Use flags that mean the same thing in GNU and BSD,
+  or write both forms with a `||` fallback (`date -d "$1" +%s 2>/dev/null || date -j
+  -f %Y-%m-%d "$1" +%s`). The failure is silent and always the same shape: the command
+  runs, the output is empty, the check goes green — `date -j` does not exist on that
+  machine at all, and two `/brain-lint` steps reported zero findings instead of an
+  error, caught only by diffing against a baseline that still carried them. Checked by
+  preflight 20 for `date`, `stat`, `sed -i`, `readlink -f`, `grep -P`.
 - The installed system must be able to state its own version: `install.sh`/`update.sh`
   write `lib/VERSION`, `brain.sh version` reads it, `/brain-init` stamps the real value
   instead of a literal, and `/brain-save` re-stamps `brain-version:` on every save. A
