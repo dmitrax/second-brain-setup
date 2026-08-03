@@ -13,6 +13,23 @@ description: >
 Path: ~/Workspace/second-brain-vault/
 Always load at session start: 00-shared/CRITICAL_FACTS.md
 
+**Sync the vault before reading it — first action of the session, before opening
+`_PROJECT.md` or `taskboard.md`:**
+
+```bash
+bash "$HOME/.claude/skills/second-brain/lib/brain.sh" vault-sync "$HOME/Workspace/second-brain-vault"
+```
+
+Same outcome rules as everywhere: exit 0 proceed, 2 warn in one line and proceed, 3 stop.
+
+Writing was covered first (every `/brain-*` command syncs before its first write), but
+reading is where a stale vault does the real damage, and it is completely silent about
+it. The files are present, they open, they look current — the session simply starts from
+"as of my last visit *to this machine*" and never finds out. That is the failure the
+whole system exists to prevent: it will confidently report that a task is open when it
+was closed yesterday elsewhere, or miss a decision it should be following. A push
+conflict is loud and recoverable; a stale read is neither.
+
 ## Structure
 ```
 vault/

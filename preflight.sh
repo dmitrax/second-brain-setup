@@ -414,19 +414,68 @@ if [ -f "$LIBSH" ]; then
 else
     missing+="lib/brain.sh отсутствует — синхронизировать нечем"$'\n'
 fi
-grep -q 'vault-sync' "$BS" || missing+="brain-save.md: не вызывает vault-sync"$'\n'
-# Шаг синхронизации должен предшествовать первой записи в vault (Step 0b правит frontmatter)
-sync_ln=$(grep -n 'vault-sync' "$BS" | head -1 | cut -d: -f1)
-write_ln=$(grep -n '^## Step 0b' "$BS" | head -1 | cut -d: -f1)
-if [ -z "$sync_ln" ] || [ -z "$write_ln" ]; then
-    missing+="brain-save.md: не найден шаг синхронизации или Step 0b — проверка порядка не сработала"$'\n'
-elif [ "$sync_ln" -ge "$write_ln" ]; then
-    missing+="brain-save.md: sync стоит после первой записи в vault (строка $sync_ln против Step 0b на $write_ln)"$'\n'
-fi
+# Все четыре команды трогают vault, значит все четыре синхронизируют его. До v1.7.0
+# проверка смотрела только brain-save, поэтому разрыв между правилом Block 2 («команда,
+# которая пишет в vault») и реализацией (одна команда из четырёх) был машинно невидим —
+# правило существовало, а три команды его не исполняли, и ничто этого не показывало.
+# Пара «команда → её первая запись»: sync обязан стоять строго выше. Шаг после первой
+# записи не слабее, он инертен.
+for pair in \
+    "brain-save.md:^## Step 0b" \
+    "brain-init.md:^## Step 2" \
+    "brain-ingest.md:^## Step 3" \
+    "brain-lint.md:^## Step 5"; do
+    cmd_name="${pair%%:*}"
+    write_marker="${pair#*:}"
+    cf="$SCRIPT_DIR/commands/$cmd_name"
+    if [ ! -f "$cf" ]; then
+        missing+="$cmd_name отсутствует — проверка синхронизации не отработала"$'\n'
+        continue
+    fi
+    sync_ln=$(grep -n 'vault-sync' "$cf" | head -1 | cut -d: -f1)
+    write_ln=$(grep -n "$write_marker" "$cf" | head -1 | cut -d: -f1)
+    if [ -z "$sync_ln" ]; then
+        missing+="$cmd_name: не вызывает vault-sync"$'\n'
+    elif [ -z "$write_ln" ]; then
+        missing+="$cmd_name: не найден маркер первой записи ($write_marker) — проверка порядка не сработала"$'\n'
+    elif [ "$sync_ln" -ge "$write_ln" ]; then
+        missing+="$cmd_name: sync стоит после первой записи (строка $sync_ln против $write_ln)"$'\n'
+    fi
+done
 if [ -n "$missing" ]; then
     fail "потерян шаг синхронизации vault перед записью" "$missing"
 else
-    pass "vault синхронизируется до первой записи, pull под timeout"
+    pass "все 4 команды синхронизируют vault до первой записи, pull под timeout"
+fi
+
+# ─── 12b. Синхронизация перед ЧТЕНИЕМ (протокол старта сессии) ───────────────
+# Симметрична 12 и заведена по той же причине с обратным знаком: запись закрыли
+# первой, потому что конфликт на push громкий, а чтение молчит. Сессия штатно
+# открывает _PROJECT.md и taskboard.md в состоянии «на момент прошлого визита на эту
+# машину», ничем себя не выдавая — файлы на месте и выглядят актуальными. Отсюда
+# ложные выводы о том, что задача открыта, хотя вчера её закрыли на другой машине.
+# Два места, оба обязательны: SKILL.md действует во всех проектах (включая 9 уже
+# созданных, до которых шаблон не доедет), шаблон в brain-init гарантирует исполнение
+# в новых.
+missing=""
+sk="$SCRIPT_DIR/SKILL.md"
+sync_ln=$(grep -n 'vault-sync' "$sk" | head -1 | cut -d: -f1)
+read_ln=$(grep -n 'Always load at session start' "$sk" | head -1 | cut -d: -f1)
+if [ -z "$sync_ln" ]; then
+    missing+="SKILL.md: протокол старта не синхронизирует vault перед чтением"$'\n'
+elif [ -z "$read_ln" ]; then
+    missing+="SKILL.md: не найден маркер загрузки на старте — проверка не сработала"$'\n'
+fi
+grep -q 'vault-sync' "$SCRIPT_DIR/commands/brain-init.md" ||
+    missing+="brain-init.md: шаблон CLAUDE.md не несёт шага синхронизации на старте"$'\n'
+# В шаблоне шаг обязан стоять выше строки, которая велит читать _PROJECT.md.
+tpl_sync=$(grep -n 'At session start' -A6 "$SCRIPT_DIR/commands/brain-init.md" | grep 'vault-sync' | head -1 | cut -d: -f1)
+[ -n "$tpl_sync" ] ||
+    missing+="brain-init.md: vault-sync есть, но не внутри блока «At session start»"$'\n'
+if [ -n "$missing" ]; then
+    fail "чтение vault не синхронизировано — стухший checkout читается как актуальный" "$missing"
+else
+    pass "старт сессии синхронизирует vault до чтения (SKILL.md + шаблон brain-init)"
 fi
 
 # ─── 13. Поиск по vault всегда с -F или -E ───────────────────────────────────

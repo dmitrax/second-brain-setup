@@ -7,6 +7,25 @@ Create a new project in the Second Brain system.
 
 If no name provided — ask for it as the first question.
 
+## Step 0: Sync the vault before writing anything
+
+```bash
+VAULT="$HOME/Workspace/second-brain-vault"
+BRAIN="$HOME/.claude/skills/second-brain/lib/brain.sh"
+bash "$BRAIN" vault-sync "$VAULT"; rc=$?
+```
+
+- **0** → synced, or skipped on purpose (local-only vault is supported). Proceed.
+- **2** → remote unreachable. Say so in one line and proceed; never let it block the work.
+- **3** → rebase conflict, vault is mid-rebase. **Stop, create nothing**, hand the listed
+  files to the user.
+
+This runs *before* the questions, not just before the writes. `/brain-init` appends to
+`00-system/index.md` — one of the registries every machine edits — so a stale checkout
+conflicts at push by construction. And asking the user seven questions only to fail on
+the first write afterwards is the worse order: find out the vault is unusable while it
+still costs nothing.
+
 ## Step 1: Ask 6 questions one by one
 
 Ask questions sequentially, wait for each answer before proceeding:
@@ -152,6 +171,10 @@ CLAUDE.md contains TWO blocks: vault bridge + project rules.
 Project: [PROJECT]
 
 ### At session start
+0. Sync the vault BEFORE reading anything from it — the vault is shared across machines,
+   and a stale checkout reads as current:
+   `bash "$HOME/.claude/skills/second-brain/lib/brain.sh" vault-sync "$HOME/Workspace/second-brain-vault"`
+   Exit 0 → proceed. 2 → say so in one line and proceed. 3 → conflict, stop and report.
 1. Read: 00-shared/CRITICAL_FACTS.md
 2. Read: [PROJECT]/_PROJECT.md
 3. Read: [PROJECT]/taskboard.md

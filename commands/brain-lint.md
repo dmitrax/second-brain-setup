@@ -8,12 +8,31 @@ With argument `--all`: entire vault.
 
 Vault: `~/Workspace/second-brain-vault/`
 
-## Guard
+## Step 0: Sync the vault before auditing it
 
 ```bash
 VAULT="$HOME/Workspace/second-brain-vault"
 BRAIN="$HOME/.claude/skills/second-brain/lib/brain.sh"
+bash "$BRAIN" vault-sync "$VAULT"; rc=$?
+```
 
+- **0** → synced, or skipped on purpose (local-only vault is supported). Proceed.
+- **2** → remote unreachable. Say so in one line, and label the report as covering a
+  possibly stale checkout — the findings are still worth having, the claim of
+  completeness is not.
+- **3** → rebase conflict, vault is mid-rebase. **Stop.** Fix nothing: this command
+  edits what it finds, and edits on top of a half-finished rebase are unreviewable.
+
+Unlike the other commands, `/brain-lint` needs this for **reading**, not only for its
+own writes. It reports what the vault does *not* contain — orphans, unresolved links,
+stale projects — and every one of those verdicts is a claim about the whole vault. Run
+on a checkout that is a week behind, it reports a clean bill of health for a state that
+no longer exists, and does it silently: the files are all there, they read fine, nothing
+looks wrong. A false green here is worse than a missed finding, because it is trusted.
+
+## Guard
+
+```bash
 bash "$BRAIN" obsidian-available "$VAULT"   # exit 0 = GUI up AND this vault active
 ```
 

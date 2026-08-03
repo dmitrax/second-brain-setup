@@ -102,7 +102,18 @@ Public repo: github.com/dmitrax/second-brain-setup
   (warn in one line and proceed — an unsaved session is a worse loss than a deferred sync),
   and a conflict mid-rebase must stop the write entirely, or the markers land inside the
   notes themselves. A sync step placed after the first write is not a weaker version of
-  this rule, it is inert — preflight 12 checks presence, `timeout`, and that ordering.
+  this rule, it is inert — preflight 12 checks presence, `timeout`, and that ordering
+  for **all four** commands (until v1.7.0 it checked only `/brain-save`, so the gap
+  between the rule and its one implementation was machine-invisible).
+  **Reading needs the same sync, and needs it more.** The session-start protocol opens
+  `_PROJECT.md` and `taskboard.md`; on a stale checkout they are present, readable and
+  look current, so the session silently works from "as of my last visit *to this
+  machine*" — and reports a task as open when another machine closed it yesterday. The
+  push conflict this rule originally fixed is loud and recoverable; a stale read is
+  neither, and it defeats the one thing the system exists for. It lives in two places
+  because neither alone suffices: `SKILL.md` (reaches every project, including those
+  created before the rule) and the `CLAUDE.md` template in `/brain-init` (guarantees
+  execution in new ones). Checked by preflight 12b.
   [[decision-vault-syncs-before-write-because-shared-registries-conflict-at-push]]
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
