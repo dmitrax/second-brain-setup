@@ -121,50 +121,125 @@ else
     pass "pgrep -f не используется"
 fi
 
-# ─── 4. Целостность guard'а ──────────────────────────────────────────────────
-# Каждое требование — отдельный инцидент: cold-start GUI (timeout), самоматч (SingletonLock),
-# -e вместо -L (target симлинка намеренно не существует), запись в чужой vault (сверка имени).
+# ─── 4. Guard вызывается из lib/, а не переписывается инлайн ─────────────────
+# До v1.7.0 guard существовал как fenced-блок в brain-lint.md, а SKILL.md и brain-init.md
+# ссылались на него как на библиотечную функцию, которой в их контексте нет — то есть
+# /brain-init предписывал мутирующий `obsidian move` под защитой, которой у него не было.
+# Теперь это одна копия кода. Инлайн-определение снова разойдётся с оригиналом, поэтому
+# запрещено; форма guard'а здесь больше не грепается — она проверяется ЗАПУСКОМ ниже.
 for f in "${TARGETS[@]}"; do
     name=$(basename "$f")
-    # Два независимых условия. Отличить прозаическое ПРЕДПИСАНИЕ вызова от прозаического
-    # ЗАПРЕТА ("Do not use obsidian property:set") грепом нельзя, поэтому:
-    #   а) реальные вызовы считаем только в code-блоках;
-    #   б) любое упоминание guard'а обязывает файл его определить или явно сослаться
-    #      на источник — это и ловит brain-init.md, который требует `obsidian move`
-    #      под guard'ом словами, не давая самого guard'а.
+    if grep -qE "_obsidian_available\(\)[[:space:]]*\{" "$f"; then
+        fail "$name: определяет _obsidian_available() инлайн" \
+             "с v1.7.0 guard живёт в lib/brain.sh; инлайн-копия разойдётся с оригиналом"
+        continue
+    fi
+    # Реальные вызовы считаем только в code-блоках: отличить прозаическое ПРЕДПИСАНИЕ
+    # вызова от прозаического ЗАПРЕТА ("Do not use obsidian property:set") грепом нельзя.
     calls=$(code_blocks "$f" | grep -cE "^[[:space:]]*(if |\[|.*\$\()?[[:space:]]*obsidian " || true)
-    mentions_guard=$(grep -c "_obsidian_available()" "$f" || true)
-    [ "$calls" -eq 0 ] && [ "$mentions_guard" -eq 0 ] && continue
+    mentions=$(grep -c "obsidian-available" "$f" || true)
+    [ "$calls" -eq 0 ] && [ "$mentions" -eq 0 ] && continue
 
-    if [ "$mentions_guard" -eq 0 ]; then
-        fail "$name вызывает obsidian в code-блоке, но не упоминает _obsidian_available()"
-        continue
-    fi
-    # Определение (а не только упоминание) — иначе guard существует лишь как отсылка
-    # к функции, которой в этом контексте нет.
-    if ! grep -qE "_obsidian_available\(\)[[:space:]]*\{" "$f"; then
-        # Отсылкой считаем упоминание /brain-lint в пределах двух строк от имени guard'а —
-        # формулировки в тексте меняются, а адрес источника обязан быть рядом.
-        if grep -A2 "_obsidian_available()" "$f" | grep -q "/brain-lint"; then
-            pass "$name: guard не определён, но есть явная отсылка к источнику"
-        else
-            fail "$name: ссылается на _obsidian_available() без определения и без отсылки" \
-                 "guard существует как код только в brain-lint.md; здесь он лишь назван"
-        fi
-        continue
-    fi
-    guard=$(sed -n '/_obsidian_available()/,/^}/p' "$f")
-    problems=""
-    echo "$guard" | grep -q "timeout" || problems+="нет timeout — может подвесить сессию"$'\n'
-    echo "$guard" | grep -q "vault info=name" || problems+="не сверяет имя активного vault"$'\n'
-    echo "$guard" | grep -q 'basename "\$VAULT"' || problems+="имя vault не выводится из \$VAULT"$'\n'
-    echo "$guard" | grep -q '\-L ' || problems+="SingletonLock проверяется не через -L"$'\n'
-    if [ -n "$problems" ]; then
-        fail "$name: guard неполон" "$problems"
+    if [ "$mentions" -eq 0 ]; then
+        fail "$name вызывает obsidian в code-блоке, не вызвав guard из lib/brain.sh"
     else
-        pass "$name: guard полон (timeout + сверка имени vault + -L)"
+        pass "$name: guard вызывается из lib/brain.sh"
     fi
 done
+
+# ─── 4b. Guard РАБОТАЕТ — проверка запуском, а не грепом ─────────────────────
+# Ради этого guard и выносился в код: раньше проверить можно было только форму текста.
+# Три состояния, все обязаны отработать без запуска GUI и без зависания.
+LIBSH="$SCRIPT_DIR/lib/brain.sh"
+if [ ! -f "$LIBSH" ]; then
+    fail "lib/brain.sh отсутствует — промпты ссылаются на несуществующий файл"
+else
+    problems=""
+    bash -n "$LIBSH" 2>/dev/null || problems+="синтаксическая ошибка в lib/brain.sh"$'\n'
+    # Любой вызов CLI обязан быть под timeout: запуском это не поймать (стенд отвечает
+    # мгновенно), а зависший `obsidian` вешает сессию целиком — та же причина, по
+    # которой guard вообще существует.
+    # Считаем только настоящие вызовы бинаря, не слово «obsidian» в тексте: строки с
+    # `obsidian vault …` вне комментария обязаны нести timeout. Первая редакция этой
+    # проверки грепала любое вхождение слова и краснела на собственном usage-тексте.
+    if grep -nE '(^|[^-a-z])obsidian +vault' "$LIBSH" |
+       grep -v '^[0-9]*:[[:space:]]*#' | grep -qv 'timeout [0-9]'; then
+        problems+="вызов obsidian без timeout в lib/brain.sh"$'\n'
+    fi
+    # (1) Пустой аргумент — обязан отказать, а не сравнивать пустое с пустым.
+    bash "$LIBSH" obsidian-available "" >/dev/null 2>&1 &&
+        problems+="guard принял пустой vault"$'\n'
+    # (2) Заведомо чужой vault: даже с открытым GUI имя не совпадёт. Именно этот случай
+    #     v1.5.0 и добавлял — exit code подтверждает лишь «открыт какой-то vault».
+    bash "$LIBSH" obsidian-available "/nonexistent/other-vault" >/dev/null 2>&1 &&
+        problems+="guard подтвердил чужой vault"$'\n'
+    # (3) HOME без SingletonLock — GUI считается закрытым, CLI трогать нельзя.
+    FAKEHOME=$(mktemp -d)
+    HOME="$FAKEHOME" bash "$LIBSH" obsidian-available "$HOME/Workspace/second-brain-vault" \
+        >/dev/null 2>&1 && problems+="guard сработал без SingletonLock"$'\n'
+    rm -rf "$FAKEHOME"
+    # (4) Неизвестная подкоманда обязана падать, а не молча ничего не делать.
+    bash "$LIBSH" definitely-not-a-command >/dev/null 2>&1 &&
+        problems+="lib/brain.sh принял неизвестную подкоманду"$'\n'
+    # (5) ПОЗИТИВНЫЙ случай, полностью герметичный: поддельный HOME с SingletonLock,
+    #     указывающим на НЕсуществующий target (именно так и делает Electron), плюс
+    #     поддельный `obsidian` в PATH. Guard обязан сказать «доступен».
+    #     Без этого случая проверка состоит из одних отказов и не отличит рабочий guard
+    #     от сломанного в другую сторону — подмена `-L` на `-e` прошла бы незамеченной,
+    #     хотя `-e` резолвит target и потому всегда ложен. Проверено негативным тестом.
+    POSHOME=$(mktemp -d)
+    mkdir -p "$POSHOME/.config/obsidian" "$POSHOME/bin" "$POSHOME/vaultdir/my-vault"
+    ln -s "definitely-missing-$$" "$POSHOME/.config/obsidian/SingletonLock"
+    printf '#!/bin/sh\necho my-vault\n' > "$POSHOME/bin/obsidian"
+    chmod +x "$POSHOME/bin/obsidian"
+    if ! HOME="$POSHOME" PATH="$POSHOME/bin:$PATH" \
+         bash "$LIBSH" obsidian-available "$POSHOME/vaultdir/my-vault" >/dev/null 2>&1; then
+        problems+="guard не подтвердил доступность в заведомо рабочем состоянии (проверь -L против -e)"$'\n'
+    fi
+    rm -rf "$POSHOME"
+    if [ -n "$problems" ]; then
+        fail "lib/brain.sh: guard ведёт себя неверно (проверено запуском)" "$problems"
+    else
+        pass "lib/brain.sh: guard запущен — 3 отказа + рабочее состояние + timeout"
+    fi
+fi
+
+# ─── 4c. vault-sync и stamp-updated отрабатывают на настоящих файлах ─────────
+if [ -f "$LIBSH" ]; then
+    problems=""
+    TMPLIB=$(mktemp -d)
+    # stamp-updated обязан тронуть одну строку и не переформатировать соседние —
+    # ровно то, чем property:set портил данные (кавычки, инлайн-списки, 007 -> 7).
+    printf -- '---\ntags: [session, x]\nversion: "1.4.3"\nupdated: 2026-01-01\ncount: 007\n---\n\nbody\n' \
+        > "$TMPLIB/a.md"
+    bash "$LIBSH" stamp-updated "$TMPLIB/a.md" 2026-08-03 >/dev/null 2>&1 ||
+        problems+="stamp-updated упал на нормальном файле"$'\n'
+    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-updated не проставил дату"$'\n'
+    grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-updated развернул инлайн-список"$'\n'
+    grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-updated снял кавычки"$'\n'
+    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-updated переписал 007"$'\n'
+    # Файла без frontmatter трогать нельзя.
+    printf -- '# no frontmatter\n' > "$TMPLIB/b.md"
+    bash "$LIBSH" stamp-updated "$TMPLIB/b.md" 2026-08-03 >/dev/null 2>&1 &&
+        problems+="stamp-updated принял файл без frontmatter"$'\n'
+    # vault-sync: локальный vault без remote — штатный сетап, обязан пропустить с 0.
+    mkdir -p "$TMPLIB/v" && git -C "$TMPLIB/v" init -q 2>/dev/null
+    bash "$LIBSH" vault-sync "$TMPLIB/v" >/dev/null 2>&1 ||
+        problems+="vault-sync не пропустил vault без remote"$'\n'
+    # Не-репозиторий — тоже пропуск, а не отказ.
+    mkdir -p "$TMPLIB/plain"
+    bash "$LIBSH" vault-sync "$TMPLIB/plain" >/dev/null 2>&1 ||
+        problems+="vault-sync не пропустил не-git vault"$'\n'
+    # Несуществующий путь — отказ, иначе «синхронизировано» означало бы «ничего не делал».
+    bash "$LIBSH" vault-sync "$TMPLIB/nope" >/dev/null 2>&1 &&
+        problems+="vault-sync принял несуществующий путь"$'\n'
+    rm -rf "$TMPLIB"
+    if [ -n "$problems" ]; then
+        fail "lib/brain.sh: vault-sync/stamp-updated ведут себя неверно" "$problems"
+    else
+        pass "lib/brain.sh: stamp-updated щадит соседние поля, vault-sync различает исходы"
+    fi
+fi
 
 # ─── 5. Legacy-форма supersession ────────────────────────────────────────────
 # `status: superseded-by: x` — двойное двоеточие, невалидный YAML: Obsidian не читает
@@ -326,12 +401,22 @@ fi
 # запись поверх устаревшего checkout гарантирует конфликт на push. Шаг обязан
 # стоять ДО первой записи (иначе он бесполезен) и не имеет права блокировать
 # сохранение при недоступной сети — несохранённая сессия дороже отложенного sync.
+# С v1.7.0 сам pull живёт в lib/brain.sh, поэтому требование проверяется по месту:
+# механика — в библиотеке, порядок вызова — в промпте. Ослаблением это не является,
+# обе половины обязательны, отсутствие любой роняет проверку.
 BS="$SCRIPT_DIR/commands/brain-save.md"
 missing=""
-grep -q 'pull --rebase' "$BS" || missing+="brain-save.md: нет шага с git pull --rebase"$'\n'
-grep -q 'timeout .*git .*pull' "$BS" || missing+="brain-save.md: pull не обёрнут в timeout — недоступный remote повесит сессию"$'\n'
+if [ -f "$LIBSH" ]; then
+    grep -q 'pull --rebase --autostash' "$LIBSH" || missing+="lib/brain.sh: нет pull --rebase --autostash"$'\n'
+    grep -qE 'timeout [0-9]+ git .*pull' "$LIBSH" || missing+="lib/brain.sh: pull не обёрнут в timeout — недоступный remote повесит сессию"$'\n'
+    grep -q 'return 3' "$LIBSH" || missing+="lib/brain.sh: конфликт не отличён от прочих отказов (нет кода 3)"$'\n'
+    grep -q 'return 2' "$LIBSH" || missing+="lib/brain.sh: недоступный remote не отличён от успеха (нет кода 2)"$'\n'
+else
+    missing+="lib/brain.sh отсутствует — синхронизировать нечем"$'\n'
+fi
+grep -q 'vault-sync' "$BS" || missing+="brain-save.md: не вызывает vault-sync"$'\n'
 # Шаг синхронизации должен предшествовать первой записи в vault (Step 0b правит frontmatter)
-sync_ln=$(grep -n 'pull --rebase --autostash' "$BS" | head -1 | cut -d: -f1)
+sync_ln=$(grep -n 'vault-sync' "$BS" | head -1 | cut -d: -f1)
 write_ln=$(grep -n '^## Step 0b' "$BS" | head -1 | cut -d: -f1)
 if [ -z "$sync_ln" ] || [ -z "$write_ln" ]; then
     missing+="brain-save.md: не найден шаг синхронизации или Step 0b — проверка порядка не сработала"$'\n'
@@ -444,6 +529,7 @@ else
     missing=""
     for expected in \
         ".claude/skills/second-brain/SKILL.md" \
+        ".claude/skills/second-brain/lib/brain.sh" \
         ".claude/commands/brain-setup.md" \
         ".claude/commands/brain-init.md" \
         ".claude/commands/brain-save.md" \
@@ -459,7 +545,7 @@ else
     if [ -n "$missing" ]; then
         fail "install.sh не создал ожидаемые файлы" "$missing"
     else
-        pass "все 11 ожидаемых файлов на месте"
+        pass "все 12 ожидаемых файлов на месте"
     fi
 
     # update.sh поверх установки, дважды — должен быть идемпотентен
@@ -478,6 +564,10 @@ else
     done
     cmp -s "$SCRIPT_DIR/SKILL.md" "$TMPHOME/.claude/skills/second-brain/SKILL.md" ||
         drift+="SKILL.md расходится с репозиторием"$'\n'
+    cmp -s "$SCRIPT_DIR/lib/brain.sh" "$TMPHOME/.claude/skills/second-brain/lib/brain.sh" ||
+        drift+="lib/brain.sh расходится с репозиторием"$'\n'
+    [ -x "$TMPHOME/.claude/skills/second-brain/lib/brain.sh" ] ||
+        drift+="lib/brain.sh установлен без флага +x"$'\n'
     if [ -n "$drift" ]; then
         fail "установленные файлы не совпадают с исходниками" "$drift"
     else

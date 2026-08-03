@@ -27,6 +27,18 @@ else
     echo -e "  ${YELLOW}!${NC} SKILL.md not found — skipping"
 fi
 
+# lib/ — the deterministic helpers the prompts call. Must land before the commands
+# that reference it: a command file pointing at a missing brain.sh is worse than an
+# un-updated one, because its guard silently degrades to "CLI unavailable".
+if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
+    mkdir -p "$SKILL_DIR/lib"
+    cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
+    chmod +x "$SKILL_DIR/lib/brain.sh"
+    echo -e "  ${GREEN}✓${NC} lib/brain.sh → $SKILL_DIR/lib/"
+else
+    echo -e "  ${YELLOW}!${NC} lib/brain.sh not found — commands will fall back to no-CLI"
+fi
+
 # Commands
 UPDATED=0
 for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do

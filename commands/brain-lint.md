@@ -8,43 +8,36 @@ With argument `--all`: entire vault.
 
 Vault: `~/Workspace/second-brain-vault/`
 
-## Guard function
+## Guard
 
 ```bash
 VAULT="$HOME/Workspace/second-brain-vault"
+BRAIN="$HOME/.claude/skills/second-brain/lib/brain.sh"
 
-_obsidian_available() {
-  command -v obsidian >/dev/null 2>&1 && \
-  { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] || \
-    [ -L "$HOME/.config/obsidian/SingletonLock" ]; } && \
-  [ "$(timeout 2 obsidian vault info=name 2>/dev/null)" = "$(basename "$VAULT")" ]
-}
+bash "$BRAIN" obsidian-available "$VAULT"   # exit 0 = GUI up AND this vault active
 ```
 
-Electron writes a `SingletonLock` symlink into its userData dir for as long as the app is
-running (same mechanism on every OS) — checking it tells us the GUI is actually up before
-touching the `obsidian` binary. This must be a symlink test (`-L`), not `-e`: the link
-deliberately points at a target that doesn't exist as a real file, so `-e` always reads
-false even while Obsidian is running. Do not switch this to `pgrep -f "obsidian"` — that
-matches on the full command line of every process, including the very shell process
-running this guard (its own invocation text contains the word "obsidian"), which is a
-guaranteed false positive that then cold-starts the GUI via the call below. `timeout` is
-a second safety net in case the socket call itself stalls. If either check fails, fall
-back to filesystem logic — do not retry, do not wait longer.
+Use it as the condition of every CLI branch below: `if bash "$BRAIN" obsidian-available
+"$VAULT"; then … else <filesystem fallback> fi`. If it exits non-zero, fall back — do not
+retry, do not wait longer, and never call `obsidian` outside the branch.
 
-The guard compares `vault info=name` against the vault we actually mean, instead of
-just checking its exit code. Exit code alone confirms only that *some* vault is open.
-Every CLI path is relative to the **active** vault, so `path=` does not protect against
-this: with another vault switched on in the GUI, a write lands there — silently, exit 0,
-the same failure class as the `file=`/`path=` bug one level up. The expected name is
-derived from `$VAULT` via `basename`, never hardcoded — the path is already known to
-every command, and a hardcoded name would break for anyone whose vault directory is
-named differently.
+The guard is **code in `lib/brain.sh`**, not a snippet to re-enact here. It lived as a
+fenced block in this file for four versions, while `SKILL.md` and `/brain-init` referred
+to it as if it were a library function they had — so `/brain-init` prescribed a mutating
+`obsidian move` under a guard that did not exist in its context. One copy, called by
+everyone, is the fix; `preflight` runs it in both states rather than grepping for its
+shape.
+
+Never diagnose this guard by splitting its conditions into separate commands: they are
+chained on `&&` precisely so the CLI is never touched until the cheap checks pass. Run
+apart, the third condition executes unconditionally and cold-starts the GUI — that
+happened on 2026-07-22 while debugging by hand. The logic was innocent; the diagnosis
+was not.
 
 ## Step 1: Orphan notes
 
 ```bash
-if _obsidian_available; then
+if bash "$BRAIN" obsidian-available "$VAULT"; then
   obsidian orphans  # returns notes with no incoming [[wikilinks]]
 else
   # filesystem fallback, per note: grep -rlF "[[<basename>]]" "$VAULT" — no hits = orphan.
@@ -60,7 +53,7 @@ For each orphan note:
 ## Step 1b: Broken links (CLI only)
 
 ```bash
-if _obsidian_available; then
+if bash "$BRAIN" obsidian-available "$VAULT"; then
   obsidian unresolved  # [[wikilinks]] pointing to non-existent files
   obsidian deadends    # notes with no outgoing links at all
 fi
@@ -248,7 +241,7 @@ If `architecture-map.md` exists in the project root:
   flag: "architecture-map.md may be stale — last session was [date], map was updated [date]"
 
 ```bash
-if _obsidian_available; then
+if bash "$BRAIN" obsidian-available "$VAULT"; then
   # path= (exact), not file= — file= resolves by name like a wikilink and would
   # hit the first architecture-map.md in the vault, i.e. another project's
   obsidian links path=$PROJECT/architecture-map.md   # list all [[wikilinks]] in the map

@@ -60,6 +60,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cp "$SCRIPT_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
 
+# lib/ — детерминированные помощники, которые вызывают промпты. Ставится до команд:
+# команда, ссылающаяся на отсутствующий brain.sh, тихо деградирует в «CLI недоступен».
+if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
+    mkdir -p "$SKILL_DIR/lib"
+    cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
+    chmod +x "$SKILL_DIR/lib/brain.sh"
+    echo -e "  ${GREEN}✓${NC} lib/brain.sh → $SKILL_DIR/lib/"
+else
+    echo -e "  ${YELLOW}!${NC} lib/brain.sh не найден — команды будут работать без CLI"
+fi
+
 for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do
     if [ -f "$SCRIPT_DIR/commands/$cmd.md" ]; then
         cp "$SCRIPT_DIR/commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"

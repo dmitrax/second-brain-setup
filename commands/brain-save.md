@@ -18,25 +18,26 @@ every time. Pull first and the same write is a fast-forward.
 Run before any vault write:
 
 ```bash
-git -C "$VAULT" rev-parse --git-dir >/dev/null 2>&1   # not a git repo -> skip this step
-git -C "$VAULT" remote | grep -q .                    # no remote      -> skip this step
-timeout 30 git -C "$VAULT" pull --rebase --autostash
+BRAIN="$HOME/.claude/skills/second-brain/lib/brain.sh"
+bash "$BRAIN" vault-sync "$VAULT"; rc=$?
 ```
 
-Outcome rules:
-- **Not a git repo, or no remote** → skip silently. A local-only vault is a supported
-  setup; never run `git init` or add a remote on the user's behalf.
-- **Pull succeeds** → proceed to Step 0a.
-- **Network unreachable, or `timeout` fires** → warn in one line and proceed anyway.
-  An unsaved session is a worse loss than a deferred sync, and the push at the end
-  surfaces the divergence. Never let an unreachable remote block the save.
-- **Rebase stops on a conflict** → stop, write nothing, report which files conflict
-  and hand it to the user. Writing this session into a tree that is mid-rebase mixes
-  two sessions' edits into one unreviewable diff, and the conflict markers land inside
-  the notes themselves.
+Act on the exit code — the outcome rules are the code's, not yours to re-derive:
+- **0** → synced, or skipped on purpose (not a git repo / no remote). A local-only vault
+  is a supported setup; never run `git init` or add a remote on the user's behalf.
+  Proceed to Step 0a.
+- **2** → remote unreachable or `timeout` fired. The reason is printed on stderr; repeat
+  it to the user in **one** line and proceed with the save anyway. An unsaved session is
+  a worse loss than a deferred sync, and the push at the end surfaces the divergence.
+  Never let an unreachable remote block the save.
+- **3** → the rebase stopped on a conflict and the vault is mid-rebase. **Stop. Write
+  nothing.** The conflicting files are listed on stderr — hand them to the user. Writing
+  into a tree that is mid-rebase mixes two sessions' edits into one unreviewable diff,
+  and the conflict markers land inside the notes themselves.
 
-`--autostash` covers the common case of a previous session that edited the vault but
-never committed: that work is set aside, the rebase runs, and it is restored on top.
+`--autostash` (inside the helper) covers the common case of a previous session that
+edited the vault but never committed: that work is set aside, the rebase runs, and it is
+restored on top.
 
 ## Step 0a: Check if CLAUDE.md needs updating
 
@@ -63,8 +64,13 @@ paragraph — this file is read in full every session, before the topic is known
 
 ## Step 0b: Bump updated date
 
-Edit `$VAULT/$PROJECT/_PROJECT.md` frontmatter directly — set `updated:` to today.
-If the field does not exist, add it.
+```bash
+bash "$BRAIN" stamp-updated "$VAULT/$PROJECT/_PROJECT.md" "$(date +%F)"
+```
+
+Sets `updated:` to today, adding the field if it is absent. It rewrites that one line and
+refuses a file with no frontmatter, so it cannot reformat anything else. Verify afterwards
+that the file it printed is the one you meant.
 
 **Do not use `obsidian property:set` here.** It does not edit the one field it is
 given: it parses the whole frontmatter and re-serializes it, rewriting every other
