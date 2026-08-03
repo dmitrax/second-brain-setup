@@ -94,6 +94,19 @@ Public repo: github.com/dmitrax/second-brain-setup
   script renamed two weeks earlier, a finished task listed as unwritten, a repo count
   off by one. Checked by preflight 10-11.
   [[decision-claude-md-holds-invariants-vault-holds-state-because-copies-drift-silently]]
+- A command that reports a diagnosis must verify the diagnosis's premise, in the same
+  step that reports it. The action can be correct and the sentence attached to it false;
+  nothing downstream catches that, because a session states it in prose and the next
+  session reads it as a finding. Two instances, both in `/brain-save`, both found
+  2026-08-03 on the first save under v1.7.0 code: the version warning called five
+  projects "running an un-updated copy" when their `1.3` was the old `/brain-init`
+  literal — evidence about no machine at all, and not even comparable to a
+  `v1.6.0-10-g34f5287` stamp, the two formats being unordered against each other; and
+  "delete older entries, they remain in `sessions/*.md`" was invoked on an entry that
+  had no session log and never did (the same case was caught by hand 2026-07-26 in
+  `goprofi-voronka` and never reached the rule's text). So a comparison states which
+  values it will compare and skips the rest, and a deletion whose safety rests on a
+  copy elsewhere opens that copy first. Checked by preflight 19.
 - A command that writes to the vault syncs it *before its first write* — `timeout N git -C
   "$VAULT" pull --rebase --autostash`, skipped silently when the vault is not a git repo or
   has no remote (a local-only vault is a supported setup). The vault is shared across

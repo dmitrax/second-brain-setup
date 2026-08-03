@@ -80,8 +80,19 @@ a project was *created* under, drifting silently from the version actually in us
 (measured 2026-08-03: 8 projects on `1.3`, two on `1.5.0`, none on 1.6.0). Stamping the
 real installed version on every save turns it into a fact: if a machine has been running
 an un-updated copy, the vault now shows it, with dates, instead of everyone assuming the
-fleet is in sync. If the value it prints is lower than what other projects in the vault
-carry, say so in one line — that machine skipped `update.sh`.
+fleet is in sync.
+
+**Compare only real stamps.** A value is a stamp if it is in the format
+`brain.sh version` prints — `v<MAJOR>.<MINOR>.<PATCH>`, optionally followed by
+`-<N>-g<sha>`. Anything else (`1.3`, `1.5.0`) is the old `/brain-init` literal: written
+once at project creation, never touched again, and evidence about no machine at all.
+The two formats are not ordered against each other, so "lower" is undefined between
+them. So: if this project's value is below another project's *stamp*, say in one line
+that this machine skipped `update.sh`. If the other values are legacy literals, say
+only that those projects have not been saved since stamping began — never that they
+sit on an un-updated copy. Measured 2026-08-03, on the first save under this code:
+it reported five projects as running an old install; all five had simply not been
+saved yet, and their `1.3` was the literal this very paragraph describes.
 
 **Do not use `obsidian property:set` here.** It does not edit the one field it is
 given: it parses the whole frontmatter and re-serializes it, rewriting every other
@@ -302,8 +313,20 @@ Append one line, newest first:
 ```
 Never expand an entry into a paragraph — the full account is already in the
 session log (Step 1) and, for anything durable, in a wiki note (Step 2). Keep
-only the last ~5 entries; older ones are not lost (they remain in
-`sessions/*.md`) — delete them from this list, don't archive them elsewhere.
+only the last ~5 entries — delete the older ones from this list, don't archive
+them elsewhere.
+
+**Before deleting an entry, check that what makes deletion safe is actually there.**
+Deleting is safe because the account survives in `sessions/*.md` — that is a claim
+about the individual entry, not a property of the section, and it is false for every
+entry written before the session-log link became routine. Open each entry you are
+about to drop: it must carry a `[[sessions/...|session log]]` link *and* that file
+must exist. If it does not, the entry is the only record there is — carry its durable
+facts into `Current state` or `architecture-map.md` first, then delete. Measured
+twice: 2026-07-26 in `goprofi-voronka`, where two of four entries had no log and the
+links were written before compressing, and 2026-08-03 in `_mac/mac-setup`, where the
+dropped 2026-07-15 entry had no log and none existed — its facts happened to survive
+in `architecture-map.md`, which was luck, not a check.
 
 ### For future Claude (in _PROJECT.md itself)
 A bounded, curated quick-reference of hard constraints and currently-relevant
