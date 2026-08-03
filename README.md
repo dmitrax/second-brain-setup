@@ -160,16 +160,58 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.5.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.6.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.5.0.md](ВТОРОЙ_МОЗГ_v1.5.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.6.0.md](ВТОРОЙ_МОЗГ_v1.6.0.md) — full architecture
 
 
 ## Changelog
+
+### v1.6.0 — 2026-08-03
+
+- **`/brain-save` syncs the vault before its first write** — `git pull --rebase
+  --autostash` under `timeout`, skipped silently when the vault has no remote. Several
+  vault files are append-only registries that every session on every machine edits, so
+  writing on top of a stale checkout conflicted at push time by construction. An
+  unreachable remote warns and proceeds; a conflict mid-rebase stops the write entirely,
+  so markers can never land inside notes.
+- **Vault searches must declare literal or pattern** — `grep -F` for note names and
+  `[[wikilinks]]`, `grep -E` for alternation. A bare `grep -r` treats the pattern as a
+  *basic* regex, which is wrong in both directions and silent in both: on a live vault,
+  literal `[[architecture-map]]` matched 304 files without `-F` against 17 with it, and
+  `docker|colima` matched 1 file without `-E` against 37 with it. The near-empty result
+  is the expensive one — it reads as "the vault knows nothing about this".
+- **`corrected-by:` marks a partially stale decision note** — when the decision still
+  holds but a supporting fact in its body has been disproved. `status` and body stay
+  untouched; `superseded` would falsely retire a rule still in force. The marker lives
+  in the note being corrected, not only as a backlink from the new one.
+- **`status:` on a decision note is binary** — exactly `accepted` / `superseded` /
+  `deprecated`, never a hedge like `partially-superseded-by`. Degree of change belongs
+  in the new note's body, which must restate the parts of the old scope that still hold.
+  Off-schema values are invisible to every property query; `/brain-lint` flags them.
+- **`/brain-lint`'s `_PROJECT.md` size check counts prose only** (~60 lines across
+  `Current state`, `Последняя сессия`, `For future Claude`), not total file length.
+  Link-list sections grow legitimately with a project's decision count, and folding
+  them into a total made a well-kept large project look like the worse violator.
+- **`preflight.sh` — an executable release gate**, 23 checks over the repo's own rules
+  plus an install into a clean `$HOME`. Every check encodes a past incident; three of
+  the four bugs in v1.4.3/v1.5.0 were catchable by a one-line grep that did not exist.
+  Needs a Python with PyYAML (`python3 -m venv .venv && .venv/bin/pip install pyyaml`);
+  `install.sh` never ships it, so the package keeps its no-dependencies promise.
+- **Repo scripts hold a bash 3.2 floor** — macOS ships it as `/bin/bash`. No `mapfile`,
+  `declare -A`, or `${var^^}`. This is not style: `preflight.sh` used `mapfile`, so two
+  checks received empty input and **printed a pass without ever running** for ten days.
+  Hence the general rule now enforced across the gate — a check must fail hard when its
+  input is empty, or when the tool it needs is absent. Green means "ran and found
+  nothing", never "did not run".
+
+**Upgrading from v1.5.0 → v1.6.0:** run `update.sh`. Nothing breaks — the new rules add
+checks and steps, no existing note format changes. If your vault has no git remote, the
+new sync step skips itself silently.
 
 ### v1.5.0 — 2026-07-22
 
