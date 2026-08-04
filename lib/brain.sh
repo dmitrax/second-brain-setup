@@ -38,6 +38,11 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  prose-budget <_PROJECT.md> [taskboard.md]
+                               measure what /brain-lint measures, at the moment of
+                               writing instead of a day later: the three prose sections
+                               of _PROJECT.md and the three taskboard metrics.
+                               exit 0 within budget · 2 over · 1 could not measure.
   local-conventions <vault> <project> [claude-md]
                                print the frontmatter KEYS this project uses beyond
                                the template (from its latest session log and decision
@@ -352,6 +357,87 @@ stamp_field() {
     grep -m1 "^$key:" "$file"
 }
 
+# ── budgets ──────────────────────────────────────────────────────────────────
+# One implementation, two callers. /brain-lint measures these a day later; /brain-save
+# measures them at the moment of writing. A second implementation is exactly how a
+# finding becomes something only one of the two can see — the defect this package has
+# now met in four separate checks. So the thresholds and the counters live here once,
+# and both callers read the same numbers.
+#
+# Why /brain-save needs them at all: the lint reports an overrun to whoever runs the
+# lint, which is a maintenance session, hours or days after the write that caused it.
+# Measured 2026-08-03: `_mac/mac-setup` went 51→62 and 28→35 in a save at 22:03 and
+# surfaced an hour later on another machine; and in one session this project's own
+# `_PROJECT.md` crossed its budget four times through ordinary status edits, each time
+# announced only by a lint run by hand. A session cannot be relied on to run that lint,
+# so the measurement belongs at the write.
+BUDGET_PROSE=60
+BUDGET_FFC=20
+BUDGET_DONE=20
+BUDGET_PROG=300
+BUDGET_SIZE=600
+
+# non-blank lines of one '## ' section, heading excluded. Top-level, not nested in
+# lint_collect: prose-budget needs the same counter, and a copy would be a second
+# implementation of a threshold that must read identically from both callers.
+_lc_section() {
+    awk -v pat="$2" '/^## /{ p = ($0 ~ pat); next } p && NF' "$1" | grep -c .
+}
+
+_budget_prose() { _lc_section "$1" '^## (Current state|Статус|Последняя сессия|For future Claude)'; }
+_budget_ffc()   { _lc_section "$1" '^## For future Claude'; }
+_budget_size()  { grep -c . "$1"; }
+# Both markers, always: projects write closed items as `- [x]` and as `- ✅`, and a
+# counter that knows one reports zero for a project using the other. Count inside Done
+# only — a closed sub-item under an open task is not an archivable entry.
+_budget_done() {
+    awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+         d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+         END { print n + 0 }' "$1"
+}
+_budget_prog() { awk '/^## /{ p = ($0 ~ /In progress|В работе/) } p' "$1" | grep -c .; }
+
+# prose-budget <_PROJECT.md> [taskboard.md]
+#   exit 0 within budget · 2 over budget · 1 could not measure
+prose_budget() {
+    pm="${1:-}"; tb="${2:-}"
+    [ -n "$pm" ] || { echo "prose-budget: need <_PROJECT.md> [taskboard.md]" >&2; return 1; }
+    [ -f "$pm" ] || { echo "prose-budget: no such file: $pm" >&2; return 1; }
+    over=0
+    report() {  # <label> <value> <budget>
+        # A non-numeric value means the counter did not run. Without this, `[ "" -gt 60 ]`
+        # errors on stderr and falls to the else branch, printing "ok" for a measurement
+        # that never happened — the exact false green this command exists to prevent.
+        # Hit live while writing it: _lc_section was nested inside lint_collect and
+        # unreachable from here, and the first output said ok for both prose sections.
+        case "$2" in
+            ''|*[!0-9]*) echo "prose-budget: счётчик «$1» не дал числа ('$2') — измерения не было" >&2
+                         over=2; return 1 ;;
+        esac
+        if [ "$2" -gt "$3" ]; then
+            printf 'ПЕРЕРАСХОД +%s  %s: %s/%s\n' "$(( $2 - $3 ))" "$1" "$2" "$3"
+            over=1
+        else
+            printf 'ok              %s: %s/%s\n' "$1" "$2" "$3"
+        fi
+    }
+    report "_PROJECT.md проза" "$(_budget_prose "$pm")" "$BUDGET_PROSE"
+    report "_PROJECT.md For future Claude" "$(_budget_ffc "$pm")" "$BUDGET_FFC"
+    if [ -z "$tb" ]; then
+        echo "taskboard.md                       не передан — измерены только секции _PROJECT.md"
+    elif [ ! -f "$tb" ]; then
+        # NOT READ, never silence: "no taskboard" and "no overrun" are different facts.
+        echo "taskboard.md                       NOT READ — нет файла $tb"
+    else
+        report "taskboard Done (записей)" "$(_budget_done "$tb")" "$BUDGET_DONE"
+        report "taskboard In progress (строк)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
+        report "taskboard всего (строк)" "$(_budget_size "$tb")" "$BUDGET_SIZE"
+    fi
+    [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
+    [ "$over" -eq 1 ] && return 2
+    return 0
+}
+
 # ── local-conventions ────────────────────────────────────────────────────────
 # Which frontmatter keys THIS project requires beyond the package's template.
 #
@@ -545,10 +631,6 @@ lint_collect() {
         [ -f "$c" ] || _lc_strip "$1" > "$c"
         printf '%s\n' "$c"
     }
-    _lc_section() { # non-blank lines of one '## ' section, heading excluded
-        awk -v pat="$2" '/^## /{ p = ($0 ~ pat); next } p && NF' "$1" | grep -c .
-    }
-
     TODAY=$(date +%s)
 
     # ── inventory ────────────────────────────────────────────────────────────
@@ -585,10 +667,10 @@ lint_collect() {
         f="$P/_PROJECT.md"
         [ -f "$f" ] || { printf 'project-missing:%s\t_PROJECT.md отсутствует\n' "$P"; continue; }
 
-        prose=$(_lc_section "$f" '^## (Current state|Статус|Последняя сессия|For future Claude)')
-        ffc=$(_lc_section "$f" '^## For future Claude')
-        [ "$prose" -gt 60 ] && printf 'prose-budget:%s\t%s строк при бюджете ~60\n' "$P" "$prose"
-        [ "$ffc" -gt 20 ] && printf 'ffc-budget:%s\tFor future Claude %s строк\n' "$P" "$ffc"
+        prose=$(_budget_prose "$f")
+        ffc=$(_budget_ffc "$f")
+        [ "$prose" -gt "$BUDGET_PROSE" ] && printf 'prose-budget:%s\t%s строк при бюджете ~%s\n' "$P" "$prose" "$BUDGET_PROSE"
+        [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s строк\n' "$P" "$ffc"
 
         upd=$(_lc_fm "$f" updated)
         if [ -z "$upd" ]; then
@@ -609,14 +691,12 @@ lint_collect() {
             # and a counter that knows one reports zero for a project using the other.
             # Count inside Done only — a closed sub-item under an open task is not
             # an archivable entry (65 file-wide against 5 in Done, measured).
-            dn=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
-                      d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
-                      END { print n + 0 }' "$tb")
-            tot=$(grep -c . "$tb")
-            prog=$(awk '/^## /{ p = ($0 ~ /In progress|В работе/) } p' "$tb" | grep -c .)
-            [ "$dn" -gt 20 ] && printf 'taskboard-done:%s\t%s закрытых записей в Done\n' "$P" "$dn"
-            [ "$prog" -gt 300 ] && printf 'taskboard-inprogress:%s\t%s строк\n' "$P" "$prog"
-            [ "$tot" -gt 600 ] && printf 'taskboard-size:%s\t%s строк, In progress %s\n' "$P" "$tot" "$prog"
+            dn=$(_budget_done "$tb")
+            tot=$(_budget_size "$tb")
+            prog=$(_budget_prog "$tb")
+            [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s закрытых записей в Done\n' "$P" "$dn"
+            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s строк\n' "$P" "$prog"
+            [ "$tot" -gt "$BUDGET_SIZE" ] && printf 'taskboard-size:%s\t%s строк, In progress %s\n' "$P" "$tot" "$prog"
         fi
 
         am="$P/architecture-map.md"
@@ -781,6 +861,7 @@ case "${1:-}" in
     version)            brain_version ;;
     lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
+    prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""

@@ -396,6 +396,35 @@ File: `$VAULT/$PROJECT/taskboard.md`
 - New tasks → add to backlog or in-progress
 - Stalled tasks — do NOT delete, only add date and reason
 
+## Step 4b: Measure what you just wrote
+
+```bash
+bash "$BRAIN" prose-budget "$VAULT/$PROJECT/_PROJECT.md" "$VAULT/$PROJECT/taskboard.md"
+```
+
+Exit **0** within budget · **2** over · **1** a counter did not run (that is an error,
+not a pass — say so and do not claim the sizes are fine).
+
+On **2**, name the overrun in the result block and act on it now, in this session:
+
+- `_PROJECT.md` prose → the paragraph to collapse is almost always one restating a wiki
+  note written this same session. Replace it with one line plus the `[[wikilink]]`.
+- `For future Claude` → drop what has aged into a fact no longer surprising; it stays
+  findable by grep in `wiki/`.
+- taskboard Done → `brain.sh archive`, never retype entries by hand.
+- taskboard `In progress` / total → these two are the ones `archive` cannot fix, because
+  the weight is in open work and in `Backlog`. Say so plainly and leave it as a task
+  rather than trimming live content.
+
+**Never finish the save silently on exit 2.** The budgets used to be measured only by
+`/brain-lint`, hours or days later, by whoever happened to run it — so an overrun was
+attributed to no session in particular and fixed by nobody. Measured 2026-08-03:
+`_mac/mac-setup` grew 51→62 and 28→35 in a save at 22:03 and surfaced an hour later on
+another machine; and in one session this project's own `_PROJECT.md` crossed its budget
+four times through ordinary status edits, each time announced only by a hand-run lint.
+The numbers are the same numbers `/brain-lint` prints — one implementation, in
+`lib/brain.sh`, so the two can never disagree.
+
 ## Step 5: Update architecture map (code / mixed projects only)
 
 If this is a code or mixed project AND the codebase structure changed in this session

@@ -224,6 +224,34 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   property they asserted, never weaken them to match. One such redirect in this session
   passed on a first attempt that only grepped for the section pattern's *presence* in the
   counter body; the negative test caught that the pattern can sit there unused.
+- **A threshold is measured at the moment of writing, and by one implementation.** A
+  budget only `/brain-lint` measures is measured hours or days later by whoever happens
+  to run the lint — so the session that caused the overrun never learns of it, and it is
+  attributable to nobody. Measured 2026-08-03: `_mac/mac-setup` went 51→62 and 28→35 in a
+  save at 22:03 and surfaced an hour later on another machine; in a single session this
+  project's own `_PROJECT.md` crossed its budget four times through ordinary status edits,
+  each time announced only by a hand-run lint. `/brain-save` Step 4b now calls
+  `brain.sh prose-budget` after the writes it measures (before them it would measure the
+  previous state), and the thresholds live in `BUDGET_*` variables read by both callers —
+  two copies of a threshold drift, and then a finding becomes something only one of the
+  two can see. Exit codes carry the outcome: 0 within, 2 over, **1 a counter did not run**,
+  which is an error and not a pass — hit live while writing it, when a counter nested out
+  of scope returned empty and the first output said `ok` for both prose sections. Checked
+  by preflight 25, by running it on a fixture for all three outcomes.
+- The installed system must be able to state its own version: `install.sh`/`update.sh`
+  write `lib/VERSION`, `brain.sh version` reads it, `/brain-init` stamps the real value
+  instead of a literal, and `/brain-save` re-stamps `brain-version:` on every save. A
+  version that is written once at project creation and then read by nobody is not a
+  record, it is decoration — measured 2026-08-03: 8 projects claimed `1.3`, two `1.5.0`,
+  none the released 1.6.0, and the literal in the template had to be hand-edited at every
+  release, which of course did not happen. Checked by preflight 4d.
+- A count over vault files states which markers it counts, and counts all of them.
+  Projects write closed tasks as both `- [x]` and `- ✅`; a counter that knows one reports
+  zero for a project using the other — `cadrika` had 16 closed items invisible to the
+  threshold, which would not have fired at 100. And a threshold must measure the part that
+  hurts: counting only Done passed `goprofi-voronka` as healthy at 2131 lines with 1091 in
+  `## In progress`. Same distortion already fixed once for `_PROJECT.md`, where total size
+  was replaced by a prose budget. Checked by preflight 17.
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version

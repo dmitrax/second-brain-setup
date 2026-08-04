@@ -983,10 +983,25 @@ grep -qE '^[[:space:]]*prog=\$\(' "$BL" ||
 # Счётчик Done обязан считать ВНУТРИ секции Done. Замерено 2026-08-03: по всему файлу
 # goprofi-voronka давал 83 против 19, dimarch 31 против 8, собственный таскборд 65
 # против 5 — закрытые подпункты открытых задач считались архивируемыми записями.
-grep -qE 'dn=\$\(awk' "$BL" ||
-    missing+="lib: счётчик Done считает по всему файлу, не по секции Done"$'\n'
-grep -qE 'prog.*(-gt|exceeds).*[0-9]{2,}' "$BL" ||
-    missing+="lib: у секции In progress нет порога"$'\n'
+# Счётчики уехали в _budget_* (одна реализация на линт и на запись, проверка 25),
+# поэтому смотрим их тела, а не строку вызова. Требуемое свойство то же и не ослаблено:
+# внутри счётчика Done обязан стоять фильтр по секции.
+done_body=$(awk '/^_budget_done\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "$BL")
+if [ -z "$done_body" ]; then
+    missing+="lib: функции _budget_done нет — счётчик Done негде проверить"$'\n'
+else
+    printf '%s\n' "$done_body" | grep -qF '## (Done|Завершено)' ||
+        missing+="lib: счётчик Done не знает, где секция Done"$'\n'
+    # Наличия шаблона секции мало: он может лежать в теле и не участвовать в счёте.
+    # Требуем, чтобы строка счёта была ЗАКРЫТА этим флагом. Поймано негативным тестом
+    # 2026-08-04: снятие флага с условия оставляло проверку зелёной.
+    printf '%s\n' "$done_body" | grep -qE '^[[:space:]]*d &&' ||
+        missing+="lib: счётчик Done считает по всему файлу, не по секции Done"$'\n'
+fi
+grep -qE '^BUDGET_PROG=[0-9]{2,}' "$BL" ||
+    missing+="lib: у секции In progress нет порога (BUDGET_PROG)"$'\n'
+grep -qF '"$prog" -gt "$BUDGET_PROG"' "$BL" ||
+    missing+="lib: размер In progress не сравнивается со своим порогом"$'\n'
 grep -qF 'taskboard-inprogress:' "$BL" ||
     missing+="lib: потеряна метрика In progress — снова мерится только Done"$'\n'
 if [ -n "$missing" ]; then
@@ -1214,6 +1229,66 @@ fi
 
 # ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
 echo ""
+# ─── 25. Бюджет меряется в момент записи, и одним кодом с линтом ────────────
+# Порог, который меряет только /brain-lint, меряется через сутки и кем придётся: тот,
+# кто перерасход СОЗДАЛ, о нём не узнаёт, и приписать его конкретной сессии некому.
+# Замерено 2026-08-03: `_mac/mac-setup` вырос 51→62 и 28→35 сохранением в 22:03 и
+# всплыл через час на другой машине; за одну сессию 2240 собственный `_PROJECT.md`
+# этого проекта переходил бюджет ЧЕТЫРЕ раза обычными правками статуса, и каждый раз
+# об этом сообщал линт, запущенный руками.
+# Вторая половина проверки — про то, что реализация одна. Две копии порога расходятся,
+# и тогда «находка» становится тем, что видит только один из двух вызывающих; этот
+# проект встретил ровно эту форму уже в четырёх проверках.
+bs="$SCRIPT_DIR/commands/brain-save.md"
+lb="$SCRIPT_DIR/lib/brain.sh"
+missing=""
+if [ ! -f "$bs" ] || [ ! -f "$lb" ]; then
+    fail "проверка 25: нет brain-save.md или lib/brain.sh — вход пуст, а не чист"
+else
+    grep -qF 'prose-budget' "$bs" || missing+="brain-save не вызывает prose-budget"$'\n'
+    # Порядок: мерить таскборд до того, как Step 4 его правит, — мерить не то.
+    n_tb=$(grep -n '^## Step 4:' "$bs" | head -1 | cut -d: -f1)
+    n_pb=$(grep -n 'brain-budget\|prose-budget' "$bs" | head -1 | cut -d: -f1)
+    if [ -n "$n_tb" ] && [ -n "$n_pb" ]; then
+        [ "$n_pb" -gt "$n_tb" ] || missing+="вызов prose-budget стоит ВЫШЕ правки таскборда — мерит предыдущее состояние"$'\n'
+    else
+        missing+="не найден Step 4 или вызов prose-budget, чтобы сверить порядок"$'\n'
+    fi
+    grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
+        missing+="перерасход разрешено завершить молча"$'\n'
+    # Одна реализация: пороги — переменные, и lint_collect читает те же самые.
+    for v in BUDGET_PROSE BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_SIZE; do
+        n=$(grep -c "^$v=" "$lb")
+        [ "$n" -eq 1 ] || missing+="$v определён $n раз(а), должен ровно один"$'\n'
+        grep -qF "\$$v" "$lb" || missing+="$v нигде не используется"$'\n'
+    done
+    # Проверка ЗАПУСКОМ на фикстуре, а не грепом формы: три исхода обязаны различаться.
+    fx=$(mktemp -d)
+    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nодна строка\n' > "$fx/_PROJECT.md"
+    printf -- '# tb\n## In progress\n- [ ] one\n## Done\n- [x] 2026-08-01 done\n' > "$fx/taskboard.md"
+    bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
+    [ $? -eq 0 ] || missing+="в пределах бюджета exit не 0"$'\n'
+    # перерасход: раздуваем For future Claude выше своего порога
+    { printf -- '---\nupdated: 2026-08-04\n---\n## For future Claude\n'
+      i=0; while [ $i -lt 40 ]; do echo "- строка $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
+    bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
+    [ $? -eq 2 ] || missing+="перерасход не даёт exit 2"$'\n'
+    # счётчик не отработал: это ошибка, а не «в пределах бюджета»
+    sed 's|^_budget_ffc()   { _lc_section|_budget_ffc()   { _no_such_counter|' "$lb" > "$fx/broken.sh"
+    if cmp -s "$fx/broken.sh" "$lb" || [ ! -s "$fx/broken.sh" ] || ! bash -n "$fx/broken.sh" 2>/dev/null; then
+        missing+="МЕТА: поломка счётчика не применилась — тест проверял бы свою опечатку"$'\n'
+    else
+        bash "$fx/broken.sh" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
+        [ $? -eq 1 ] || missing+="неотработавший счётчик не даёт exit 1 (зелёное вместо ошибки)"$'\n'
+    fi
+    rm -rf "$fx"
+    if [ -n "$missing" ]; then
+        fail "бюджет не меряется при записи или меряется вторым кодом" "$missing"
+    else
+        pass "prose-budget вызывается после правок, различает три исхода, пороги в одном месте"
+    fi
+fi
+
 # ─── 24. Переменная в блоке промпта обязана быть где-то введена ─────────────
 # Найдено 2026-08-04 свипом по всем промптам: /brain-save Step 0c грепал
 # "$PROJECT_CLAUDE_MD" — имя, которое во всём пакете встречается ровно один раз, в
