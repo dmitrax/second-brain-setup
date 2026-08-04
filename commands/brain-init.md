@@ -225,9 +225,6 @@ resolves by name like a wikilink and silently targets another project's file.
 
 ## Project: [PROJECT]
 
-### Stack and tools
-[ANSWER TO QUESTION 5]
-
 ### Rules
 [ANSWER TO QUESTION 6 — what to always do, conventions, agreements]
 
@@ -238,6 +235,17 @@ resolves by name like a wikilink and silently targets another project's file.
 **Important:** Block "Rules" is filled from answers to questions 5 and 6.
 If the user gave explicit technical rules — copy them here verbatim.
 If no rules were stated — write sensible defaults based on the stack.
+
+**From answer 5, only the constraints reach this file** — "pnpm, never npm", "python via
+pyenv, the system one breaks X", a build command that cannot be guessed. They go into
+`Rules`, not into a section of their own. The inventory — which languages, frameworks and
+services the project uses — is already written by Step 3 into `_PROJECT.md` and by Step 3c
+into `architecture-map.md`, and `/brain-save` keeps both current. A third copy here would
+be the only one no command ever updates, and for a public repo Step 5 also puts this file
+in `.gitignore`, so it is the one copy nobody sees changing. Until v1.7.0 the template did
+carry a `### Stack and tools` section: measured 2026-08-04 in `second-brain-setup`, its
+copy still named three bash scripts six weeks after `lib/brain.sh` became the fourth,
+while the vault copy was right the whole time. Checked by preflight 10b.
 
 **The template has no status section on purpose.** This file loads in full at every
 session start, before the topic is known, so it holds only what cannot expire — rules,

@@ -190,7 +190,20 @@ magnitude mean the flag was wrong, not that the vault is empty.
 connections.md is an index for Claude only. The graph lives in [[links]] inside notes.
 
 **When creating any wiki note:**
-- Minimum 2 [[wikilinks]] to related notes within the project
+- The `[[../_PROJECT|_PROJECT]] backlink is mandatory — it is how a note is reached from
+  above, and it counts toward nothing else
+- **Plus at least one link to a sibling wiki note, whenever a related one exists.** Two or
+  more is the target, not a floor: a note that is genuinely first on its topic has nothing
+  to link to, and the next note on that topic links back to it. Never invent a link to
+  satisfy a count — a fabricated relation is worse than a missing one, because the graph
+  is read as evidence that the relation holds. Measured 2026-08-04: of 383 wiki notes, 12
+  carried fewer than 2 links and every one of them had 3-15 incoming, so none was actually
+  stranded; 6 were decision notes born that way straight from the template, whose `##
+  Links` line offers `_PROJECT` plus an optional `related:` placeholder that a
+  first-of-topic note correctly deletes. A floor the template cannot meet is not a
+  standard, it is a permanent violation — so the requirement is stated as the backlink
+  plus a sibling-when-one-exists, which is both satisfiable and checkable
+  (`/brain-lint` Step 4c)
 - Any link whose target basename is not unique across the whole vault → explicit path,
   never a bare name: [[../_PROJECT|_PROJECT]], [[project/wiki/note|note]]. Obsidian
   resolves a bare [[name]] to the first shortest-path match and silently points at
@@ -211,7 +224,8 @@ connections.md is an index for Claude only. The graph lives in [[links]] inside 
 - Graph grows bidirectionally
 
 **When /brain-ingest:**
-- New note → minimum 2 [[links]] to existing wiki/ notes
+- New note → the `[[../_PROJECT|_PROJECT]]` backlink plus a link to every existing wiki/
+  note it is actually related to; none, if it is first on its topic
 - Existing related notes → add [[link]] to the new note
 
 **When /brain-lint:**

@@ -44,13 +44,27 @@ restored on top.
 Before saving, quickly check — did this session change anything that belongs in CLAUDE.md Block 2?
 
 Triggers (if any apply → update CLAUDE.md Block 2 first):
-- Stack changed: new language, framework, tool added or removed
+- A tool choice became a *constraint*: "pnpm, never npm", "python via pyenv, the system
+  one breaks X". The inventory itself — which languages, frameworks and services the
+  project uses — is **not** a trigger: it lives in `_PROJECT.md` and `architecture-map.md`,
+  which Steps 3 and 5 of this command already keep current. Writing it here as well makes
+  a third copy that nothing updates.
 - New rule established: "we always do X", new convention, new agreement
 - New constraint: "never do Y", something broke and should not repeat
 - Workflow changed: new commands, new build/test/deploy steps
 
 If triggered: open CLAUDE.md in current directory → update Block 2 → then proceed.
 If nothing changed: skip this step.
+
+**Whenever the file is open, check Block 2 does not restate the inventory.** A
+`Stack` / `Стек` section listing languages, frameworks or scripts is the third copy of
+what `_PROJECT.md` and `architecture-map.md` already carry: move any constraint out of it
+into the rules list, then delete the section. Do not "update" it — an unowned copy drifts
+again. Projects created before v1.7.0 almost all have one, because `/brain-init` wrote it
+and the trigger above used to ask this step to keep it current. Measured 2026-08-04 in
+`second-brain-setup`: three bash scripts listed for six weeks after `lib/brain.sh` became
+the fourth, while the vault copy was correct throughout — nothing compares the two, which
+is why the drift is silent and why the fix is deletion rather than a rewrite.
 
 **Write only what cannot expire, and phrase it so it cannot.** Apply the expiry test
 from `SKILL.md` ("What belongs where"): anything that can be false tomorrow — a version,
@@ -289,6 +303,15 @@ In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
 ## Links
 [[../_PROJECT|_PROJECT]] · related: [[wiki/...]]
 ```
+
+The `_PROJECT` backlink is mandatory. `related:` takes every note this decision is
+actually related to — and is **deleted entirely, placeholder and label, when the decision
+is first on its topic**. Do not keep the placeholder and do not link something adjacent to
+avoid an empty line: the graph is read as evidence that a relation holds, so a fabricated
+one costs more than an absent one. Measured 2026-08-04: 6 decision notes across 4 projects
+carried the `_PROJECT` link alone, which was correct authoring against a rule that then
+demanded two — the rule was the defect, not the notes. Their siblings arrive later and
+link back; `/brain-lint` Step 4c reports the state without asking anyone to fake it.
 
 Then add the `[[wikilink]]` to this note from `_PROJECT.md` "Key decisions" section.
 

@@ -30,6 +30,45 @@ on a checkout that is a week behind, it reports a clean bill of health for a sta
 no longer exists, and does it silently: the files are all there, they read fine, nothing
 looks wrong. A false green here is worse than a missed finding, because it is trusted.
 
+## Step 0c: Is this checkout complete?
+
+A sync makes the checkout *current*. It does not make it *whole*: `git sparse-checkout`
+leaves tracked paths out of the working tree entirely, and every check below then measures
+a subset while the report keeps claiming the vault.
+
+```bash
+sparse=$(git -C "$VAULT" config core.sparseCheckout 2>/dev/null)
+hidden=$(git -C "$VAULT" ls-files -v | grep '^S' | sed 's/^S //')
+if [ "$sparse" = "true" ] || [ -n "$hidden" ]; then
+  roots=$(printf '%s\n' "$hidden" | sed 's|/.*||' | sort -u | tr '\n' ' ')
+  echo "PARTIAL: $(printf '%s\n' "$hidden" | grep -c .) tracked files absent, under: $roots"
+fi
+```
+
+If it reports PARTIAL, the run is still worth doing — but every claim of completeness in
+it is false, so say so where it would be read as fact:
+
+- Name the excluded paths in the report header and drop `--all`'s "entire vault" wording
+  for "everything except <paths>".
+- **Step 4b becomes advisory.** Basename uniqueness is a property of the whole vault, so
+  a sweep that cannot see part of it can only ever produce a *lower* bound — a hidden
+  project's `_PROJECT.md` or `architecture-map.md` makes existing links ambiguous with no
+  edit anywhere, which is the entire reason that step exists. Report it as "no duplicates
+  among the visible files", never as "no ambiguous links".
+- **Do not `--seal`.** The baseline lives in the vault and is shared across machines,
+  while what is visible is per-machine: sealing here drops every finding that belongs to
+  a hidden path, so the next run on the machine that *can* see it reports the same
+  findings as NEW, and this run reported them as GONE — twice wrong, in opposite
+  directions, with nobody having fixed anything. Either carry those baseline lines
+  forward verbatim into the findings you seal, or skip `--seal` and say why.
+
+Measured 2026-08-04 on the Mac, whose vault excluded `/_arch` (228 tracked files, ~4% of
+a 37 MB checkout — and no confidentiality either, since the objects sit in `.git` and
+`git cat-file` reads them): `obsidian unresolved` reported 93 broken links, of which 91
+pointed at files that exist and are correct on the other machine. Removing the exclusion
+dropped it to 1. Three baseline findings had also gone GONE without anyone fixing them.
+A check cannot tell "absent" from "not checked out" on its own — only this step can.
+
 ## Guard
 
 ```bash
@@ -138,6 +177,56 @@ False positives are notes that *document* this bug and quote the bare form as an
 inside backticks or a fenced block. Exclude those by filename; never relax the grep to
 skip lines containing a backtick — a real bare link and an unrelated backtick share a line
 often enough (confirmed live in `goprofi-voronka/_PROJECT.md`).
+
+## Step 4c: Wiki notes that lead nowhere
+
+`SKILL.md` requires the `[[../_PROJECT|_PROJECT]]` backlink on every wiki note, plus a
+link to a sibling note whenever a related one exists. This step measures both, over every
+project in scope.
+
+```bash
+cd "$VAULT" || exit 1
+strip_code() { awk '/^[[:space:]]*```/ { f = !f; next } !f' "$1" | sed 's/`[^`]*`//g'; }
+INC=$(mktemp)                      # not $TMPDIR — unset on most Linux setups
+find . -name '*.md' -not -path './.git/*' | while read -r p; do strip_code "$p"; done |
+  grep -oE '\[\[[^]|]+' | sed 's/^\[\[//; s|.*/||' | sort | uniq -c > "$INC"
+find . -path '*/wiki/*.md' -not -path './.git/*' | sort | while read -r p; do
+  base=$(basename "$p" .md)
+  case "$base" in archive-*) continue ;; esac
+  tg=$(strip_code "$p" | grep -oE '\[\[[^]|]+' | sed 's/^\[\[//')
+  sib=$(printf '%s\n' "$tg" | grep -v '_PROJECT$' | grep -c .)
+  proj=$(printf '%s\n' "$tg" | grep -c '_PROJECT$')
+  inc=$(awk -v b="$base" '$2 == b { print $1; exit }' "$INC")
+  [ -n "$inc" ] || inc=0
+  if [ "$sib" -eq 0 ] && [ "$proj" -eq 0 ]; then echo "NO-LINKS	${p#./}	in=$inc"
+  elif [ "$sib" -eq 0 ]; then                    echo "no-sibling	${p#./}	in=$inc"
+  elif [ "$proj" -eq 0 ]; then                   echo "no-backlink	${p#./}	in=$inc"
+  fi
+done
+rm -f "$INC"
+```
+
+Stripping inline code and fenced blocks first is not optional. A raw grep for `[[`
+counts every quoted example as a link, and this vault documents link bugs in prose — the
+first hand count of this check, made without stripping, was wrong in both directions at
+once (it passed notes whose only two "links" were backtick literals, and it ran on a
+partial checkout, so it missed `_arch` entirely: 10 reported against 39 real).
+
+How to read the three classes — measured 2026-08-04 over 383 wiki notes:
+- `NO-LINKS` (3) — a terminal note: reachable, but reading it ends the trail. The finding
+  to act on. Report it with its incoming count.
+- `no-backlink` (29) — links to siblings but not up to `_PROJECT`. A real violation of the
+  rule and one line to fix, but the least urgent of the three: every one of these had 3-26
+  incoming links, so nobody is failing to reach them. Fix on the next edit of the note, or
+  in one deliberate sweep — do not turn a lint run into 29 unrelated vault writes.
+- `no-sibling` (7) — carries only the `_PROJECT` backlink. **Advisory, never a defect on
+  its own**: a note first on its topic has nothing honest to link to. Report the count, do
+  not chase it to zero, and never add a link to clear the line — see `SKILL.md`.
+
+**Incoming links are part of the verdict.** Measured 2026-08-04: all 12 notes below the
+old "minimum 2" floor had 3-15 incoming, i.e. not one was stranded, and the floor was
+flagging notes whose only fault was being early. Report `in=` on every finding so the
+reader can tell an isolated note from a well-linked leaf.
 
 ## Step 5: Cross-project connections (update connections.md)
 
@@ -397,6 +486,7 @@ it directly — it is a plain text file.
 
 ```
 ✓ Lint complete: $PROJECT
+Coverage:              entire vault / everything except [paths] (partial checkout)
 
 NEW since last lint:   [N] ← this session's regression, act on these
 GONE since last lint:  [N] ← fixed; confirm it was deliberate
