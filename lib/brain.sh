@@ -350,7 +350,12 @@ rename_note() {
 
     rn_tmp=$(mktemp -d) || return 1
     touched=0; links=0; quoted=0
-    for f in $(cd "$vault" && find . -name '*.md' -not -path './.git/*' | sed 's|^\./||'); do
+    # Read the list through a redirect, never `for f in $(find …)`: word splitting drops
+    # every name containing a space, and the run still reports success for the files it
+    # did reach. Measured 2026-08-04 on the first fixture that had such a name — the file
+    # kept a link to the old name and the summary said 2 files, exit 0. Process
+    # substitution rather than a pipe, because the counters below must survive the loop.
+    while IFS= read -r f; do
         src="$vault/$f"
         grep -qF "$old_base" "$src" 2>/dev/null || continue
         awk -v OLD="$old_base" -v NEW="$new_base" '
@@ -416,7 +421,7 @@ rename_note() {
         links=$(( links + h )); touched=$(( touched + 1 ))
         printf '  %s (%s link(s))\n' "$f" "$h"
         [ "$apply" = "--apply" ] && cat "$rn_tmp/out" > "$src"
-    done
+    done < <(cd "$vault" && find . -name '*.md' -not -path './.git/*' | sed 's|^\./||')
     rm -rf "$rn_tmp"
 
     if [ "$apply" = "--apply" ]; then

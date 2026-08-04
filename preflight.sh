@@ -2119,6 +2119,12 @@ printf '# note-two\n' > "$rf/proj/wiki/note-two.md"
   printf -- '[[note-two]] [[proj/wiki/note-two|two]]\n'
   printf -- 'inline `[[note]]` and `wiki/note.md`\n'; } > "$rf/proj/_PROJECT.md"
 { printf -- 'pointer [[../wiki/note]]\n\n'; printf -- '```\nquoted [[note]]\n```\n'; } > "$rf/proj/sessions/s.md"
+# A name with a space, and one with shell metacharacters. Vault filenames are input:
+# `for f in $(find …)` splits on the space and drops the file entirely, while the run
+# still reports success for the ones it reached — measured 2026-08-04 on the first
+# fixture that had such a name, and this vault carries two of them.
+printf -- 'spaced [[note]]\n' > "$rf/proj/wiki/a name with spaces.md"
+printf -- 'meta [[note]]\n'   > "$rf/proj/wiki/star*glob;semi.md"
 bash "$LIBSH" rename "$rf" proj/wiki/note.md proj/wiki/renamed.md --apply >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 0 ] || missing+="rename failed on a valid fixture (exit $rc)"$'\n'
@@ -2133,6 +2139,10 @@ printf '%s\n' "$pm" | grep -qF '[[note-two]]'  || missing+="rename damaged the l
 printf '%s\n' "$pm" | grep -qF '`[[note]]`'    || missing+="rename rewrote a quotation in inline code"$'\n'
 grep -qF 'pointer [[../wiki/renamed]]' "$rf/proj/sessions/s.md" || missing+="rename skipped a pointer in sessions/"$'\n'
 grep -qF 'quoted [[note]]' "$rf/proj/sessions/s.md" || missing+="rename rewrote a quotation inside a fenced block"$'\n'
+grep -qF 'spaced [[renamed]]' "$rf/proj/wiki/a name with spaces.md" ||
+    missing+="rename skipped a file whose name contains a space (word splitting), and still reported success"$'\n'
+grep -qF 'meta [[renamed]]' "$rf/proj/wiki/star*glob;semi.md" ||
+    missing+="rename skipped a file whose name carries shell metacharacters"$'\n'
 # Refusals: a taken basename elsewhere in the vault must stop it before anything moves.
 bash "$LIBSH" rename "$rf" proj/wiki/renamed.md proj/sessions/note-two.md --apply >/dev/null 2>&1 &&
     missing+="rename accepted a basename already taken elsewhere in the vault"$'\n'
