@@ -84,9 +84,20 @@ when its input is empty — "found nothing" and "never looked" are different fac
 one deserves a green. If it exits non-zero, report that and stop; do not fall back to
 hand-written greps, which is exactly the habit that produced divergent results.
 
-Some checks are whole-vault by construction and run that way whatever the scope: a bare
-`[[link]]` breaks when *another* project reuses a basename, so a project-scoped run cannot
-see its own breakage.
+`--project P` scopes every check to that project — **except exactly two, both by
+construction**, and they are named here so the exception stays a decision rather than an
+oversight:
+
+- `ambiguous-link` — a bare `[[link]]` breaks when *another* project reuses a basename,
+  so a project-scoped view of it yields only a lower bound;
+- `project-unregistered` / `registry-stale` — a registry-versus-filesystem disagreement
+  is a vault-level fact with no owning project.
+
+Everything else scopes. It did not until 2026-08-04: `--project nf-content` returned 16
+findings of which 12 belonged to seven other projects, because the scope reached the
+per-project loop and not the file sweeps. A report whose header does not match its body
+teaches the reader to skim it. A `--project` matching nothing now fails rather than
+returning quietly — otherwise a typo reads as a clean project.
 
 What the keys mean and what each is worth:
 

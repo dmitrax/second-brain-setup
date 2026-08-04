@@ -698,6 +698,28 @@ lint_collect() {
         return 1
     fi
 
+    # Scope for the file-level sweeps. Until now --project scoped only the per-project
+    # loop, so a project-scoped lint still reported every other project's stale drafts
+    # and missing backlinks — measured 2026-08-04: `--project nf-content` returned 12
+    # findings about seven other projects. That is not a stricter check, it is a report
+    # that does not mean what its header says, and it trains the reader to skim.
+    # The one sweep that stays vault-wide is the ambiguous-link one, and by construction:
+    # a bare link breaks because a name was duplicated ANYWHERE, so a scoped view of it
+    # would produce only a lower bound. That exception is stated where it happens.
+    # A scope matching nothing fails, never returns quiet: a typo'd project name would
+    # otherwise read as a clean project.
+    if [ -n "$only" ]; then
+        SCOPED_MD=$(printf '%s\n' "$ALL_MD" | while read -r p; do
+            [ "${p#./$only/}" != "$p" ] && echo "$p"
+        done)
+        if [ -z "$SCOPED_MD" ]; then
+            echo "lint-collect: --project '$only' matched no markdown under $vault" >&2
+            return 1
+        fi
+    else
+        SCOPED_MD="$ALL_MD"
+    fi
+
     LC_TMP=$(mktemp -d) || return 1
     mkdir -p "$LC_TMP/clean"
     # shellcheck disable=SC2064
@@ -832,7 +854,7 @@ lint_collect() {
     done
 
     # ── stale drafts ─────────────────────────────────────────────────────────
-    printf '%s\n' "$ALL_MD" | grep -v '/raw/' | while read -r p; do
+    printf '%s\n' "$SCOPED_MD" | grep -v '/raw/' | while read -r p; do
         [ "$(_lc_fm "$p" status)" = "draft" ] || continue
         d=$(_lc_fm "$p" date); [ -n "$d" ] || continue
         ds=$(_lc_epoch "$d"); [ -n "$ds" ] || continue
@@ -844,7 +866,7 @@ lint_collect() {
     # `~` is YAML null, not a filename; a value may be a relative path; and the
     # legacy form is quoted inside the note that documents it. All three produced
     # false positives on the 2026-08-04 soak run — the whole reason this is code.
-    find . -path '*/wiki/decision-*.md' -not -path './.git/*' | sort | while read -r p; do
+    printf '%s\n' "$SCOPED_MD" | grep -F '/wiki/decision-' | while read -r p; do
         st=$(_lc_fm "$p" status)
         case "$st" in
             accepted|superseded|deprecated) ;;
@@ -866,7 +888,7 @@ lint_collect() {
     done
 
     # ── frontmatter structure (no parser needed) ─────────────────────────────
-    printf '%s\n' "$ALL_MD" | while read -r p; do
+    printf '%s\n' "$SCOPED_MD" | while read -r p; do
         head -1 "$p" | grep -qx -- '---' || continue
         awk 'NR == 1 { next } /^---$/ { ok = 1; exit } END { exit ok }' "$p" && \
             printf 'frontmatter:%s\tблок не закрыт\n' "${p#./}"
@@ -906,7 +928,7 @@ lint_collect() {
     printf '%s\n' "$ALL_MD" | while read -r p; do cat "$(_lc_clean "$p")"; done |
         grep -oE '\[\[[^]|]+' | sed 's/^\[\[//; s|.*/||' | sort | uniq -c > "$LC_TMP/inc"
     : > "$LC_TMP/links"
-    printf '%s\n' "$ALL_MD" | grep '/wiki/' | while read -r p; do
+    printf '%s\n' "$SCOPED_MD" | grep '/wiki/' | while read -r p; do
         base=$(basename "$p" .md)
         case "$base" in archive-*) continue ;; esac
         proj=$(printf '%s' "${p#./}" | sed 's|/wiki/.*||')

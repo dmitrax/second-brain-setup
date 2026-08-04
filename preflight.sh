@@ -1289,6 +1289,45 @@ else
     fi
 fi
 
+# ─── 28. --project скоупит все проверки, кроме двух заявленных ──────────────
+# Замерено 2026-08-04: `lint-collect --project nf-content` возвращал 16 находок, из
+# которых 12 — про семь ДРУГИХ проектов. Скоуп применялся только к проектному циклу,
+# а файловые свипы шли по всему ваулту. Это не «строже», это отчёт, который не значит
+# того, что написано в его заголовке, и он приучает читателя пролистывать.
+# Ровно два исключения, и оба по устройству, а не по недосмотру:
+#   ambiguous-link — ссылка ломается от появления дубликата ИМЕНИ где угодно, поэтому
+#     скоупленный взгляд на неё даёт лишь нижнюю границу;
+#   project-unregistered / registry-stale — расхождение реестра с ФС есть факт уровня
+#     ваулта, у него нет владельца-проекта.
+# Проверка гоняет lint-collect на фикстуре, а не грепает форму: скоуп — это поведение.
+sc2=$(mktemp -d)
+mkdir -p "$sc2/00-system" "$sc2/a/wiki" "$sc2/b/wiki"
+printf -- '# index\n- [[a/_PROJECT]]\n- [[b/_PROJECT]]\n' > "$sc2/00-system/index.md"
+for pr in a b; do
+    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nок\n' > "$sc2/$pr/_PROJECT.md"
+    printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n# n\n[[../_PROJECT|_PROJECT]]\n' > "$sc2/$pr/wiki/note-$pr.md"
+done
+missing=""
+out=$(bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project a 2>/dev/null)
+if [ -z "$out" ]; then
+    missing+="скоупленный прогон не дал ни одной находки — фикстура или скоуп сломаны"$'\n'
+else
+    printf '%s\n' "$out" | grep -qF 'stale-draft:a/wiki/note-a' ||
+        missing+="находка внутри скоупа потеряна"$'\n'
+    printf '%s\n' "$out" | grep -qE ':b(/|$)' &&
+        missing+="в скоупленный отчёт попали находки чужого проекта: $(printf '%s\n' "$out" | grep -E ':b(/|$)' | tr '\n' ' ')"$'\n'
+fi
+bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project nosuchproj >/dev/null 2>&1 &&
+    missing+="несуществующий --project не уронил проверку (пустой охват читается как чистый проект)"$'\n'
+rm -rf "$sc2"
+grep -qF 'ambiguous-link' "$SCRIPT_DIR/commands/brain-lint.md" ||
+    missing+="brain-lint не называет исключение, которое остаётся vault-wide"$'\n'
+if [ -n "$missing" ]; then
+    fail "--project скоупит не всё или роняет нужное" "$missing"
+else
+    pass "--project скоупит файловые свипы, вайд остаются два заявленных исключения"
+fi
+
 # ─── 27. У decision-заметки две формы, и все её источники об этом знают ─────
 # Замерено 2026-08-04 по ваулту: 286 заметок, медиана 68 строк, НИ ОДНОЙ короче 20 —
 # лёгкой формы не существовало, поэтому решение на одну фразу либо раздувалось до
