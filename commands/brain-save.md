@@ -451,7 +451,14 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   note written this same session. Replace it with one line plus the `[[wikilink]]`.
 - `For future Claude` → drop what has aged into a fact no longer surprising; it stays
   findable by grep in `wiki/`.
-- taskboard Done → `brain.sh archive`, never retype entries by hand. **A top-level task
+- taskboard Done → `brain.sh archive <taskboard> <archive-note> --before <YYYY-MM-DD>
+  --apply`, never retype entries by hand. **Both flags, spelled out, are the call** —
+  `--before` is mandatory and refuses anything that is not a date (so the prompt cannot
+  quietly archive the entries this very session just closed: pass today's date and they
+  stay), and without `--apply` it is a dry run that prints what it *would* move and exits
+  **0**. Reporting "archived" off that exit code moves nothing and looks like success;
+  read the line, not the code. Until 2026-08-04 this step named the bare command, which
+  exits 1 as written. **A top-level task
   gets `YYYY-MM-DD` at the moment you close it** — `- [x] 2026-08-04 …`. `archive` moves
   dated entries and cannot move undated ones, so an entry closed without a date is one no
   tool will ever file, and the Done threshold it then trips is unsatisfiable by any amount
@@ -462,8 +469,8 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   from the only date it ever had. Date the items before sweeping, not after.
 - taskboard `In progress` / total → `brain.sh sweep-closed <taskboard>` (dry-run by
   default) moves closed top-level items with their bodies into Done; a closed *sub-item*
-  stays, because its text explains the open parent above it. Then `archive` what landed
-  in Done. Whatever remains over budget after that is genuinely open work or `Backlog` —
+  stays, because its text explains the open parent above it — add `--apply` to write.
+  Then `archive` what landed in Done, with both flags as above. Whatever remains over budget after that is genuinely open work or `Backlog` —
   say so plainly and leave it as a task rather than trimming live content.
 
 **Never finish the save silently on exit 2.** The budgets used to be measured only by
