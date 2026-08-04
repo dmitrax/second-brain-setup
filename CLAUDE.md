@@ -203,8 +203,10 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   is what must change, or it "works" here and breaks for everyone who installs the package. `#!/bin/bash` fixes the *shell*, not `PATH`, so `lib/brain.sh`
   receives exactly the same binaries — which is why the boundary drawn for the zsh
   class above does not help here. Use flags that mean the same thing in GNU and BSD,
-  or write both forms with a `||` fallback (`date -d "$1" +%s 2>/dev/null || date -j
-  -f %Y-%m-%d "$1" +%s`). The failure is silent and always the same shape: the command
+  or write both forms with a `||` fallback (`date -d "$1" +%s 2>/dev/null || date -j -f
+  "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s`). **Write that example out in full every time,
+  including the hours:** until 2026-08-04 this very line carried `date -j -f %Y-%m-%d
+  "$1" +%s`, and the rule below says what that cost. The failure is silent and always the same shape: the command
   runs, the output is empty, the check goes green — `date -j` does not exist on that
   machine at all, and two `/brain-lint` steps reported zero findings instead of an
   error, caught only by diffing against a baseline that still carried them. Checked by
@@ -212,6 +214,27 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   called in a prompt block at all. `ls` was named in that check's own rationale from the
   start while its pattern list contained only flags — a rule and its check drifting apart
   inside one function, which is why the list is now written out here.
+- **A portable fallback has to agree with the branch it replaces, and "there is a `||`
+  there" does not check that.** `date -j -f %Y-%m-%d "$1" +%s` is the BSD half of the
+  example above and satisfied check 20 for as long as it existed, because check 20 asks
+  whether a second form is present, not whether it computes the same thing. It does not:
+  BSD `date` fills every field the format does not name from the **current clock**, so a
+  bare date parses to today's time-of-day on that day rather than to midnight, and the
+  answer changes on every call. GNU `-d` means midnight. Two consequences, both silent:
+  an age in days differs by one **between machines** standing still, and within a single
+  run it *shrinks* as the run proceeds, because `TODAY` is captured once at the top while
+  the parse re-reads the clock at each project. Measured 2026-08-04 on Darwin under a
+  BSD-only `PATH`: `lint-collect` returned 27 findings against 29, the two missing ones
+  being exactly the projects sitting on the 14-day threshold — and `--project` on either
+  of them still reported it, because a scoped run reaches the line within the same second.
+  Exit 0, stderr empty, and a threshold that flips per machine is precisely the fake
+  NEW/GONE the shared baseline exists to prevent. **So a date fallback names hours,
+  minutes and seconds explicitly, and any tool whose output depends on unspecified fields
+  is pinned rather than trusted to default sensibly.** Checked by preflight 38, whose
+  behavioural half re-runs the shipped chain under a BSD-only `PATH` — the first draft
+  asserted against `_lc_epoch` as invoked normally, where GNU answers first and the branch
+  under test never executes, and it passed a fallback rewritten to read the clock. The
+  static half alone would not have caught that; the differentiating negative test did.
 - **A step being present is not the same as the step running, and only the second is
   worth a green.** The pattern the previous two rules describe has a third form that no
   syntax check sees: a prompt block referencing a variable nothing ever assigns. Measured
@@ -393,9 +416,22 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   - it claimed an unpinned run reports the SAME key as both NEW and GONE. Not reproducible
     on glibc/coreutils 9.11: `sort` and `comm` read one environment, so they agree, and
     glibc's collation has a codepoint tiebreak that stops `sort -u` collapsing keys that
-    differ only in case or punctuation. Whether BSD behaves differently is **untested** —
-    until it is, this is defence against a machine-dependent property, not a repair of a
-    measured break, and it should be described that way.
+    differ only in case or punctuation. **Measured on Darwin 2026-08-04 and not reproduced
+    there either**, in any combination tried: BSD `sort`/`comm` from `/usr/bin`, the GNU
+    pair from Homebrew, and the two implementations crossed against each other, under `C`
+    and under `en_US.UTF-8` — 21 keys in, 21 out, NEW correct, GONE empty every time. The
+    premise is now refuted on both machines rather than untested on one.
+  - **but the pinning turned out to be a repair after all, of a different break, and that
+    is the reason to keep it.** Under a UTF-8 locale, GNU `sort` given a key with invalid
+    UTF-8 bytes fails the comparison and returns **nothing at all** with a non-zero status
+    that a process substitution swallows — so `cut_keys` yields an empty list, `comm` sees
+    no current findings, and every finding in the baseline is reported GONE. Measured
+    2026-08-04 on Darwin with Homebrew coreutils: 6 keys in, 0 out unpinned, 6 out pinned;
+    BSD `sort` handles the same input correctly, so this is the GNU build's behaviour and
+    not the platform's. Vault filenames are input, and the same class is already recorded
+    for `grep` on this machine ([[gnu-grep-returns-zero-matches-on-invalid-utf8]], 08-03),
+    where it cost three checks in a row and two false hypotheses. So: defence against
+    collation, repair against invalid bytes.
   - it claimed a global export would blind the Cyrillic patterns. False in the dangerous
     direction. Literal patterns (`Статус`, `Завершено`) match fine under `LC_ALL=C` —
     they are byte sequences, verified by running `prose-budget` and `sweep-closed` with it
