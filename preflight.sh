@@ -724,17 +724,18 @@ while IFS= read -r line; do
         hits+="$hash: $msg"$'\n'
 done < <(git -C "$SCRIPT_DIR" log --no-merges --since="$CC_CUTOFF 00:00:00" --format="%h %s" 2>/dev/null)
 if [ -n "$hits" ]; then
-    fail "коммиты с $CC_CUTOFF не соответствуют Conventional Commits" "$hits"
+    fail "commits since $CC_CUTOFF do not follow Conventional Commits" "$hits"
 else
-    pass "коммиты с $CC_CUTOFF соответствуют Conventional Commits"
+    pass "commits since $CC_CUTOFF follow Conventional Commits"
 fi
 
-# ─── 10. Шаблон CLAUDE.md не заводит секцию состояния ────────────────────────
-# Найдено 2026-07-25 на живом dimarch: `## Current state` в проектном CLAUDE.md
-# разросся до 490 строк датированной хроники и вёз 6 фактов, которые vault уже
-# исправил. Файл грузится целиком каждую сессию, до того как известна тема, —
-# состоянию там не место. Проверяем именно fenced-блок Step 4 (шаблон CLAUDE.md):
-# у шаблона _PROJECT.md в этом же файле секция `## Current state` легитимна.
+# ─── 10. The CLAUDE.md template opens no state section ───────────────────────
+# Found 2026-07-25 on the live dimarch: `## Current state` in a project CLAUDE.md had
+# grown to 490 lines of dated chronicle and carried 6 facts the vault had already
+# corrected. The file is loaded in full every session, before the topic is known — state
+# does not belong there. The check reads the Step 4 fenced block specifically (the
+# CLAUDE.md template): in the _PROJECT.md template in the same file, `## Current state`
+# is legitimate.
 CLAUDE_TPL=$(awk '
     /^## Step 4: Create CLAUDE.md/ { seen = 1; next }
     !seen { next }
@@ -742,68 +743,69 @@ CLAUDE_TPL=$(awk '
     fence == 1 { print }
 ' "$SCRIPT_DIR/commands/brain-init.md")
 if [ -z "$CLAUDE_TPL" ]; then
-    fail "не найден шаблон CLAUDE.md в brain-init.md Step 4 — проверка не сработала"
+    fail "the CLAUDE.md template was not found in brain-init.md Step 4 — the check did not run"
 elif echo "$CLAUDE_TPL" | grep -qE '^#{2,3} +(Current state|Статус)'; then
-    fail "шаблон CLAUDE.md в brain-init.md завёл секцию состояния — она принадлежит _PROJECT.md"
+    fail "the CLAUDE.md template in brain-init.md opened a state section — that belongs to _PROJECT.md"
 else
-    pass "шаблон CLAUDE.md не заводит секцию состояния"
+    pass "the CLAUDE.md template opens no state section"
 fi
 
-# ─── 10b. Шаблон CLAUDE.md не заводит третью копию инвентаря ─────────────────
-# Сестра проверки 10, тот же разбор fenced-блока Step 4. Ответ на вопрос 5 (стек)
-# писался сразу в три файла: _PROJECT.md (Step 3), architecture-map.md (Step 3c) и
-# CLAUDE.md (Step 4). Первые два ведёт /brain-save, третий — никто, и для публичного
-# репо Step 5 кладёт его в .gitignore, так что это единственная копия, которую не
-# видно меняющейся. Замерено 2026-08-04 на самом second-brain-setup: копия называла
-# три bash-скрипта ещё шесть недель после того, как lib/brain.sh стал четвёртым,
-# при верной копии в vault. Пустой $CLAUDE_TPL уже отработан проверкой 10 выше.
+# ─── 10b. The CLAUDE.md template opens no third copy of the inventory ────────
+# Sibling of check 10, reading the same Step 4 fenced block. The answer to question 5
+# (the stack) used to be written into three files at once: _PROJECT.md (Step 3),
+# architecture-map.md (Step 3c) and CLAUDE.md (Step 4). /brain-save maintains the first
+# two; nobody maintains the third, and for a public repo Step 5 puts it in .gitignore, so
+# it is the one copy never seen changing. Measured 2026-08-04 on second-brain-setup
+# itself: the copy still named three bash scripts six weeks after lib/brain.sh became the
+# fourth, while the vault copy was correct throughout. An empty $CLAUDE_TPL is already
+# handled by check 10 above.
 if [ -z "$CLAUDE_TPL" ]; then
-    : # 10 уже упала на этом, второй раз не шумим
+    : # check 10 already failed on this; no need to say it twice
 elif echo "$CLAUDE_TPL" | grep -qE '^#{2,3} +(Stack|Стек)'; then
-    fail "шаблон CLAUDE.md в brain-init.md завёл секцию инвентаря — она принадлежит _PROJECT.md и architecture-map.md"
+    fail "the CLAUDE.md template in brain-init.md opened an inventory section — that belongs to _PROJECT.md and architecture-map.md"
 elif echo "$CLAUDE_TPL" | grep -qF 'ANSWER TO QUESTION 5'; then
-    fail "шаблон CLAUDE.md в brain-init.md подставляет ответ 5 целиком — в Rules идут только ограничения из него"
+    fail "the CLAUDE.md template in brain-init.md pastes answer 5 whole — only the constraints from it belong in Rules"
 else
-    pass "шаблон CLAUDE.md не дублирует инвентарь стека"
+    pass "the CLAUDE.md template does not duplicate the stack inventory"
 fi
 
-# ─── 11. Критерий разделения трёх памятей на месте ───────────────────────────
-# Правило существует только пока его текст есть в промптах: SKILL.md несёт сам
-# критерий, brain-save применяет его в Step 0a при правке CLAUDE.md Block 2.
+# ─── 11. The criterion separating the three memories is present ──────────────
+# The rule exists only while its text is in the prompts: SKILL.md carries the criterion
+# itself, brain-save applies it in Step 0a when editing CLAUDE.md Block 2.
 missing=""
-grep -qi 'What belongs where' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет раздела «What belongs where»"$'\n'
-grep -qi 'can this be false tomorrow' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет expiry-теста"$'\n'
-grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0a не ссылается на expiry-тест"$'\n'
+grep -qi 'What belongs where' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no 'What belongs where' section"$'\n'
+grep -qi 'can this be false tomorrow' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no expiry test"$'\n'
+grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0a does not refer to the expiry test"$'\n'
 if [ -n "$missing" ]; then
-    fail "потерян критерий «что живёт в CLAUDE.md, а что в vault»" "$missing"
+    fail "lost the criterion for what lives in CLAUDE.md and what lives in the vault" "$missing"
 else
-    pass "критерий разделения памятей на месте (SKILL.md + brain-save Step 0a)"
+    pass "the memory-separation criterion is present (SKILL.md + brain-save Step 0a)"
 fi
 
-# ─── 12. Синхронизация vault до записи ───────────────────────────────────────
-# Общие реестры 00-system/*.md правит каждая сессия на каждой машине, поэтому
-# запись поверх устаревшего checkout гарантирует конфликт на push. Шаг обязан
-# стоять ДО первой записи (иначе он бесполезен) и не имеет права блокировать
-# сохранение при недоступной сети — несохранённая сессия дороже отложенного sync.
-# С v1.7.0 сам pull живёт в lib/brain.sh, поэтому требование проверяется по месту:
-# механика — в библиотеке, порядок вызова — в промпте. Ослаблением это не является,
-# обе половины обязательны, отсутствие любой роняет проверку.
+# ─── 12. The vault is synced before writing ──────────────────────────────────
+# The shared registries 00-system/*.md are edited by every session on every machine, so
+# writing on top of a stale checkout guarantees a conflict at push. The step must sit
+# BEFORE the first write (otherwise it is useless) and must never block the save when the
+# network is down — an unsaved session costs more than a deferred sync.
+# Since v1.7.0 the pull itself lives in lib/brain.sh, so the requirement is checked where
+# it belongs: the mechanics in the library, the call order in the prompt. That is not a
+# weakening — both halves are required and the absence of either fails the check.
 BS="$SCRIPT_DIR/commands/brain-save.md"
 missing=""
 if [ -f "$LIBSH" ]; then
-    grep -q 'pull --rebase --autostash' "$LIBSH" || missing+="lib/brain.sh: нет pull --rebase --autostash"$'\n'
-    grep -qE 'timeout [0-9]+ git .*pull' "$LIBSH" || missing+="lib/brain.sh: pull не обёрнут в timeout — недоступный remote повесит сессию"$'\n'
-    grep -q 'return 3' "$LIBSH" || missing+="lib/brain.sh: конфликт не отличён от прочих отказов (нет кода 3)"$'\n'
-    grep -q 'return 2' "$LIBSH" || missing+="lib/brain.sh: недоступный remote не отличён от успеха (нет кода 2)"$'\n'
+    grep -q 'pull --rebase --autostash' "$LIBSH" || missing+="lib/brain.sh: no pull --rebase --autostash"$'\n'
+    grep -qE 'timeout [0-9]+ git .*pull' "$LIBSH" || missing+="lib/brain.sh: the pull is not under timeout — an unreachable remote will hang the session"$'\n'
+    grep -q 'return 3' "$LIBSH" || missing+="lib/brain.sh: a conflict is not told apart from other refusals (no exit 3)"$'\n'
+    grep -q 'return 2' "$LIBSH" || missing+="lib/brain.sh: an unreachable remote is not told apart from success (no exit 2)"$'\n'
 else
-    missing+="lib/brain.sh отсутствует — синхронизировать нечем"$'\n'
+    missing+="lib/brain.sh is missing — there is nothing to sync with"$'\n'
 fi
-# Все четыре команды трогают vault, значит все четыре синхронизируют его. До v1.7.0
-# проверка смотрела только brain-save, поэтому разрыв между правилом Block 2 («команда,
-# которая пишет в vault») и реализацией (одна команда из четырёх) был машинно невидим —
-# правило существовало, а три команды его не исполняли, и ничто этого не показывало.
-# Пара «команда → её первая запись»: sync обязан стоять строго выше. Шаг после первой
-# записи не слабее, он инертен.
+# All four commands touch the vault, so all four sync it. Until v1.7.0 this check looked
+# at brain-save only, so the gap between the Block 2 rule ("a command that writes to the
+# vault") and the implementation (one command of four) was machine-invisible — the rule
+# existed, three commands ignored it, and nothing showed that.
+# Each pair is "command -> its first write": the sync must sit strictly above. A step
+# placed after the first write is not weaker, it is inert.
 for pair in \
     "brain-save.md:^## Step 0b" \
     "brain-init.md:^## Step 2" \
@@ -813,87 +815,88 @@ for pair in \
     write_marker="${pair#*:}"
     cf="$SCRIPT_DIR/commands/$cmd_name"
     if [ ! -f "$cf" ]; then
-        missing+="$cmd_name отсутствует — проверка синхронизации не отработала"$'\n'
+        missing+="$cmd_name is missing — the sync check did not run"$'\n'
         continue
     fi
     sync_ln=$(grep -n 'vault-sync' "$cf" | head -1 | cut -d: -f1)
     write_ln=$(grep -n "$write_marker" "$cf" | head -1 | cut -d: -f1)
     if [ -z "$sync_ln" ]; then
-        missing+="$cmd_name: не вызывает vault-sync"$'\n'
+        missing+="$cmd_name: does not call vault-sync"$'\n'
     elif [ -z "$write_ln" ]; then
-        missing+="$cmd_name: не найден маркер первой записи ($write_marker) — проверка порядка не сработала"$'\n'
+        missing+="$cmd_name: first-write marker not found ($write_marker) — the ordering check did not run"$'\n'
     elif [ "$sync_ln" -ge "$write_ln" ]; then
-        missing+="$cmd_name: sync стоит после первой записи (строка $sync_ln против $write_ln)"$'\n'
+        missing+="$cmd_name: the sync sits after the first write (line $sync_ln against $write_ln)"$'\n'
     fi
 done
 if [ -n "$missing" ]; then
-    fail "потерян шаг синхронизации vault перед записью" "$missing"
+    fail "the vault-sync-before-write step was lost" "$missing"
 else
-    pass "все 4 команды синхронизируют vault до первой записи, pull под timeout"
+    pass "all 4 commands sync the vault before their first write, pull under timeout"
 fi
 
-# ─── 12b. Синхронизация перед ЧТЕНИЕМ (протокол старта сессии) ───────────────
-# Симметрична 12 и заведена по той же причине с обратным знаком: запись закрыли
-# первой, потому что конфликт на push громкий, а чтение молчит. Сессия штатно
-# открывает _PROJECT.md и taskboard.md в состоянии «на момент прошлого визита на эту
-# машину», ничем себя не выдавая — файлы на месте и выглядят актуальными. Отсюда
-# ложные выводы о том, что задача открыта, хотя вчера её закрыли на другой машине.
-# Два места, оба обязательны: SKILL.md действует во всех проектах (включая 9 уже
-# созданных, до которых шаблон не доедет), шаблон в brain-init гарантирует исполнение
-# в новых.
+# ─── 12b. Syncing before READING (the session-start protocol) ────────────────
+# Symmetric to 12 and added for the same reason with the sign reversed: writing was
+# closed first because a push conflict is loud, while reading is silent. A session
+# routinely opens _PROJECT.md and taskboard.md in the state they had at its last visit to
+# THIS machine, giving nothing away — the files are there and look current. Hence false
+# conclusions that a task is open when another machine closed it yesterday.
+# Two places, both required: SKILL.md reaches every project (including the 9 created
+# before the rule, which no template will ever reach), and the brain-init template
+# guarantees execution in new ones.
 missing=""
 sk="$SCRIPT_DIR/SKILL.md"
 sync_ln=$(grep -n 'vault-sync' "$sk" | head -1 | cut -d: -f1)
 read_ln=$(grep -n 'Always load at session start' "$sk" | head -1 | cut -d: -f1)
 if [ -z "$sync_ln" ]; then
-    missing+="SKILL.md: протокол старта не синхронизирует vault перед чтением"$'\n'
+    missing+="SKILL.md: the start protocol does not sync the vault before reading"$'\n'
 elif [ -z "$read_ln" ]; then
-    missing+="SKILL.md: не найден маркер загрузки на старте — проверка не сработала"$'\n'
+    missing+="SKILL.md: start-of-session load marker not found — the check did not run"$'\n'
 fi
 grep -q 'vault-sync' "$SCRIPT_DIR/commands/brain-init.md" ||
-    missing+="brain-init.md: шаблон CLAUDE.md не несёт шага синхронизации на старте"$'\n'
-# В шаблоне шаг обязан стоять выше строки, которая велит читать _PROJECT.md.
+    missing+="brain-init.md: the CLAUDE.md template carries no sync step at session start"$'\n'
+# In the template the step must sit above the line telling the session to read _PROJECT.md.
 tpl_sync=$(grep -n 'At session start' -A6 "$SCRIPT_DIR/commands/brain-init.md" | grep 'vault-sync' | head -1 | cut -d: -f1)
 [ -n "$tpl_sync" ] ||
-    missing+="brain-init.md: vault-sync есть, но не внутри блока «At session start»"$'\n'
+    missing+="brain-init.md: vault-sync exists but not inside the 'At session start' block"$'\n'
 if [ -n "$missing" ]; then
-    fail "чтение vault не синхронизировано — стухший checkout читается как актуальный" "$missing"
+    fail "reading the vault is not synced — a stale checkout reads as current" "$missing"
 else
-    pass "старт сессии синхронизирует vault до чтения (SKILL.md + шаблон brain-init)"
+    pass "session start syncs the vault before reading (SKILL.md + the brain-init template)"
 fi
 
-# ─── 13. Поиск по vault всегда с -F или -E ───────────────────────────────────
-# Замерено 2026-08-02 на живом vault: литерал `[[architecture-map]]` без -F дал 304
-# файла вместо 17 (скобки читаются как символьный класс), а `docker|colima` без -E —
-# 1 файл вместо 37 (в базовой регулярке `|` не оператор). Оба промаха молчат и
-# возвращают обычный exit-код, поэтому сессия верит ответу: в одну сторону тонет в
-# шуме, в другую решает, что в vault ничего нет, и идёт дальше. Правило намеренно
-# строже необходимого — флаг обязателен даже там, где паттерн заведомо безобиден:
-# «в паттерне есть метасимвол?» требует разбора, «флаг на месте?» не требует ничего.
-# Документировать сломанную форму в этих файлах нельзя — писать словами или без -r.
+# ─── 13. A vault search always carries -F or -E ──────────────────────────────
+# Measured 2026-08-02 on the live vault: the literal `[[architecture-map]]` without -F
+# returned 304 files instead of 17 (the brackets read as a character class), and
+# `docker|colima` without -E returned 1 file instead of 37 (in a basic regex `|` is not an
+# operator). Both misses are silent and return a normal exit code, so the session believes
+# the answer: one way it drowns in noise, the other it concludes the vault holds nothing
+# and moves on. The rule is deliberately stricter than the defect — the flag is required
+# even where the pattern is obviously harmless: "does this pattern contain a metacharacter"
+# needs judgement, "is the flag there" needs none.
+# The broken form must not be documented in these files — describe it in words, or without -r.
 missing=""
-grep -qi 'Searching the vault' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: нет раздела про поиск по vault"$'\n'
+grep -qi 'Searching the vault' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no section about searching the vault"$'\n'
 for flag in '`grep -rF`' '`grep -rE`'; do
-    grep -qF "$flag" "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: не предписан $flag"$'\n'
+    grep -qF "$flag" "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: $flag is not prescribed"$'\n'
 done
 for f in "${TARGETS[@]}"; do
     h=$(grep -no 'grep -r[a-zA-Z]*' "$f" | grep -vE ':grep -r[a-zA-Z]*[EF]' || true)
-    [ -n "$h" ] && missing+="$(basename "$f"): голый grep -r без -F/-E в строках $(echo "$h" | cut -d: -f1 | tr '\n' ' ')"$'\n'
+    [ -n "$h" ] && missing+="$(basename "$f"): bare grep -r without -F/-E on lines $(echo "$h" | cut -d: -f1 | tr '\n' ' ')"$'\n'
 done
 if [ -n "$missing" ]; then
-    fail "поиск по vault предписан без -F/-E (молча неверный результат)" "$missing"
+    fail "a vault search is prescribed without -F/-E (silently wrong result)" "$missing"
 else
-    pass "поиск по vault всегда с -F или -E, правило на месте в SKILL.md"
+    pass "vault searches always carry -F or -E, and the rule is present in SKILL.md"
 fi
 
-# ─── 14. Скрипты совместимы с bash 3.2 ───────────────────────────────────────
-# macOS отдаёт /bin/bash 3.2 — это одна из двух рабочих машин, не экзотика.
-# Инцидент 2026-08-02: сам этот файл использовал mapfile (bash 4.0), на Mac массив
-# оставался unbound, проверки 5-6 получали пустой вход и печатали ✓, ни разу не
-# выполнившись. Ворота релиза были слепы на половине парка десять дней.
-# `bash -n` такое не ловит: синтаксис валиден, отсутствует лишь builtin в рантайме.
-# Литералы собраны из кусков намеренно — иначе файл заматчил бы сам себя, ровно та
-# причина, по которой TARGETS не включает preflight.sh (см. шапку).
+# ─── 14. The scripts are bash 3.2 compatible ─────────────────────────────────
+# macOS ships /bin/bash 3.2 — one of the two working machines, not an exotic case.
+# Incident 2026-08-02: this very file used mapfile (bash 4.0); on the Mac the array stayed
+# unbound, checks 5-6 received empty input and printed ✓ without ever running. The release
+# gate was blind on half the fleet for ten days.
+# `bash -n` does not catch this: the syntax is valid, only the builtin is missing at
+# runtime. The literals are assembled from pieces on purpose — otherwise the file would
+# match itself, the same reason TARGETS excludes preflight.sh (see the header).
 B4="(map""file|read""array|declare -""A|local -""A|\\\$\\{[A-Za-z_][A-Za-z0-9_]*(\\^\\^|,,)\\})"
 hits=""
 for s in "$SCRIPT_DIR"/*.sh; do
@@ -901,66 +904,66 @@ for s in "$SCRIPT_DIR"/*.sh; do
     [ -n "$h" ] && hits+="$(basename "$s"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
-    fail "конструкция bash 4+ в скрипте (на macOS /bin/bash — 3.2)" "$hits"
+    fail "a bash 4+ construct in a script (macOS /bin/bash is 3.2)" "$hits"
 else
-    pass "скрипты совместимы с bash 3.2 (4 конструкции bash 4+ не встречаются)"
+    pass "the scripts are bash 3.2 compatible (4 bash 4+ constructs absent)"
 fi
 
-# ─── 15. /brain-lint сам ищет неоднозначные ссылки по всему vault ────────────
-# Проверка 6 выше грепает РЕПОЗИТОРИЙ — шаблоны в SKILL.md и commands/. Аудитора
-# самого vault у этого класса не было вовсе: все четыре починки (135+ ссылок,
-# 07-14, 07-15, 07-26 и сегодня) делались разовыми скриптами, поэтому класс и
-# возвращался — постоянного инструмента, который его видит, не существовало.
-# Хуже: 2026-08-03 замерено, что дисциплина автора тут вообще ни при чём. Пять
-# заметок puzzlebot-voronka от 06-28…07-04 несли 33 ВЕРНЫЕ голые ссылки, пока
-# 07-29 не появился goprofi-voronka с теми же пятью именами — ссылки стали
-# неоднозначными задним числом, без правки в них, через три дня после того, как
-# линт объявил vault чистым по этому классу. Значит ловится только регулярным
-# vault-wide свипом «а имя всё ещё уникально», и Step 4b обязан существовать.
+# ─── 15. /brain-lint sweeps the whole vault for ambiguous links ──────────────
+# Check 6 above greps the REPOSITORY — the templates in SKILL.md and commands/. This class
+# had no auditor of the vault itself: all four repairs (135+ links, 07-14, 07-15, 07-26 and
+# today) were done by one-off scripts, which is why the class kept returning — no standing
+# instrument could see it.
+# Worse: measured 2026-08-03, authoring discipline has nothing to do with it. Five
+# puzzlebot-voronka notes from 06-28…07-04 carried 33 CORRECT bare links until
+# goprofi-voronka appeared on 07-29 reusing those five names — the links became ambiguous
+# retroactively, with no edit to them, three days after a lint had declared the vault clean
+# of this class. So it is caught only by a recurring vault-wide sweep asking "is this name
+# still unique", and Step 4b must exist.
 missing=""
 LINT="$SCRIPT_DIR/commands/brain-lint.md"
-[ -s "$LINT" ] || fail "commands/brain-lint.md пуст или отсутствует — проверка 15 не отработала"
+[ -s "$LINT" ] || fail "commands/brain-lint.md is empty or missing — check 15 did not run"
 LIB="$SCRIPT_DIR/lib/brain.sh"
-grep -qF 'ambiguous-link:' "$LIB" || missing+="lib: нет свипа неоднозначных ссылок"$'\n'
-grep -qF 'uniq -d' "$LIB" || missing+="lib: свип не ищет неуникальные basename (uniq -d)"$'\n'
-grep -qE 'grep -rn?F' "$LIB" || missing+="lib: свип ищет без -F"$'\n'
+grep -qF 'ambiguous-link:' "$LIB" || missing+="lib: no ambiguous-link sweep"$'\n'
+grep -qF 'uniq -d' "$LIB" || missing+="lib: the sweep does not look for duplicate basenames (uniq -d)"$'\n'
+grep -qE 'grep -rn?F' "$LIB" || missing+="lib: the sweep searches without -F"$'\n'
 grep -qiE 'whatever the scope|whole vault' "$LIB" ||
-    missing+="lib: свип не объявлен vault-wide (в рамках проекта он слеп)"$'\n'
+    missing+="lib: the sweep is not declared vault-wide (scoped to a project it is blind)"$'\n'
 grep -qF 'ambiguous-link' "$LINT" ||
-    missing+="brain-lint.md: находка ambiguous-link не описана — сессия не знает, что с ней делать"$'\n'
+    missing+="brain-lint.md: the ambiguous-link finding is undescribed — the session will not know what to do"$'\n'
 grep -qiE 'already exists in another project|not unique across the whole vault' "$SCRIPT_DIR/SKILL.md" ||
-    missing+="SKILL.md: правило сужено до _PROJECT.md — потерян ретроактивный случай"$'\n'
+    missing+="SKILL.md: the rule is narrowed to _PROJECT.md — the retroactive case is lost"$'\n'
 if [ -n "$missing" ]; then
-    fail "неоднозначные ссылки не проверяются в vault (класс возвращался 4 раза)" "$missing"
+    fail "ambiguous links are not checked in the vault (this class returned 4 times)" "$missing"
 else
-    pass "/brain-lint Step 4b свипает vault на неоднозначные ссылки, правило в SKILL.md общее"
+    pass "/brain-lint Step 4b sweeps the vault for ambiguous links, and SKILL.md states the rule generally"
 fi
 
-# ─── 16. Шаблоны frontmatter объявлены минимумом + шаг поиска локальных ключей ─
-# Проект может требовать ключи, которых пакет не знает (goprofi-voronka: `zone:` на
-# session-логах и decision-заметках — монорепо, разбитое на зоны). Дефект был не в том,
-# что в шаблоне «забыли поле»: правило лежало в CLAUDE.md проекта и грузилось каждую
-# сессию, но в момент записи fenced-блок с тремя ключами читается как исчерпывающий.
-# Явный шаблон под рукой побеждает правило, прочитанное двести сообщений назад —
-# поэтому шаблон обязан вслух объявлять себя неполным, а перед записью обязан стоять
-# шаг поиска. Замерено 2026-08-03: 4 лога из 55 и 2 decision-заметки из 100 без `zone:`,
-# последние два — 01.08, дважды за день.
+# ─── 16. Frontmatter templates declare themselves a minimum + a lookup step ──
+# A project may require keys the package cannot know (goprofi-voronka: `zone:` on session
+# logs and decision notes — a monorepo split into zones). The defect was not "the template
+# forgot a field": the rule sat in that project's CLAUDE.md and was loaded every session,
+# but at the moment of writing a fenced block with three keys reads as exhaustive.
+# An explicit template at hand beats a rule read two hundred messages ago — so the template
+# must declare itself incomplete out loud, and a lookup step must sit before the write.
+# Measured 2026-08-03: 4 logs of 55 and 2 decision notes of 100 without `zone:`, the last
+# two on 08-01, twice in one day.
 missing=""
 BS="$SCRIPT_DIR/commands/brain-save.md"
-grep -qF 'Step 0c' "$BS" || missing+="brain-save.md: нет шага поиска локальных конвенций (0c)"$'\n'
-# Шаг обязан предшествовать обоим шаблонам, иначе он inert — как и sync после записи.
+grep -qF 'Step 0c' "$BS" || missing+="brain-save.md: no local-conventions lookup step (0c)"$'\n'
+# The step must precede both templates, or it is inert — like a sync after the write.
 c_ln=$(grep -n '^## Step 0c' "$BS" | head -1 | cut -d: -f1)
 s1_ln=$(grep -n '^## Step 1:' "$BS" | head -1 | cut -d: -f1)
 if [ -z "$c_ln" ] || [ -z "$s1_ln" ]; then
-    missing+="brain-save.md: не найден Step 0c или Step 1 — проверка порядка не сработала"$'\n'
+    missing+="brain-save.md: Step 0c or Step 1 not found — the ordering check did not run"$'\n'
 elif [ "$c_ln" -ge "$s1_ln" ]; then
-    missing+="brain-save.md: шаг поиска стоит после первого шаблона (строка $c_ln против $s1_ln)"$'\n'
+    missing+="brain-save.md: the lookup step sits after the first template (line $c_ln against $s1_ln)"$'\n'
 fi
-# Оба шаблона — и лога, и decision-заметки — обязаны называть себя минимумом.
+# Both templates — the log and the decision note — must call themselves a minimum.
 grep -qiE 'minimum, not the full list' "$BS" ||
-    missing+="brain-save.md: шаблон session-лога не объявлен минимумом"$'\n'
+    missing+="brain-save.md: the session-log template is not declared a minimum"$'\n'
 grep -qiE 'Minimum frontmatter' "$BS" ||
-    missing+="brain-save.md: шаблон decision-заметки не объявлен минимумом"$'\n'
+    missing+="brain-save.md: the decision-note template is not declared a minimum"$'\n'
 # Значение выводится под запись, ключ переносится — иначе копирование значения молча врёт.
 grep -qiE 'derive each .*value|value derived' "$BS" ||
     missing+="brain-save.md: потеряно правило «ключ переносится, значение выводится»"$'\n'
