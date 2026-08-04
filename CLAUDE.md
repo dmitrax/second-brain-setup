@@ -339,6 +339,20 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   holds for file and section names (searched literally), commands, flags and paths.
   Checked by preflight 34, which requires both halves in `SKILL.md` and in every command
   that prints a Result block.
+- **Anything compared across machines is sorted under `LC_ALL=C`, and that is pinned per
+  command, never exported.** The baseline is written on one machine and diffed on another,
+  and `comm` requires both inputs ordered identically. Collation is locale-dependent:
+  measured 2026-08-04, the C locale orders `Note-Alone.md` before `note-alone.md` while
+  `en_US.UTF-8` orders them the other way. Feed `comm` two differently-ordered lists and it
+  reports the SAME key as both NEW and GONE in one run — precisely the fake delta
+  `lint-diff` exists to prevent — while its "input is not in sorted order" warning goes to
+  stderr, which nothing surfaces. Found the day before a cross-machine verification run,
+  where it would have poisoned every comparison and been read as regressions.
+  **Global export is the wrong fix and is itself checked for:** under `LC_ALL=C` the
+  Cyrillic character classes that match a Russian vault stop matching, so exporting it
+  would trade one silent blindness for another. Pin it on each `sort`/`comm`; leave every
+  pattern match alone. Checked by preflight 35, which asserts both halves and runs the same
+  key set through `lint-diff` under two locales expecting no delta.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

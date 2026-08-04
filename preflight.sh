@@ -1308,6 +1308,49 @@ else
     fi
 fi
 
+# ─── 35. Key comparison is locale-independent ────────────────────────────────
+# The baseline is written on one machine and compared on another, and `comm` requires both
+# inputs sorted the same way. Collation is locale-dependent: measured 2026-08-04, the C
+# locale orders `Note-Alone.md` before `note-alone.md` while en_US.UTF-8 orders them the
+# other way. Feed comm two differently-ordered lists and it reports the SAME key as both
+# NEW and GONE in one run — the exact fake delta lint-diff exists to prevent — while its
+# "input is not in sorted order" warning goes to stderr, which nothing surfaces.
+# Found before a cross-machine verification run, where it would have poisoned every
+# comparison and been read as regressions.
+# The fix is per-command, never global: under LC_ALL=C the Cyrillic character classes that
+# match a Russian vault stop working, so exporting it for the whole script would trade one
+# silent blindness for another. This check enforces exactly that shape.
+missing=""
+LBK="$SCRIPT_DIR/lib/brain.sh"
+if [ ! -f "$LBK" ]; then
+    fail "check 35: no lib/brain.sh — empty input, not a clean repo"
+else
+    # Every sort or comm whose output is compared across machines must be pinned.
+    unpinned=$(grep -nE '(^|[^C=])\b(sort|comm) ' "$LBK" |
+               grep -vE '^[0-9]+:[[:space:]]*#' |
+               grep -vE 'LC_ALL=C (sort|comm)' |
+               grep -vE 'sort \| tail -1|sort$|\| sort -u \| tr')
+    [ -n "$unpinned" ] &&
+        missing+="  sort/comm без LC_ALL=C (порядок разойдётся между машинами):"$'\n'"$(printf '%s\n' "$unpinned" | cut -c1-90 | sed 's/^/    /')"$'\n'
+    # And the reverse: it must NOT be global, or the Russian patterns go blind.
+    grep -qE '^[[:space:]]*export LC_ALL' "$LBK" &&
+        missing+="  LC_ALL экспортирован глобально — кириллические классы перестанут матчиться"$'\n'
+    # Behavioural half: the same key set must diff clean against itself under either locale.
+    kf=$(mktemp -d)
+    printf 'ambiguous-link:other/Note-Alone.md\tx\nambiguous-link:other/note-alone.md\ty\nstale-project:_arch/dimarch\tz\n' > "$kf/f.txt"
+    LC_ALL=C       bash "$LBK" lint-diff "$kf/base.txt" --seal < "$kf/f.txt" >/dev/null 2>&1
+    out=$(LC_ALL=en_US.UTF-8 bash "$LBK" lint-diff "$kf/base.txt" < "$kf/f.txt" 2>&1)
+    case "$out" in
+        *NEW*|*GONE*) missing+="  тот же набор ключей дал дельту при смене локали: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-90)"$'\n' ;;
+    esac
+    rm -rf "$kf"
+    if [ -n "$missing" ]; then
+        fail "сравнение ключей зависит от локали — фальшивые NEW/GONE между машинами" "$missing"
+    else
+        pass "сравнение ключей не зависит от локали (sort/comm под LC_ALL=C, глобально не экспортирован)"
+    fi
+fi
+
 # ─── 34. Reports are in the owner's language, identifiers are not ────────────
 # Until 2026-08-04 nothing said what language a command should ADDRESS THE USER in. The
 # Result blocks were hardcoded English while the surrounding prose followed whatever the

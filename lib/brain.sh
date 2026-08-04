@@ -105,7 +105,7 @@ lint_diff() {
     # ("stale-draft" for three separate files) collapse into one, and fixing one of
     # them is invisible to the diff because the key stays put. Caught on the very
     # first live baseline, where the type had been written without the object.
-    dup=$(cut -f1 "$cur" | sort | uniq -d)
+    dup=$(cut -f1 "$cur" | LC_ALL=C sort | uniq -d)
     if [ -n "$dup" ]; then
         echo "lint-diff: keys are not unique — add the object to the key:" >&2
         printf '%s\n' "$dup" | sed 's/^/  /' >&2
@@ -126,11 +126,20 @@ lint_diff() {
         rm -f "$cur"; return 0
     fi
 
-    cut_keys() { cut -f1 "$1" | sort -u; }
+    # LC_ALL=C on every sort that feeds comm, and on comm itself. Collation is
+    # locale-dependent: measured 2026-08-04, the C locale orders `Note-Alone.md` before
+    # `note-alone.md` while en_US.UTF-8 orders them the other way. The baseline is written
+    # on one machine and compared on another, so a differing locale makes `comm` mispair
+    # the two lists and report the SAME key as both NEW and GONE in one run — the exact
+    # fake delta this whole mechanism exists to avoid. `comm` does warn on unsorted input,
+    # but only on stderr, which nothing here surfaces.
+    # Deliberately NOT exported for the whole script: under LC_ALL=C the Cyrillic
+    # character classes that match a Russian vault stop working.
+    cut_keys() { cut -f1 "$1" | LC_ALL=C sort -u; }
     new_keys="${TMPDIR:-/tmp}/brain-lint-new.$$"
     gone_keys="${TMPDIR:-/tmp}/brain-lint-gone.$$"
-    comm -23 <(cut_keys "$cur") <(cut_keys "$base") > "$new_keys"
-    comm -13 <(cut_keys "$cur") <(cut_keys "$base") > "$gone_keys"
+    LC_ALL=C comm -23 <(cut_keys "$cur") <(cut_keys "$base") > "$new_keys"
+    LC_ALL=C comm -13 <(cut_keys "$cur") <(cut_keys "$base") > "$gone_keys"
 
     n_new=$(grep -c . "$new_keys"); n_gone=$(grep -c . "$gone_keys")
     n_same=$(( $(cut_keys "$cur" | grep -c .) - n_new ))
@@ -519,7 +528,7 @@ sweep_closed() {
         echo "sweep-closed: refused — line count changed ($(grep -c '' "$tb") -> $(grep -c '' "$work/new"))" >&2
         rm -rf "$work"; return 1
     fi
-    sort "$tb" > "$work/a.sorted"; sort "$work/new" > "$work/b.sorted"
+    LC_ALL=C sort "$tb" > "$work/a.sorted"; LC_ALL=C sort "$work/new" > "$work/b.sorted"
     if ! cmp -s "$work/a.sorted" "$work/b.sorted"; then
         echo "sweep-closed: refused — the multiset of lines changed, this is not a permutation" >&2
         diff "$work/a.sorted" "$work/b.sorted" | head -6 >&2
@@ -786,7 +795,9 @@ lint_collect() {
     # An empty input must fail the check, never print a green. "Found nothing" and
     # "never looked" are different facts and only one of them deserves a pass —
     # this cost two weeks of a blind release gate twice already.
-    ALL_MD=$(find . -name '*.md' -not -path './.git/*' | sort)
+    # LC_ALL=C: the file list determines the order findings are emitted in, and the
+    # baseline is a file compared across machines. Byte order is the same everywhere.
+    ALL_MD=$(find . -name '*.md' -not -path './.git/*' | LC_ALL=C sort)
     if [ -z "$ALL_MD" ]; then
         echo "lint-collect: no markdown found under '$vault' — refusing to report a clean vault" >&2
         return 1
@@ -876,9 +887,9 @@ lint_collect() {
     REG="00-system/index.md"
     REG_P=""
     [ -f "$REG" ] && REG_P=$(grep -oE '\[\[[^]|]*_PROJECT[^]]*\]\]' "$REG" |
-        sed 's/\[\[//; s/\]\]//; s/|.*//; s|/_PROJECT$||' | sort -u)
+        sed 's/\[\[//; s/\]\]//; s/|.*//; s|/_PROJECT$||' | LC_ALL=C sort -u)
     FS_P=$(find . -name '_PROJECT.md' -not -path './.git/*' |
-        sed 's|/_PROJECT.md$||; s|^\./||' | sort -u)
+        sed 's|/_PROJECT.md$||; s|^\./||' | LC_ALL=C sort -u)
     if [ -z "$FS_P" ]; then
         echo "lint-collect: no _PROJECT.md anywhere — refusing to report a clean vault" >&2
         return 1
@@ -1006,7 +1017,7 @@ lint_collect() {
     # written stops being unique the moment another project reuses the basename,
     # and every already-correct link in the older project turns ambiguous with no
     # edit to it. sessions/ and archive-* are history and are not rewritten.
-    printf '%s\n' "$ALL_MD" | sed 's|.*/||; s|\.md$||' | sort | uniq -d > "$LC_TMP/dup"
+    printf '%s\n' "$ALL_MD" | sed 's|.*/||; s|\.md$||' | LC_ALL=C sort | uniq -d > "$LC_TMP/dup"
     : > "$LC_TMP/amb"
     while read -r name; do
         [ -n "$name" ] || continue
@@ -1026,13 +1037,13 @@ lint_collect() {
     done < "$LC_TMP/dup"
     # One key per file, count in the detail: the key must be stable, and a per-hit
     # key would repeat — lint-diff refuses a set with duplicate keys.
-    sort "$LC_TMP/amb" | uniq -c | while read -r n hf; do
+    LC_ALL=C sort "$LC_TMP/amb" | uniq -c | while read -r n hf; do
         printf 'ambiguous-link:%s\t%s bare links\n' "$hf" "$n"
     done
 
     # ── links per wiki note ──────────────────────────────────────────────────
     printf '%s\n' "$ALL_MD" | while read -r p; do cat "$(_lc_clean "$p")"; done |
-        grep -oE '\[\[[^]|]+' | sed 's/^\[\[//; s|.*/||' | sort | uniq -c > "$LC_TMP/inc"
+        grep -oE '\[\[[^]|]+' | sed 's/^\[\[//; s|.*/||' | LC_ALL=C sort | uniq -c > "$LC_TMP/inc"
     : > "$LC_TMP/links"
     printf '%s\n' "$SCOPED_MD" | grep '/wiki/' | while read -r p; do
         base=$(basename "$p" .md)
@@ -1048,7 +1059,7 @@ lint_collect() {
     done
     # Counted per project, not per note: 29 one-line fixes are one debt, and a
     # per-note key would rewrite the baseline on every note anyone touches.
-    sort "$LC_TMP/links" | uniq -c | while read -r n cls proj; do
+    LC_ALL=C sort "$LC_TMP/links" | uniq -c | while read -r n cls proj; do
         case "$cls" in
             no-links)    printf 'wiki-no-links:%s\t%s notes\n' "$proj" "$n" ;;
             no-backlink) printf 'wiki-no-backlink:%s\t%s notes\n' "$proj" "$n" ;;
@@ -1077,8 +1088,8 @@ _lc_keys() {
                  v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
                  gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
                  if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
-             }' "$f" | sort -u
-    done | sort | uniq -c | awk -v n="$n" '$1 > n * 0.6 { print $2 }' > "$ct"
+             }' "$f" | LC_ALL=C sort -u
+    done | LC_ALL=C sort | uniq -c | awk -v n="$n" '$1 > n * 0.6 { print $2 }' > "$ct"
     printf '%s\n' "$files" | while read -r f; do
         have=$(awk '/^---$/ { c++; next }
                     c == 1 && /^[A-Za-z_-]+:/ {
@@ -1086,12 +1097,12 @@ _lc_keys() {
                         v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
                         gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
                         if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
-                    }' "$f" | sort -u)
+                    }' "$f" | LC_ALL=C sort -u)
         while read -r k; do
             [ -n "$k" ] || continue
             printf '%s\n' "$have" | grep -qxF "$k" || echo "$k"
         done < "$ct"
-    done | sort | uniq -c | while read -r cnt k; do
+    done | LC_ALL=C sort | uniq -c | while read -r cnt k; do
         printf 'key-uniformity:%s\t%s entries lack %s (of %s)\n' "$label" "$cnt" "$k" "$n"
     done
     rm -f "$kt" "$ct"
