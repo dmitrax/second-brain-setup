@@ -46,7 +46,7 @@ Two separate spaces connected by CLAUDE.md:
   a count
 - Synthesis wiki notes follow rewrite-not-append (rewrite instead of duplicating)
 - Decision notes are the exception: immutable, superseded — never rewritten (see below)
-- Language: Russian for user-facing content, English for file names and machine-facing files
+- Language: Russian for user-facing content, English for file names, machine-facing files, code comments and commit messages
 - Every session ends with `/brain-save`
 
 **Two scenarios:**
@@ -181,7 +181,7 @@ Run `/brain-save` — updates wiki, taskboard, session log, and (for code projec
 - Synthesis notes: rewrite in place instead of creating duplicates
 - Decision notes (`decision-*.md`): immutable — supersede with a new note, never rewrite
 - Code projects: after any structural change, update `architecture-map.md` in place
-- Language: Russian for user-facing content, English for code and file names
+- Language: Russian for user-facing content, English for code, code comments, commit messages and file names
 
 ## Critical thinking & safety
 - Do not flatter or auto-agree. If an approach is weak, unrealistic, or suboptimal,

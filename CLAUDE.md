@@ -30,7 +30,12 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
 - Synthesis notes: rewrite in place instead of creating duplicates
 - Decision notes (`decision-*.md`): immutable — supersede with a new note, never rewrite
 - After any structural change: update `architecture-map.md` in place
-- Language: English for all machine-facing files (SKILL.md, brain-*.md, file names, CLAUDE.md Block 1); Russian for user-facing docs (WORKFLOW.md, ВТОРОЙ_МОЗГ_*.md)
+- Language: **English for everything this repo publishes** — machine-facing files
+  (`SKILL.md`, `brain-*.md`, file names, CLAUDE.md Block 1), **code comments in every
+  `*.sh`, and commit messages**. Russian only for the user-facing docs written for Dima
+  (`WORKFLOW.md`, `ВТОРОЙ_МОЗГ_*.md`) and for vault content, which is his own notes.
+  The repo is public: a comment and a commit message are read by strangers, and by the
+  next maintainer, before anything else
 
 ## Critical thinking & safety
 - Do not flatter or auto-agree. If an approach is weak or suboptimal, say so

@@ -88,10 +88,10 @@ lint_diff() {
 
     cur="${TMPDIR:-/tmp}/brain-lint-cur.$$"
     cat > "$cur"
-    # Ключи обязаны быть уникальными: тип + объект. Два разных объекта под одним
-    # ключом («stale-draft» на три разных файла) схлопываются, и починка одного из
-    # них диффу не видна — ключ остаётся на месте. Поймано на первом же живом
-    # baseline, где я сам написал тип без объекта.
+    # Keys must be unique: type plus object. Two different objects sharing one key
+    # ("stale-draft" for three separate files) collapse into one, and fixing one of
+    # them is invisible to the diff because the key stays put. Caught on the very
+    # first live baseline, where the type had been written without the object.
     dup=$(cut -f1 "$cur" | sort | uniq -d)
     if [ -n "$dup" ]; then
         echo "lint-diff: ключи не уникальны — добавьте объект в ключ:" >&2
@@ -376,7 +376,7 @@ stamp_field() {
 # sections under In progress are closed outright — the first version of this was
 # going to move whole sections and would have moved nothing anywhere. The weight is
 # in single sections mixing both states: `goprofi-voronka` carries one of 1073 lines
-# holding 42 closed items and 40 open ones, titled ЗАКРЫТО. So the unit is the item:
+# holding 42 closed items and 40 open ones, titled CLOSED. So the unit is the item:
 # closed top-level items with their bodies move to Done, open ones stay.
 # Effect at the time of writing: 346 -> 218 lines here (under the 300 threshold),
 # 1074 -> 701 in goprofi — not enough there alone, and said rather than rounded up.
@@ -446,12 +446,12 @@ sweep_closed() {
         n_undated=$((n_moved - ${n_dated:-0}))
         if [ "$n_undated" -gt 0 ]; then
             echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
-            # Где эта дата была: у пункта её часто нет, потому что она стояла в
-            # ЗАГОЛОВКЕ секции — а заголовок не переносится. То есть перенос не просто
-            # оставляет пункт недатированным, он отрывает его от единственной даты,
-            # которая у него была. Сказать это надо ДО потери, а не следующим линтом.
-            # Замерено 2026-08-04 на собственном таскборде: 33 из 35 записей в Done
-            # оказались без даты, и archive смог увезти 2.
+            # Where that date used to be: the item often has none because it sat in
+            # the section HEADING, and headings are not moved. So the sweep does not
+            # merely leave an item undated — it separates it from the only date it
+            # ever had. That has to be said BEFORE the loss, not by the next lint.
+            # Measured 2026-08-04 on this project's own taskboard: 33 of 35 entries
+            # in Done carried no date, and archive could take 2.
             dated_h=$(awk '
                 /^## / { inprog = ($0 ~ /In progress|В работе/); h = ""; next }
                 !inprog { next }
@@ -473,9 +473,9 @@ sweep_closed() {
         # closure claim can end up standing over the open items that stayed. The file
         # loses nothing (this is a permutation), but it starts asserting something
         # false, and a taskboard is read by its headings first.
-        # Measured 2026-08-04 in goprofi-voronka: one `### ✅ ЗАКРЫТО 03.08 …` section
+        # Measured 2026-08-04 in goprofi-voronka: one `### CLOSED 03.08 …` section
         # of 1073 lines held 42 closed items and 40 open ones. Sweeping it would have
-        # left "ЗАКРЫТО" as the title of forty open tasks. That is not a defect of the
+        # left "CLOSED" as the title of forty open tasks. That is not a defect of the
         # sweep, it is bookkeeping that predates it — but the sweep is what makes it
         # visible, so the sweep is what has to say it.
         awk '
@@ -878,8 +878,8 @@ lint_collect() {
             dn=$(_budget_done "$tb")
             tot=$(_budget_size "$tb")
             prog=$(_budget_prog "$tb")
-            # Деталь называет ДЕЙСТВУЮЩУЮ часть: archive двигает только датированное,
-            # и совет «архивировать» бесполезен, когда даты нет ни у одной записи.
+            # The detail names the ACTIONABLE part: archive only moves dated entries,
+            # and "archive it" is useless advice when not one entry carries a date.
             dnd=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
                        d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ &&
                        /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
@@ -934,11 +934,11 @@ lint_collect() {
             case "$v" in ""|"~"|"null"|"[]") continue ;; esac
             v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/|.*//; s/\.md$//')
             base=$(printf '%s' "$v" | sed 's|.*/||')
-            # Вывод в переменную, не `find | grep -q .`: под pipefail grep -q выходит
-            # по первой строке, find получает SIGPIPE и даёт 141, и статус конвейера
-            # говорит «не найдено» о существующем файле. Стреляет ровно там, где
-            # basename дублируется — то есть в том самом классе, который этот ваулт
-            # и несёт (см. ambiguous-link).
+            # Output into a variable, not `find | grep -q .`: under pipefail grep -q
+            # exits on the first line, find dies of SIGPIPE with 141, and the pipeline
+            # status then says "not found" about a file that exists. It fires exactly
+            # where a basename is duplicated — the very class this vault carries
+            # (see ambiguous-link).
             hits=$(find . -name "$base.md" -not -path './.git/*')
             [ -n "$hits" ] || \
                 printf 'decision-ref:%s\t%s → %s не существует\n' "${p#./}" "$k" "$v"

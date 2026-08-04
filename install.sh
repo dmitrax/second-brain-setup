@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# install.sh — установка skill "Второй Мозг" для Claude Code
+# install.sh — install the "Second Brain" skill for Claude Code
 set -e
 
-# ─── Настройки ───────────────────────────────────────────────────────────────
+# ─── Settings ────────────────────────────────────────────────────────────────
 VAULT="${SECOND_BRAIN_VAULT:-$HOME/Workspace/second-brain-vault}"
 mkdir -p ~/Workspace  # ensure ~/Workspace exists
 SKILL_DIR="$HOME/.claude/skills/second-brain"
 COMMANDS_DIR="$HOME/.claude/commands"
 
-# Неинтерактивный режим: когда stdin не терминал (CI, preflight.sh, pipe) или задан
-# SECOND_BRAIN_NONINTERACTIVE=1 — все вопросы пропускаются и берутся значения по
-# умолчанию. Без этого `set -e` + `read` роняли скрипт на первом же вопросе при EOF,
-# из-за чего установку нельзя было проверить иначе как руками с клавиатуры.
+# Non-interactive mode: when stdin is not a terminal (CI, preflight.sh, a pipe) or
+# SECOND_BRAIN_NONINTERACTIVE=1 is set, every question is skipped and defaults are used.
+# Without this, `set -e` plus `read` aborted the script on the very first question at
+# EOF, which made the install impossible to test except by hand at a keyboard.
 if [ -t 0 ] && [ -z "$SECOND_BRAIN_NONINTERACTIVE" ]; then
     INTERACTIVE=1
 else
     INTERACTIVE=0
 fi
 
-# ask <промпт> <имя переменной> — спрашивает только в интерактивном режиме
+# ask <prompt> <variable name> — asks only in interactive mode
 ask() {
     if [ "$INTERACTIVE" = "1" ]; then
         read -r -p "$1" "$2" || true
@@ -27,7 +27,7 @@ ask() {
     fi
 }
 
-# ─── Цвета для вывода ────────────────────────────────────────────────────────
+# ─── Output colours ──────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
@@ -36,42 +36,44 @@ NC='\033[0m'
 echo -e "${BLUE}━━━ Установка skill: Второй Мозг ━━━${NC}"
 echo ""
 
-# ─── Спросить vault path если не задан ───────────────────────────────────────
+# ─── Ask for the vault path if not given ─────────────────────────────────────
 echo -e "Путь к vault: ${YELLOW}$VAULT${NC}"
 ask "Изменить? (Enter = оставить, или введи новый путь): " CUSTOM_VAULT
 if [ -n "$CUSTOM_VAULT" ]; then
     VAULT="$CUSTOM_VAULT"
 fi
 
-# ─── Создать директории ───────────────────────────────────────────────────────
+# ─── Create directories ──────────────────────────────────────────────────────
 echo ""
 echo "Создаю директории..."
 
 mkdir -p "$SKILL_DIR"
 mkdir -p "$COMMANDS_DIR"
 
-# Vault структура
+# Vault layout
 mkdir -p "$VAULT/00-system" "$VAULT/00-shared"
 
-# ─── Копировать файлы skill ──────────────────────────────────────────────────
+# ─── Copy the skill files ────────────────────────────────────────────────────
 echo "Устанавливаю skill файлы..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 cp "$SCRIPT_DIR/SKILL.md" "$SKILL_DIR/SKILL.md"
 
-# lib/ — детерминированные помощники, которые вызывают промпты. Ставится до команд:
-# команда, ссылающаяся на отсутствующий brain.sh, тихо деградирует в «CLI недоступен».
+# lib/ holds the deterministic helpers the prompts call. Installed before the commands:
+# a command referring to a missing brain.sh degrades silently into "CLI unavailable".
 if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     mkdir -p "$SKILL_DIR/lib"
     cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
     chmod +x "$SKILL_DIR/lib/brain.sh"
-    # Версия пишется рядом со скриптом: иначе установленная система не знает своей
-    # версии и не может сказать, что отстала от того, что уже лежит в vault.
-    # --dirty: обычный порядок работы — правка → update.sh (обкатать) → коммит, так что
-    # без него VERSION фиксирует describe ДО коммита и молча отстаёт от установленного
-    # кода. Замерено 2026-08-03: _PROJECT.md получил -10-g34f5287 при фактических
-    # -12-g9a657fe. Суффикс -dirty делает отставание видимым в самом штампе.
+    # The version is written next to the script: otherwise the installed system does
+    # not know its own version and cannot report that it lags behind what the vault
+    # already records.
+    # --dirty: the normal working order is edit -> update.sh (try it) -> commit, so
+    # without the suffix VERSION records `describe` from BEFORE the commit and silently
+    # trails the installed code. Measured 2026-08-03: _PROJECT.md received -10-g34f5287
+    # against the actual -12-g9a657fe. The -dirty suffix makes the lag visible in the
+    # stamp itself.
     INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
     printf '%s\n' "$INSTALLED_VERSION" > "$SKILL_DIR/lib/VERSION"
     echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($INSTALLED_VERSION) → $SKILL_DIR/lib/"
@@ -88,7 +90,7 @@ for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do
     fi
 done
 
-# ─── Создать системные файлы vault (если не существуют) ──────────────────────
+# ─── Create the vault system files (only if absent) ──────────────────────────
 echo ""
 echo "Инициализирую vault системные файлы..."
 
@@ -199,7 +201,7 @@ EOF
     echo -e "  ${GREEN}✓${NC} .gitignore"
 fi
 
-# ─── Git инициализация ────────────────────────────────────────────────────────
+# ─── Git initialisation ──────────────────────────────────────────────────────
 echo ""
 if [ ! -d "$VAULT/.git" ]; then
     ask "Инициализировать Git в vault? (y/n): " INIT_GIT
@@ -218,7 +220,7 @@ if [ ! -d "$VAULT/.git" ]; then
     fi
 fi
 
-# ─── Итог ────────────────────────────────────────────────────────────────────
+# ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}━━━ Установка завершена ━━━${NC}"
 echo ""

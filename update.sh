@@ -7,9 +7,9 @@ set -e
 SKILL_DIR="$HOME/.claude/skills/second-brain"
 COMMANDS_DIR="$HOME/.claude/commands"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# --dirty: правка → update.sh → коммит — обычный порядок, и без суффикса штамп
-# фиксирует describe ДО коммита, отставая от кода, который на самом деле установлен
-# (замерено 2026-08-03: -10-g34f5287 против фактических -12-g9a657fe).
+# --dirty: edit -> update.sh -> commit is the normal order, and without the suffix the
+# stamp records `describe` from BEFORE the commit, lagging behind the code actually
+# installed (measured 2026-08-03: -10-g34f5287 against the real -12-g9a657fe).
 VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
 
 GREEN='\033[0;32m'
@@ -37,8 +37,8 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     mkdir -p "$SKILL_DIR/lib"
     cp "$SCRIPT_DIR/lib/brain.sh" "$SKILL_DIR/lib/brain.sh"
     chmod +x "$SKILL_DIR/lib/brain.sh"
-    # Записать версию рядом со скриптом: без этого установленная система не знает
-    # своей версии и не может предупредить, что отстала от vault.
+    # Write the version next to the script: without it the installed system does not
+    # know its own version and cannot warn that it lags behind the vault.
     printf '%s\n' "$VERSION" > "$SKILL_DIR/lib/VERSION"
     echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($VERSION) → $SKILL_DIR/lib/"
 else
@@ -65,10 +65,10 @@ echo "  Version: $VERSION"
 echo "  Restart active Claude Code sessions to pick up changes."
 echo ""
 
-# Напомнить про vault если это был breaking change
-# `|| true` обязателен: под `set -e` голое присваивание из команды, которая штатно
-# выходит с ненулевым кодом (нет точного тега — обычное состояние), роняет скрипт.
-# Раньше вызов стоял внутри `if` и потому прощался; вынос из конвейера это вскрыл.
+# Remind about the vault if this was a breaking change.
+# `|| true` is required: under `set -e` a bare assignment from a command that routinely
+# exits non-zero (no exact tag — the normal state) aborts the script. The call used to
+# sit inside an `if`, which forgave it; taking it out of the pipeline exposed that.
 exact_tag=$(git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null || true)
 if printf '%s\n' "$exact_tag" | grep -q "^v[0-9]*\.0"; then
     echo -e "${YELLOW}⚠️  Major version detected.${NC}"
