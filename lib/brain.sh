@@ -583,7 +583,6 @@ BUDGET_PROSE=60
 BUDGET_FFC=20
 BUDGET_DONE=20
 BUDGET_PROG=300
-BUDGET_SIZE=600
 
 # non-blank lines of one '## ' section, heading excluded. Top-level, not nested in
 # lint_collect: prose-budget needs the same counter, and a copy would be a second
@@ -594,7 +593,6 @@ _lc_section() {
 
 _budget_prose() { _lc_section "$1" '^## (Current state|Статус|Last session|Последняя сессия|For future Claude)'; }
 _budget_ffc()   { _lc_section "$1" '^## For future Claude'; }
-_budget_size()  { grep -c . "$1"; }
 # Both markers, always: projects write closed items as `- [x]` and as `- ✅`, and a
 # counter that knows one reports zero for a project using the other. Count inside Done
 # only — a closed sub-item under an open task is not an archivable entry.
@@ -639,7 +637,6 @@ prose_budget() {
     else
         report "taskboard Done (entries)" "$(_budget_done "$tb")" "$BUDGET_DONE"
         report "taskboard In progress (lines)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
-        report "taskboard total (lines)" "$(_budget_size "$tb")" "$BUDGET_SIZE"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
@@ -986,7 +983,6 @@ lint_collect() {
             # Count inside Done only — a closed sub-item under an open task is not
             # an archivable entry (65 file-wide against 5 in Done, measured).
             dn=$(_budget_done "$tb")
-            tot=$(_budget_size "$tb")
             prog=$(_budget_prog "$tb")
             # The detail names the ACTIONABLE part: archive only moves dated entries,
             # and "archive it" is useless advice when not one entry carries a date.
@@ -996,7 +992,6 @@ lint_collect() {
                        END { print n + 0 }' "$tb")
             [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
             [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s lines\n' "$P" "$prog"
-            [ "$tot" -gt "$BUDGET_SIZE" ] && printf 'taskboard-size:%s\t%s lines, In progress %s\n' "$P" "$tot" "$prog"
         fi
 
         am="$P/architecture-map.md"

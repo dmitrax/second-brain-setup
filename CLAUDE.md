@@ -280,6 +280,19 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   hurts: counting only Done passed `goprofi-voronka` as healthy at 2131 lines with 1091 in
   `## In progress`. Same distortion already fixed once for `_PROJECT.md`, where total size
   was replaced by a prose budget. Checked by preflight 17.
+  **The other half of "measure the part that hurts" is knowing when to stop measuring, and
+  a duplicate signal is worse than none.** The taskboard carried a third threshold on the
+  whole file alongside the two targeted ones, and measuring it 2026-08-04 showed it fired
+  exactly twice: once on `goprofi-voronka`, where `taskboard-inprogress` was already
+  reporting the same 1074 lines, and once here, where the 829 were `## Backlog` (501) — a
+  queue, not debt, which the `_PROJECT.md` link-list precedent says must not be counted at
+  all. One duplicate and one false out of two, so it was removed rather than re-aimed:
+  `In progress` (lines) and `Done` (entries) already measure everything that hurts, and a
+  combined figure would have restated them. Removing a check **silently retires every
+  finding it owned** — two keys left the baseline, which reads exactly like debt someone
+  cleared, so the removal is stated out loud and the baseline re-sealed deliberately. The
+  fixture in preflight 17 now asserts the key's **absence**, so the metric cannot return
+  by accident.
 - **A template needs a lighter setting, or it gets filled with nothing.** The decision
   note had one weight — Y-statement + Context + Alternatives rejected + Consequences +
   Review by — applied to decisions of every size. Measured 2026-08-04 across the vault:

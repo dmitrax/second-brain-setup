@@ -570,7 +570,7 @@ if [ -f "$LIBSH" ]; then
     want 'ffc-budget:proj'
     want 'stale-project:proj'
     want 'taskboard-inprogress:proj'
-    want 'taskboard-size:proj'
+    nope 'taskboard-size:proj'   # the metric was removed 2026-08-04 — it must not come back
     want 'taskboard-done:proj'
     want 'map-stale:proj'
     want 'key-uniformity:proj/sessions'
@@ -1327,7 +1327,7 @@ else
     grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
         missing+="an overrun is allowed to finish silently"$'\n'
     # One implementation: the thresholds are variables, and lint_collect reads the same ones.
-    for v in BUDGET_PROSE BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_SIZE; do
+    for v in BUDGET_PROSE BUDGET_FFC BUDGET_DONE BUDGET_PROG; do
         n=$(grep -c "^$v=" "$lb")
         [ "$n" -eq 1 ] || missing+="$v is defined $n time(s), it must be exactly one"$'\n'
         grep -qF "\$$v" "$lb" || missing+="$v is used nowhere"$'\n'
