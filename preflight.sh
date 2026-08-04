@@ -38,7 +38,7 @@ PASSED=0
 # provisioning below (check 7) and the empty-input rule (check 14).
 # Detected by behaviour, not by reading $LANG: the variable can name a locale the
 # machine does not actually have, and it is the behaviour that the checks depend on.
-if printf 'caf\xc3\xa9\n' | grep -qE '[А-Яа-яЁё]'; then
+if printf 'caf\303\251\n' | grep -qE '[А-Яа-яЁё]'; then   # \ooo is POSIX, \xHH is not
     echo -e "${RED}✗${NC} the locale makes [А-Яа-яЁё] match any non-ASCII byte"
     echo "  Checks 32 and 33 would flag 'café' and 'Müller' as Russian."
     echo "  Current: LANG=${LANG:-unset} LC_ALL=${LC_ALL:-unset} LC_CTYPE=${LC_CTYPE:-unset}"
