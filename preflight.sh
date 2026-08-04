@@ -1178,8 +1178,12 @@ for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/lib/*.
          "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh"; do
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
-    # a line with an explicit fallback (two forms joined by ||) is the required remedy
-    h=$(grep -nE "$NONPORTABLE" "$f" | grep -v '||' | grep -v '^\s*#')
+    # a line with an explicit fallback (two forms joined by ||) is the required remedy.
+    # The comment filter is anchored past the `NNN:` that -n prepends: written as `^\s*#`
+    # it could never match anything, so the exclusion was dead from the first line it was
+    # meant to skip, and `\s` is a GNU extension besides. Found 2026-08-04, when a comment
+    # explaining check 38's defect became the first comment this check ever saw.
+    h=$(grep -nE "$NONPORTABLE" "$f" | grep -v '||' | grep -vE '^[0-9]+:[[:space:]]*#')
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
 done
 # The second half of the same class, and it is about the name rather than a flag: `ls` in
@@ -2027,6 +2031,76 @@ elif [ -n "$missing" ]; then
     fail "a prompt block refers to a variable with nowhere to come from" "$missing"
 else
     pass "every variable in a prompt block is introduced by assignment or prose ($scanned files)"
+fi
+
+# ─── 38. A date fallback names the time of day, or it borrows the clock ──────
+# Check 20 treats any line carrying `||` as a portable fallback. That is presence, not
+# correctness, and the gap between the two was a live defect for as long as the fallback
+# existed: `date -j -f %Y-%m-%d "$1" +%s` parses on BSD and fills every field the format
+# does not name — hours, minutes, seconds — from the CURRENT clock. So one date yields a
+# different epoch on every call while the run's TODAY is frozen at the top, and an age in
+# days shrinks by one the moment the run crosses a second boundary.
+# Measured 2026-08-04 on Darwin with a BSD-only PATH: `2026-07-20` was 15 days old in a
+# --project run and 14 days old in the full sweep, so both projects sitting exactly on the
+# 14-day threshold vanished from lint-collect — 27 findings against 29, exit 0, stderr
+# empty. GNU's `-d` means midnight, so the two implementations disagreed by a whole day
+# even standing still: a key set that depends on which machine ran it is exactly the fake
+# NEW/GONE the baseline exists to prevent.
+# Static half runs everywhere. Behavioural half executes the shipped chain itself (read
+# out of lib/brain.sh, never a second copy that could drift from it) and requires the
+# epoch to be midnight; where the machine has no BSD date the BSD branch cannot be
+# exercised at all, and the check says which of the two modes it ran in rather than
+# printing one green for both.
+missing=""
+scanned=0
+for f in "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR/SKILL.md"; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    # strip comment lines first: this rule is explained in prose that quotes the broken
+    # form, and a comment must never be able to fail — or satisfy — a check about code
+    h=$(grep -nE 'date -j' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v '%H')
+    [ -n "$h" ] && missing+="$(basename "$f") — a BSD date parse that does not name the time:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+done
+epoch_fn=$(sed -n '/_lc_epoch() {/,/^    }/p' "$SCRIPT_DIR/lib/brain.sh")
+if [ -z "$epoch_fn" ]; then
+    missing+="lib/brain.sh — _lc_epoch not found; the behavioural half had nothing to run"$'\n'
+else
+    eval "$epoch_fn"                       # the shipped text, not a copy of it
+    e1=$(_lc_epoch 2026-07-20)
+    e2=$(_lc_epoch 2026-07-20)
+    hms=$(date -d "@$e1" +%H%M%S 2>/dev/null || date -r "$e1" +%H%M%S 2>/dev/null || echo "??")
+    if [ -z "$e1" ]; then
+        missing+="_lc_epoch returned nothing — no working date(1) here, which is a failure and not a skip"$'\n'
+    elif [ "$e1" != "$e2" ]; then
+        missing+="_lc_epoch is not deterministic: $e1 then $e2 for one date"$'\n'
+    elif [ "$hms" != "000000" ]; then
+        missing+="_lc_epoch resolves a bare date to $hms, not to midnight — it is reading the clock"$'\n'
+    fi
+    # The branch under test is the SECOND one, and the first shadows it: wherever GNU date
+    # answers, the BSD form is never reached, so the assertions above are about a line that
+    # did not run. Caught by the differentiating negative test — a fallback rewritten to
+    # read the clock stayed green here while the static half was satisfied. So where a BSD
+    # date exists, run the shipped chain again with a PATH that offers only that one.
+    mode="GNU branch only (this machine has no BSD date)"
+    if /bin/date -j -f "%Y-%m-%d %H:%M:%S" "2026-07-20 00:00:00" +%s >/dev/null 2>&1; then
+        mode="both branches, BSD included"
+        pf_ed=$(mktemp -d); pf_bsd="$pf_ed/epoch_bsd.sh"
+        { printf '%s\n' "$epoch_fn"; printf '%s\n' '_lc_epoch 2026-07-20'; } > "$pf_bsd"
+        b1=$(PATH=/usr/bin:/bin /bin/bash "$pf_bsd" 2>/dev/null)
+        if [ -z "$b1" ]; then
+            missing+="the BSD branch returned nothing under a BSD-only PATH"$'\n'
+        elif [ "$b1" != "$e1" ]; then
+            missing+="the two branches disagree for one date: GNU $e1, BSD $b1 — the age in days differs by machine"$'\n'
+        fi
+        rm -rf "$pf_ed"
+    fi
+fi
+if [ "$scanned" -eq 0 ]; then
+    fail "check 38 opened no files — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a date parse borrows the current clock (silently shifts an age by a day)" "$missing"
+else
+    pass "a bare date resolves to midnight and does not move — $mode ($scanned files)"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

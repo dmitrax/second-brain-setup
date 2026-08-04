@@ -870,8 +870,19 @@ lint_collect() {
     # shellcheck disable=SC2064
     trap "rm -rf '$LC_TMP'" EXIT
 
-    _lc_epoch() {  # portable: GNU date first, BSD date second. Neither -> empty.
-        date -d "$1" +%s 2>/dev/null || date -j -f %Y-%m-%d "$1" +%s 2>/dev/null || true
+    # Portable: GNU date first, BSD date second. Neither -> empty.
+    # The BSD branch spells the time out. `date -j -f %Y-%m-%d` fills every field the
+    # format does not name from the CURRENT clock, so the same date parses one second
+    # later on every call while TODAY stays frozen at the top of the run: measured
+    # 2026-08-04 on Darwin, `2026-07-20` was 15 days old at the start of a full
+    # lint-collect and 14 days old by the time the loop reached it, and two projects
+    # sitting exactly on the 14-day threshold vanished from the output. Exit 0, stderr
+    # empty. GNU's `-d` means midnight, so the two implementations also disagreed by a
+    # day even without the drift — a key set that differs per machine is precisely the
+    # fake NEW/GONE the baseline exists to prevent.
+    _lc_epoch() {
+        date -d "$1" +%s 2>/dev/null ||
+            date -j -f "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s 2>/dev/null || true
     }
     _lc_fm() {     # value of one frontmatter key, first block only
         awk -v k="$2" '/^---$/ { c++; next }
