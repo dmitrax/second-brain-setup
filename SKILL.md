@@ -257,7 +257,8 @@ When user says any of the following → suggest updating CLAUDE.md Block 2:
 - new convention or agreement reached
 - something broke that should not repeat
 
-Response pattern: "Это стоит добавить в CLAUDE.md как постоянное правило. Обновить?"
+Response pattern: "This belongs in CLAUDE.md as a standing rule. Update it?" — phrased
+in the vault's working language (see `brain.sh vault-language`).
 
 **What belongs where — one fact, one home.**
 Three memories are read at different moments, so a fact copied across them does not

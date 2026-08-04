@@ -251,7 +251,9 @@ For code work, read `architecture-map.md` before touching the codebase.
 External reference materials are in `raw/` — process with `/brain-ingest` before using.
 
 ## Последняя сессия
-[YYYY-MM-DD] — проект инициализирован
+(a matched section: keep this spelling or `Last session`, never a third one — see the
+`vault-language` note in /brain-init)
+[YYYY-MM-DD] — project initialised
 ```
 
 `updated` is bumped by `/brain-save` on every session that changes project state.

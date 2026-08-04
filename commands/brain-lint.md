@@ -207,7 +207,7 @@ GONE since last lint:  [N] ← fixed; confirm it was deliberate
 Known, unchanged:      [N] ← parked debt, listed in the baseline, do not re-litigate
 
 Contradictions:        [M] (list — the part no script can find)
-Broken links (CLI):    [N] (list) / n/a (Obsidian не запущен)
+Broken links (CLI):    [N] (list) / n/a (Obsidian not running)
 Connections.md:        updated / no changes
 
 Recommendations:

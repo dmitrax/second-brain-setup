@@ -149,7 +149,7 @@ bash update.sh
 
 # For existing code/mixed projects, create architecture-map.md manually
 # or let Claude generate it on your next session:
-# > Создай architecture-map.md для этого проекта на основе текущей кодовой базы
+# > Create architecture-map.md for this project from the current codebase
 
 # Add updated: field to existing _PROJECT.md files (optional, enables stale detector):
 # updated: 2026-06-09

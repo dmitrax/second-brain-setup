@@ -964,345 +964,351 @@ grep -qiE 'minimum, not the full list' "$BS" ||
     missing+="brain-save.md: the session-log template is not declared a minimum"$'\n'
 grep -qiE 'Minimum frontmatter' "$BS" ||
     missing+="brain-save.md: the decision-note template is not declared a minimum"$'\n'
-# Значение выводится под запись, ключ переносится — иначе копирование значения молча врёт.
+# The value is derived per entry while the key carries over — a copied value lies silently.
 grep -qiE 'derive each .*value|value derived' "$BS" ||
-    missing+="brain-save.md: потеряно правило «ключ переносится, значение выводится»"$'\n'
+    missing+="brain-save.md: lost the rule that the key carries over and the value is derived"$'\n'
 grep -qF 'key-uniformity' "$SCRIPT_DIR/lib/brain.sh" ||
-    missing+="lib: нет проверки однородности ключей frontmatter"$'\n'
+    missing+="lib: no frontmatter key-uniformity check"$'\n'
 grep -qF 'key-uniformity' "$SCRIPT_DIR/commands/brain-lint.md" ||
-    missing+="brain-lint.md: находка key-uniformity не описана"$'\n'
+    missing+="brain-lint.md: the key-uniformity finding is undescribed"$'\n'
 if [ -n "$missing" ]; then
-    fail "локальные конвенции frontmatter не защищены (шаблон читается как исчерпывающий)" "$missing"
+    fail "local frontmatter conventions are unprotected (the template reads as exhaustive)" "$missing"
 else
-    pass "шаблоны объявлены минимумом, шаг поиска локальных ключей до записи, lint 10b на месте"
+    pass "templates declare themselves a minimum, the lookup step precedes the write, lint 10b present"
 fi
 
-# ─── 17. Счётчик таскборда видит оба маркера и мерит не только Done ──────────
-# Два дефекта одного класса «зелёное ≠ проверенное», найдены 2026-08-03.
-# (1) Счётчик искал только `- [x]`, а cadrika пишет `- ✅` — её 16 закрытых пунктов
-#     были невидимы, порог не сработал бы и на сотне.
-# (2) Порог считал только Done, поэтому goprofi-voronka проходил как здоровый при
-#     2131 строке, из них 1074 в `## In progress` — секция, которую сессия не может
-#     удержать в контексте, отчего задачи дописываются вслепую и дублируются.
-# Тот же перекос чинили у _PROJECT.md, заменив общий размер бюджетом прозы.
+# ─── 17. The taskboard counter sees both markers and measures more than Done ─
+# Two defects of the same "green is not the same as checked" class, found 2026-08-03.
+# (1) The counter looked for `- [x]` only, while cadrika writes `- ✅` — its 16 closed
+#     items were invisible, and the threshold would not have fired at a hundred either.
+# (2) The threshold counted Done only, so goprofi-voronka passed as healthy at 2131 lines
+#     with 1074 of them in `## In progress` — a section a session cannot hold in context,
+#     which is how tasks get appended blind and duplicated.
+# The same distortion was fixed for _PROJECT.md by replacing total size with a prose
+# budget.
 missing=""
 BL="$SCRIPT_DIR/lib/brain.sh"
-grep -qF '✅' "$BL" || missing+="lib: счётчик Done не знает маркер ✅"$'\n'
-grep -qF '[x]' "$BL" || missing+="lib: счётчик Done не знает маркер [x]"$'\n'
-# Ищем сам замер, а не слова «In progress» в прозе: первая редакция этой проверки
-# матчила описание находки и потому не заметила бы удаление кода.
+grep -qF '✅' "$BL" || missing+="lib: the Done counter does not know the ✅ marker"$'\n'
+grep -qF '[x]' "$BL" || missing+="lib: the Done counter does not know the [x] marker"$'\n'
+# This looks for the measurement itself, not the words "In progress" in prose: the first
+# version of this check matched the description of the finding and would not have noticed
+# the code being deleted.
 grep -qE '^[[:space:]]*prog=\$\(' "$BL" ||
-    missing+="lib: нет замера размера секции In progress (переменная prog=)"$'\n'
-# Счётчик Done обязан считать ВНУТРИ секции Done. Замерено 2026-08-03: по всему файлу
-# goprofi-voronka давал 83 против 19, dimarch 31 против 8, собственный таскборд 65
-# против 5 — закрытые подпункты открытых задач считались архивируемыми записями.
-# Счётчики уехали в _budget_* (одна реализация на линт и на запись, проверка 25),
-# поэтому смотрим их тела, а не строку вызова. Требуемое свойство то же и не ослаблено:
-# внутри счётчика Done обязан стоять фильтр по секции.
+    missing+="lib: no measurement of the In progress section size (the prog= variable)"$'\n'
+# The Done counter must count INSIDE the Done section. Measured 2026-08-03: counted
+# file-wide, goprofi-voronka gave 83 against 19, dimarch 31 against 8, this repo's own
+# taskboard 65 against 5 — closed sub-items of open tasks were counted as archivable
+# entries.
+# The counters moved into _budget_* (one implementation for the lint and for the write,
+# check 25), so this reads their bodies rather than the call site. The required property
+# is the same and is not weakened: the Done counter must carry a section filter.
 done_body=$(awk '/^_budget_done\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "$BL")
 if [ -z "$done_body" ]; then
-    missing+="lib: функции _budget_done нет — счётчик Done негде проверить"$'\n'
+    missing+="lib: no _budget_done function — nowhere to check the Done counter"$'\n'
 else
     printf '%s\n' "$done_body" | grep -qF '## (Done|Завершено)' ||
-        missing+="lib: счётчик Done не знает, где секция Done"$'\n'
-    # Наличия шаблона секции мало: он может лежать в теле и не участвовать в счёте.
-    # Требуем, чтобы строка счёта была ЗАКРЫТА этим флагом. Поймано негативным тестом
-    # 2026-08-04: снятие флага с условия оставляло проверку зелёной.
+        missing+="lib: the Done counter does not know where the Done section is"$'\n'
+    # The section pattern being present is not enough: it can sit in the body without
+    # taking part in the count. The counting line must be GUARDED by that flag. Caught by
+    # a negative test 2026-08-04: removing the flag from the condition left this green.
     printf '%s\n' "$done_body" | grep -qE '^[[:space:]]*d &&' ||
-        missing+="lib: счётчик Done считает по всему файлу, не по секции Done"$'\n'
+        missing+="lib: the Done counter counts file-wide, not within the Done section"$'\n'
 fi
 grep -qE '^BUDGET_PROG=[0-9]{2,}' "$BL" ||
-    missing+="lib: у секции In progress нет порога (BUDGET_PROG)"$'\n'
+    missing+="lib: the In progress section has no threshold (BUDGET_PROG)"$'\n'
 grep -qF '"$prog" -gt "$BUDGET_PROG"' "$BL" ||
-    missing+="lib: размер In progress не сравнивается со своим порогом"$'\n'
+    missing+="lib: the In progress size is not compared against its threshold"$'\n'
 grep -qF 'taskboard-inprogress:' "$BL" ||
-    missing+="lib: потеряна метрика In progress — снова мерится только Done"$'\n'
+    missing+="lib: the In progress metric was lost — only Done is measured again"$'\n'
 if [ -n "$missing" ]; then
-    fail "счётчик таскборда снова слеп (маркер или метрика)" "$missing"
+    fail "the taskboard counter is blind again (a marker or a metric)" "$missing"
 else
-    pass "счётчик таскборда видит [x] и ✅, мерит Done + In progress + размер"
+    pass "the taskboard counter sees [x] and ✅, and measures Done + In progress + size"
 fi
 
-# ─── 18. Код-блоки промптов исполняются оболочкой сессии (на macOS — zsh) ────
-# Планка bash 3.2 (проверка 14) закрывает *.sh — у них свой shebang. Но fenced-блоки
-# внутри SKILL.md и commands/*.md исполняет оболочка сессии, а на Маке это zsh.
-# Замерено 2026-08-03, оба раза с ложной зеленью: `[ "$a" \< "$b" ]` в zsh падает с
-# `condition expected` (шаг проверки версии карты напечатал «ok» по всем проектам,
-# включая отставший), а `for p in $LIST` не делит переменную на слова (весь список
-# обработался как одна строка). Граница проведена так: всё, что требует специфики
-# оболочки, живёт в lib/brain.sh (свой shebang, гарантированный bash); в блоках
-# промптов — только то, что одинаково в bash и zsh.
+# ─── 18. Prompt code blocks run in the session's shell (zsh on macOS) ────────
+# The bash 3.2 floor (check 14) covers *.sh — they carry their own shebang. But fenced
+# blocks inside SKILL.md and commands/*.md are executed by the session's shell, and on the
+# Mac that is zsh.
+# Measured 2026-08-03, both silently green: `[ "$a" \< "$b" ]` fails in zsh with
+# `condition expected` (a map-freshness step printed "ok" for every project, including one
+# that was behind), and `for p in $LIST` does not word-split in zsh (the whole list was
+# processed as a single string). The boundary drawn: anything needing shell specifics
+# lives in lib/brain.sh (its own shebang, guaranteed bash); what stays in a prompt block
+# must behave identically in bash and zsh.
 hits=""
 for f in "${TARGETS[@]}"; do
     blocks=$(code_blocks "$f")
     h=""
-    # `\<` / `\>` в [ ]: в zsh это перенаправление, а не сравнение строк
+    # `\<` / `\>` inside [ ]: in zsh that is a redirection, not a string comparison
     echo "$blocks" | grep -nE '\[[^]]*\\[<>]' >/dev/null 2>&1 &&
-        h+="  \\< или \\> внутри [ ] — в zsh это не сравнение"$'\n'
-    # словоделение неквотированной переменной: в zsh его нет
+        h+="  \\< or \\> inside [ ] — in zsh that is not a comparison"$'\n'
+    # word-splitting an unquoted variable: zsh does not do it
     echo "$blocks" | grep -nE 'for [A-Za-z_]+ in \$[A-Za-z_{]' >/dev/null 2>&1 &&
-        h+="  for ... in \$VAR — в zsh переменная не делится на слова"$'\n'
-    # ${var:0:1} — разная семантика индексации
+        h+="  for ... in \$VAR — in zsh the variable is not split into words"$'\n'
+    # ${var:0:1} — the indexing semantics differ
     echo "$blocks" | grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*:[0-9]+:[0-9]+\}' >/dev/null 2>&1 &&
-        h+="  \${var:N:M} — индексация различается"$'\n'
-    # массивы: индексация с 0 в bash и с 1 в zsh
+        h+="  \${var:N:M} — the indexing differs"$'\n'
+    # arrays: 0-indexed in bash, 1-indexed in zsh
     echo "$blocks" | grep -nE '\$\{[A-Za-z_]+\[[@*]\]\}' >/dev/null 2>&1 &&
-        h+="  массивы — индексация с 0 в bash и с 1 в zsh, выносить в lib/"$'\n'
-    # builtins, которых в zsh нет вовсе
+        h+="  arrays — 0-indexed in bash, 1-indexed in zsh; move this into lib/"$'\n'
+    # builtins zsh does not have at all
     echo "$blocks" | grep -nE '\b(map''file|read''array|declare -''A|shopt)\b' >/dev/null 2>&1 &&
-        h+="  bash-only builtin — выносить в lib/brain.sh"$'\n'
-    # Шестой класс, найден 2026-08-04: несовпавший glob. В zsh это фатальная ошибка —
-    # команда не выполняется ВОВСЕ, и `2>/dev/null` её не глушит, потому что печатает
-    # её шелл до того, как перенаправление применится к команде; в bash тот же glob
-    # уходит литеральным аргументом. Ни один из двух исходов не является пустым
-    # списком, а код возврата конвейера остаётся 0.
-    # Замерено на /brain-save Step 0c: `ls -1 ".../sessions/"*.md` на проекте без
-    # логов — то есть на первом же сохранении нового проекта, ради которого шаг и
-    # написан — молча давал ноль. Мера: `find <dir> -name "<pat>"`, где паттерн
-    # закавычен и разворачивает его find, а не оболочка.
+        h+="  bash-only builtin — move it into lib/brain.sh"$'\n'
+    # The sixth class, found 2026-08-04: the unmatched glob. In zsh that is a fatal
+    # error — the command does not run AT ALL — and `2>/dev/null` does not silence it,
+    # because the shell prints it before the redirection applies to the command; in bash
+    # the same glob is passed through as a literal argument. Neither outcome is an empty
+    # list, and the pipeline's exit code stays 0.
+    # Measured on /brain-save Step 0c: `ls -1 ".../sessions/"*.md` on a project with no
+    # logs — that is, on the very first save of a new project, which is what the step
+    # exists for — silently produced nothing. The remedy: `find <dir> -name "<pat>"`,
+    # where the pattern is quoted and find expands it, not the shell.
     g=$(unquoted_globs "$f")
-    [ -n "$g" ] && h+="  незакавыченный glob — в zsh несовпадение отменяет команду:"$'\n'"$(printf '%s\n' "$g" | sed 's/^/    /')"$'\n'
+    [ -n "$g" ] && h+="  unquoted glob — in zsh a non-match cancels the command:"$'\n'"$(printf '%s\n' "$g" | sed 's/^/    /')"$'\n'
     [ -n "$h" ] && hits+="$(basename "$f"):"$'\n'"$h"
 done
 if [ "${#TARGETS[@]}" -eq 0 ]; then
-    fail "проверка 18 не получила ни одного файла — вход пуст, а не чист"
+    fail "check 18 received no files — empty input, not a clean repo"
 elif [ -n "$hits" ]; then
-    fail "конструкция, расходящаяся между bash и zsh, в code-блоке промпта" "$hits"
+    fail "a construct that differs between bash and zsh in a prompt code block" "$hits"
 else
-    pass "код-блоки промптов переносимы между bash и zsh (6 классов не встречаются)"
+    pass "prompt code blocks are portable between bash and zsh (6 classes absent)"
 fi
 
-# ─── 19. Вывод о состоянии обязан проверять свою посылку ────────────────────
-# Один класс, найден 2026-08-03 на первом же сохранении под новым кодом: команда
-# делает верное действие и сопровождает его утверждением, посылку которого никто
-# не проверял. Оба места — в /brain-save, оба молчаливы.
-# (1) Предупреждение о версии называло «пропустившими update.sh» проекты со значением
-#     `1.3`. Это не штамп, а литерал старого шаблона /brain-init: вписывался при
-#     создании проекта и ни о какой машине не свидетельствует. Пять проектов были
-#     объявлены отставшими, притом что они просто не сохранялись после 03.08.
-#     Форматы `1.3` и `v1.6.0-10-g34f5287` вдобавок не упорядочены друг против друга.
-# (2) «Удаляй старые записи — они остаются в sessions/» есть утверждение о конкретной
-#     записи, а не свойство секции. У выброшенной записи `_mac/mac-setup` от 15.07
-#     лога не было и нет; факты уцелели в architecture-map.md по везению, не по проверке.
-#     Тот же случай ловили руками 26.07 в goprofi-voronka — в текст правила он не въехал.
+# ─── 19. A conclusion about state must verify its own premise ────────────────
+# One class, found 2026-08-03 on the first save under the new code: a command performs the
+# right action and attaches to it a claim whose premise nobody checked. Both instances are
+# in /brain-save, and both are silent.
+# (1) The version warning called projects holding `1.3` "machines that skipped update.sh".
+#     That is not a stamp but a literal from the old /brain-init template: written at
+#     project creation, evidence about no machine at all. Five projects were declared
+#     behind when they simply had not been saved since 08-03. The formats `1.3` and
+#     `v1.6.0-10-g34f5287` are not even ordered against each other.
+# (2) "Delete older entries, they remain in sessions/" is a claim about one entry, not a
+#     property of the section. The dropped `_mac/mac-setup` entry from 07-15 had no log
+#     and still has none; its facts survived in architecture-map.md by luck, not by check.
+#     The same case was caught by hand on 07-26 in goprofi-voronka and never reached the
+#     rule's text.
 missing=""
 BS="$SCRIPT_DIR/commands/brain-save.md"
 grep -qF 'Compare only real stamps' "$BS" ||
-    missing+="brain-save.md: сравнение версий не требует, чтобы оба значения были штампами"$'\n'
+    missing+="brain-save.md: the version comparison does not require both values to be stamps"$'\n'
 grep -qF 'v<MAJOR>.<MINOR>.<PATCH>' "$BS" ||
-    missing+="brain-save.md: не описан формат настоящего штампа"$'\n'
+    missing+="brain-save.md: the format of a real stamp is not described"$'\n'
 grep -qF 'the old `/brain-init` literal' "$BS" ||
-    missing+="brain-save.md: легаси-значения не названы литералом /brain-init"$'\n'
+    missing+="brain-save.md: legacy values are not named as the /brain-init literal"$'\n'
 grep -qF 'not ordered against each other' "$BS" ||
-    missing+="brain-save.md: два формата версии сравниваются как упорядоченные"$'\n'
+    missing+="brain-save.md: the two version formats are compared as if ordered"$'\n'
 grep -qF 'have not been saved since stamping' "$BS" ||
-    missing+="brain-save.md: потерян верный вывод для легаси-значения (не «старая установка»)"$'\n'
+    missing+="brain-save.md: lost the correct conclusion for a legacy value (not 'an old install')"$'\n'
 grep -qF 'Before deleting an entry' "$BS" ||
-    missing+="brain-save.md: удаление записи из «Последней сессии» ничем не обусловлено"$'\n'
+    missing+="brain-save.md: deleting an entry from the session list carries no precondition"$'\n'
 grep -qF 'must exist. If it does not' "$BS" ||
-    missing+="brain-save.md: не требуется, чтобы session log удаляемой записи существовал"$'\n'
+    missing+="brain-save.md: does not require the session log of a deleted entry to exist"$'\n'
 if [ -n "$missing" ]; then
-    fail "вывод о состоянии делается без проверки посылки (версия / удаление записи)" "$missing"
+    fail "a conclusion about state is drawn without checking its premise (version / entry deletion)" "$missing"
 else
-    pass "brain-save сверяет форматы версий и не удаляет запись без живого session log"
+    pass "brain-save compares version formats and deletes no entry without a live session log"
 fi
 
-# ─── 20. Имя команды не гарантирует инструмент ──────────────────────────────
-# Проверка 18 закрывает синтаксис оболочки. Эта — то, ВО ЧТО разрешается имя команды.
-# Замерено 2026-08-03 на рабочем Маке: `date` и `xargs` — GNU из Homebrew (gnubin в
-# PATH), а `ls` и `grep` вообще shell-функции из снапшота Claude Code. Одно имя, три
-# разных источника, и код промпта не может знать, какой достанется.
-# Картина отказа каждый раз одна и та же: команда отработала, вывод пуст, проверка
-# зелёная. В тот день `date -j` (BSD-форма) не существовал вовсе, и два шага линта
-# молча дали ноль находок вместо ошибки; поймано только сверкой с baseline.
-# Своим shebang'ом это НЕ лечится, в отличие от класса проверки 18: `#!/bin/bash`
-# задаёт оболочку, а не PATH — lib/brain.sh получает те же самые бинарники. Значит
-# мера другая: либо флаги, одинаковые в GNU и BSD, либо явный фоллбек в коде.
+# ─── 20. A command name does not guarantee the tool ──────────────────────────
+# Check 18 covers shell syntax. This one covers what a command name RESOLVES TO.
+# Measured 2026-08-03 on the working Mac: `date` and `xargs` are GNU builds from Homebrew
+# (gnubin on PATH), while `ls` and `grep` are shell functions from the Claude Code
+# snapshot. One name, three sources, and prompt code cannot know which it gets.
+# The failure looks the same every time: the command ran, the output is empty, the check
+# is green. That day `date -j` (the BSD form) did not exist at all, and two lint steps
+# silently returned zero findings instead of an error; caught only by diffing the baseline.
+# A shebang does NOT fix this, unlike the class in check 18: `#!/bin/bash` sets the shell,
+# not PATH — lib/brain.sh receives the very same binaries. So the remedy is different:
+# flags that mean the same in GNU and BSD, or an explicit fallback in the code.
 missing=""
-# Паттерны собраны из кусков, иначе проверка нашла бы саму себя.
+# The patterns are assembled from pieces, or the check would match itself.
 NONPORTABLE="date -""j|date -""d|date --""date|stat -""f |stat -""c |sed -""i|readlink -""f|grep -""P"
 scanned=0
 for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/lib/*.sh \
          "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh"; do
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
-    # строка с явным фоллбеком (две формы через ||) — это и есть требуемая мера
+    # a line with an explicit fallback (two forms joined by ||) is the required remedy
     h=$(grep -nE "$NONPORTABLE" "$f" | grep -v '||' | grep -v '^\s*#')
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
 done
-# Вторая половина того же класса, и она про имя, а не про флаг: `ls` в блоке промпта
-# исполняет оболочка сессии, где это может быть чем угодно. Замерено 2026-08-04 на этой
-# машине: `ls` — функция `eza --icons=auto` из ~/.zshrc, попавшая в снапшот Claude Code.
-# Комментарий выше называл `ls` примером проблемы с самого начала, а список паттернов
-# его не содержал, потому что проверка искала флаги. Разбор форматированного вывода
-# чужой реализации `ls` — не то, на чём должен стоять шаг команды: `find` разворачивает
-# паттерн сам и не имеет вариантов вывода.
-# Область — только промпты: скрипт, запущенный как `bash lib/brain.sh`, функции
-# оболочки не наследует (они не экспортированы), так что там `ls` — настоящий бинарник.
+# The second half of the same class, and it is about the name rather than a flag: `ls` in
+# a prompt block is executed by the session's shell, where it can be anything. Measured
+# 2026-08-04 on this machine: `ls` is the function `eza --icons=auto` from ~/.zshrc, picked
+# up into the Claude Code snapshot. The comment above named `ls` as an example of the
+# problem from the start, while the pattern list did not contain it, because the check was
+# looking for flags. Parsing the formatted output of somebody else's `ls` is not what a
+# command step should rest on: `find` expands the pattern itself and has no output variants.
+# Scope is prompts only: a script run as `bash lib/brain.sh` does not inherit shell
+# functions (they are not exported), so there `ls` is the real binary.
 for f in "${TARGETS[@]}"; do
     [ -f "$f" ] || continue
     h=$(code_blocks "$f" | grep -nE '(^|[|;(&]|[[:space:]])ls([[:space:]]|$)')
-    [ -n "$h" ] && missing+="$(basename "$f") — вызов ls в блоке промпта (в оболочке сессии это может быть функция):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+    [ -n "$h" ] && missing+="$(basename "$f") — an ls call in a prompt block (in the session shell it may be a function):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 20 не открыла ни одного файла — вход пуст, а не чист"
+    fail "check 20 opened no files — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
-    fail "имя, разрешающееся непредсказуемо, без фоллбека (shebang это не лечит)" "$missing"
+    fail "a name that resolves unpredictably, with no fallback (a shebang does not fix it)" "$missing"
 else
-    pass "непортируемые флаги и имена команд отсутствуют или имеют фоллбек ($scanned файлов)"
+    pass "non-portable flags and command names are absent or have a fallback ($scanned files)"
 fi
 
-# ─── 21. Линт объявляет охват, а не предполагает его ────────────────────────
-# Синхронизация делает чекаут СВЕЖИМ, но не ПОЛНЫМ: sparse-checkout оставляет
-# отслеживаемые пути вне рабочего дерева, и каждая проверка линта меряет подмножество,
-# продолжая называть результат обходом vault. Отличить «файла нет» от «файл не выложен»
-# изнутри проверки нельзя — только этим шагом.
-# Замерено 2026-08-04 на Маке с исключённым /_arch (228 файлов): `obsidian unresolved`
-# показал 93 битые ссылки, из них 91 — на файлы, существующие и верные на другой машине;
-# после снятия исключения осталась 1. Плюс три находки baseline ушли в GONE, не будучи
-# исправленными: база общая для машин, а видимость — своя, поэтому --seal с неполного
-# чекаута стирает чужие находки, и следующий запуск на другой машине показывает их как
-# NEW. Экономии при этом нет — ~4% чекаута, и конфиденциальности тоже: объекты лежат
-# в .git и читаются через `git cat-file`.
+# ─── 21. The lint declares its coverage instead of assuming it ───────────────
+# A sync makes a checkout CURRENT, not WHOLE: sparse-checkout leaves tracked paths outside
+# the working tree, and every lint check then measures a subset while still calling the
+# result a pass over the vault. From inside a check, "the file is absent" and "the file was
+# never checked out" are indistinguishable — only this step can tell them apart.
+# Measured 2026-08-04 on the Mac with /_arch excluded (228 files): `obsidian unresolved`
+# reported 93 broken links, 91 of which pointed at files that exist and are correct on the
+# other machine; with the exclusion removed, 1 remained. Plus three baseline findings went
+# GONE without being fixed: the baseline is shared across machines while visibility is
+# per-machine, so --seal from a partial checkout erases the other machine's findings and
+# the next run there reports them as NEW. There is no saving in it either — ~4% of the
+# checkout — and no privacy: the objects are in .git and readable via `git cat-file`.
 lf="$SCRIPT_DIR/commands/brain-lint.md"
 if [ ! -f "$lf" ]; then
-    fail "проверка 21: commands/brain-lint.md отсутствует — вход пуст, а не чист"
+    fail "check 21: commands/brain-lint.md is missing — empty input, not a clean repo"
 else
     missing=""
-    grep -qF 'core.sparseCheckout' "$lf" || missing+="не определяет sparse-checkout"$'\n'
-    grep -qF 'ls-files -v' "$lf" || missing+="не ловит skip-worktree (config сам по себе не полон)"$'\n'
-    grep -qF 'PARTIAL' "$lf" || missing+="нечем пометить неполный охват"$'\n'
-    grep -qE 'Coverage:' "$lf" || missing+="в шаблоне отчёта нет строки охвата"$'\n'
-    grep -qE 'Do not .*--seal|не .*--seal' "$lf" || missing+="не запрещает --seal с неполного чекаута"$'\n'
+    grep -qF 'core.sparseCheckout' "$lf" || missing+="does not detect sparse-checkout"$'\n'
+    grep -qF 'ls-files -v' "$lf" || missing+="does not catch skip-worktree (the config alone is not enough)"$'\n'
+    grep -qF 'PARTIAL' "$lf" || missing+="nothing marks partial coverage"$'\n'
+    grep -qE 'Coverage:' "$lf" || missing+="the report template has no coverage line"$'\n'
+    grep -qE 'Do not .*--seal|не .*--seal' "$lf" || missing+="does not forbid --seal from a partial checkout"$'\n'
     if [ -n "$missing" ]; then
-        fail "brain-lint не объявляет фактический охват — отчёт будет притворяться полным" "$missing"
+        fail "brain-lint does not declare its actual coverage — the report will pretend to be complete" "$missing"
     else
-        pass "линт определяет неполный чекаут, объявляет охват и не печатает базу с него"
+        pass "the lint detects a partial checkout, declares coverage, and does not seal from one"
     fi
 fi
 
-# ─── 22. Правило про ссылки в заметках выполнимо и измеряется ───────────────
-# Правило требовало «минимум 2 [[wikilink]] на заметку», а шаблон decision-заметки в
-# brain-save давал `[[../_PROJECT]]` плюс необязательный placeholder — значит заметка,
-# первая по своей теме, рождалась нарушением, и так родились 6 из 383 (замер 2026-08-04).
-# Планка, которую собственный шаблон не может взять, — не стандарт, а вечное нарушение;
-# оно же толкает выдумывать ссылки, а выдуманная связь хуже отсутствующей, потому что
-# граф читают как свидетельство, что связь есть. Правило переписано на «обратная ссылка
-# обязательна + соседняя, когда соседняя существует» и получило шаг линта 4c.
+# ─── 22. The rule about links in notes is meetable and measured ──────────────
+# The rule demanded "at least 2 [[wikilinks]] per note", while the decision-note template
+# in brain-save produced `[[../_PROJECT]]` plus an optional placeholder — so a note that is
+# first on its topic was born in violation, and 6 of 383 were (measured 2026-08-04).
+# A bar the project's own template cannot clear is not a standard but a permanent
+# violation; it also pushes people to invent links, and a fabricated relation costs more
+# than a missing one, because the graph is read as evidence that a relation holds. The rule
+# was rewritten as "the backlink is mandatory, a sibling when one exists" and got lint step
+# 4c.
 missing=""
 if [ ! -f "$SCRIPT_DIR/SKILL.md" ] || [ ! -f "$SCRIPT_DIR/commands/brain-lint.md" ]; then
-    fail "проверка 22: нет SKILL.md или brain-lint.md — вход пуст, а не чист"
+    fail "check 22: no SKILL.md or brain-lint.md — empty input, not a clean repo"
 else
     grep -qE 'Minimum 2 \[\[|minimum 2 \[\[' "$SCRIPT_DIR/SKILL.md" \
-        && missing+="SKILL.md всё ещё требует невыполнимый минимум в 2 ссылки"$'\n'
+        && missing+="SKILL.md still demands the unmeetable minimum of 2 links"$'\n'
     grep -qF 'backlink is mandatory' "$SCRIPT_DIR/SKILL.md" \
-        || missing+="SKILL.md не объявляет обратную ссылку обязательной"$'\n'
+        || missing+="SKILL.md does not declare the backlink mandatory"$'\n'
     grep -qF 'wiki-no-backlink' "$SCRIPT_DIR/lib/brain.sh" \
-        || missing+="lib: правило без машинной проверки (нет wiki-no-backlink)"$'\n'
+        || missing+="lib: the rule has no machine check (no wiki-no-backlink)"$'\n'
     grep -qF 'wiki-no-links' "$SCRIPT_DIR/lib/brain.sh" \
-        || missing+="lib: не выделяются тупиковые заметки"$'\n'
+        || missing+="lib: terminal notes are not identified"$'\n'
     grep -qF '_lc_strip' "$SCRIPT_DIR/lib/brain.sh" \
-        || missing+="lib: не снимается inline-code — литералы посчитаются ссылками"$'\n'
+        || missing+="lib: inline code is not stripped — literals will be counted as links"$'\n'
     grep -qF 'wiki-no-sibling' "$SCRIPT_DIR/commands/brain-lint.md" \
-        || missing+="brain-lint.md: не сказано, что отсутствие соседней ссылки — не дефект"$'\n'
+        || missing+="brain-lint.md: does not say that a missing sibling link is not a defect"$'\n'
     if [ -n "$missing" ]; then
-        fail "правило о ссылках невыполнимо или не измеряется" "$missing"
+        fail "the link rule is unmeetable or unmeasured" "$missing"
     else
-        pass "правило о ссылках выполнимо (backlink + соседняя при наличии) и меряется шагом 4c"
+        pass "the link rule is meetable (backlink + a sibling when one exists) and measured by step 4c"
     fi
 fi
 
-# ─── 23. Конвенцией считается ключ со ЗНАЧЕНИЕМ, а не сам ключ ──────────────
-# Step 10b считал ключ конвенцией по факту присутствия. Шаблон decision-заметки печатает
-# `supersedes:` пустым, заполняют его единицы — и он попадал в конвенции, после чего
-# заметки без этой пустой строки объявлялись нарушителями. Замер 2026-08-04: пуст или
-# отсутствует у 29 из 32 в cadrika, 95 из 100 в goprofi-voronka, 33 из 34 здесь. Находка
-# была шумом и лежала в общем baseline, где зелёная строка рядом читается как проверенная.
-# Ложная находка дороже пропущенной: она приучает читателя пролистывать список.
-# Заодно: `ls` в старом коде — тот же класс, что `date -j` (на Маке это функция-обёртка
-# над eza), поэтому счёт файлов ушёл на find.
+# ─── 23. A convention is a key with a VALUE, not the key itself ──────────────
+# Step 10b treated a key as a convention by mere presence. The decision-note template emits
+# `supersedes:` empty and hardly anyone fills it in — so it counted as a convention, after
+# which notes lacking that empty line were declared violators. Measured 2026-08-04: empty or
+# absent in 29 of 32 in cadrika, 95 of 100 in goprofi-voronka, 33 of 34 here. The finding was
+# noise sitting in a shared baseline, where a green line beside it reads as verified.
+# A false finding costs more than a missed one: it trains the reader to skim the list.
+# Along the way: `ls` in the old code is the same class as `date -j` (on the Mac it is a
+# wrapper function around eza), so counting files moved to find.
 lb="$SCRIPT_DIR/lib/brain.sh"
 if [ ! -f "$lb" ]; then
-    fail "проверка 23: lib/brain.sh отсутствует — вход пуст, а не чист"
+    fail "check 23: lib/brain.sh is missing — empty input, not a clean repo"
 else
     missing=""
     grep -qF 'only when it carries a VALUE' "$lb" \
-        || missing+="10b не требует непустого значения — пустой ключ шаблона станет конвенцией"$'\n'
-    # Паттерн собран из кусков: иначе проверка нашла бы саму себя, как это уже
-    # сделала проверка 20 на прозе, где сломанная форма была процитирована буквально.
+        || missing+="10b does not require a non-empty value — an empty template key becomes a convention"$'\n'
+    # The pattern is assembled from pieces: otherwise the check would match itself, as
+    # check 20 already did on prose where the broken form was quoted verbatim.
     LSCOUNT="ls"" -1 \*\.md"
     grep -qE "$LSCOUNT" "$lb" \
-        && missing+="10b считает файлы через ls (на Маке это функция-обёртка)"$'\n'
+        && missing+="10b counts files with ls (on the Mac that is a wrapper function)"$'\n'
     if [ -n "$missing" ]; then
-        fail "Step 10b принимает за конвенцию артефакт шаблона" "$missing"
+        fail "Step 10b mistakes a template artefact for a convention" "$missing"
     else
-        pass "Step 10b считает конвенцией только ключ со значением, файлы — через find"
+        pass "Step 10b counts only a key with a value as a convention, and counts files with find"
     fi
 fi
 
-# ─── Синтаксис шелл-скриптов ─────────────────────────────────────────────────
+# ─── Shell script syntax ─────────────────────────────────────────────────────
 echo ""
-# ─── 25. Бюджет меряется в момент записи, и одним кодом с линтом ────────────
-# Порог, который меряет только /brain-lint, меряется через сутки и кем придётся: тот,
-# кто перерасход СОЗДАЛ, о нём не узнаёт, и приписать его конкретной сессии некому.
-# Замерено 2026-08-03: `_mac/mac-setup` вырос 51→62 и 28→35 сохранением в 22:03 и
-# всплыл через час на другой машине; за одну сессию 2240 собственный `_PROJECT.md`
-# этого проекта переходил бюджет ЧЕТЫРЕ раза обычными правками статуса, и каждый раз
-# об этом сообщал линт, запущенный руками.
-# Вторая половина проверки — про то, что реализация одна. Две копии порога расходятся,
-# и тогда «находка» становится тем, что видит только один из двух вызывающих; этот
-# проект встретил ровно эту форму уже в четырёх проверках.
+# ─── 25. Budgets are measured at write time, by the lint's own code ──────────
+# A threshold only /brain-lint measures is measured a day later by whoever happens to run
+# it: the session that CREATED the overrun never learns of it, and it is attributable to
+# nobody. Measured 2026-08-03: `_mac/mac-setup` grew 51->62 and 28->35 in a save at 22:03
+# and surfaced an hour later on another machine; in the single session 2240 this project's
+# own `_PROJECT.md` crossed its budget FOUR times through ordinary status edits, each time
+# announced only by a hand-run lint.
+# The second half of the check is about there being one implementation. Two copies of a
+# threshold drift, and then a "finding" becomes something only one of the two callers can
+# see; this project has met that exact shape in four checks already.
 bs="$SCRIPT_DIR/commands/brain-save.md"
 lb="$SCRIPT_DIR/lib/brain.sh"
 missing=""
 if [ ! -f "$bs" ] || [ ! -f "$lb" ]; then
-    fail "проверка 25: нет brain-save.md или lib/brain.sh — вход пуст, а не чист"
+    fail "check 25: no brain-save.md or lib/brain.sh — empty input, not a clean repo"
 else
-    grep -qF 'prose-budget' "$bs" || missing+="brain-save не вызывает prose-budget"$'\n'
-    # Порядок: мерить таскборд до того, как Step 4 его правит, — мерить не то.
+    grep -qF 'prose-budget' "$bs" || missing+="brain-save does not call prose-budget"$'\n'
+    # Ordering: measuring the taskboard before Step 4 edits it measures the wrong thing.
     n_tb=$(grep -n '^## Step 4:' "$bs" | head -1 | cut -d: -f1)
     n_pb=$(grep -n 'brain-budget\|prose-budget' "$bs" | head -1 | cut -d: -f1)
     if [ -n "$n_tb" ] && [ -n "$n_pb" ]; then
-        [ "$n_pb" -gt "$n_tb" ] || missing+="вызов prose-budget стоит ВЫШЕ правки таскборда — мерит предыдущее состояние"$'\n'
+        [ "$n_pb" -gt "$n_tb" ] || missing+="the prose-budget call sits ABOVE the taskboard edit — it measures the previous state"$'\n'
     else
-        missing+="не найден Step 4 или вызов prose-budget, чтобы сверить порядок"$'\n'
+        missing+="Step 4 or the prose-budget call not found — the ordering could not be checked"$'\n'
     fi
     grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
-        missing+="перерасход разрешено завершить молча"$'\n'
-    # Одна реализация: пороги — переменные, и lint_collect читает те же самые.
+        missing+="an overrun is allowed to finish silently"$'\n'
+    # One implementation: the thresholds are variables, and lint_collect reads the same ones.
     for v in BUDGET_PROSE BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_SIZE; do
         n=$(grep -c "^$v=" "$lb")
-        [ "$n" -eq 1 ] || missing+="$v определён $n раз(а), должен ровно один"$'\n'
-        grep -qF "\$$v" "$lb" || missing+="$v нигде не используется"$'\n'
+        [ "$n" -eq 1 ] || missing+="$v is defined $n time(s), it must be exactly one"$'\n'
+        grep -qF "\$$v" "$lb" || missing+="$v is used nowhere"$'\n'
     done
-    # Проверка ЗАПУСКОМ на фикстуре, а не грепом формы: три исхода обязаны различаться.
+    # Verified by RUNNING it on a fixture rather than grepping shape: three outcomes must differ.
     fx=$(mktemp -d)
-    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nодна строка\n' > "$fx/_PROJECT.md"
+    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\none line\n' > "$fx/_PROJECT.md"
     printf -- '# tb\n## In progress\n- [ ] one\n## Done\n- [x] 2026-08-01 done\n' > "$fx/taskboard.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
-    [ $? -eq 0 ] || missing+="в пределах бюджета exit не 0"$'\n'
-    # перерасход: раздуваем For future Claude выше своего порога
+    [ $? -eq 0 ] || missing+="within budget the exit code is not 0"$'\n'
+    # over budget: inflate For future Claude past its threshold
     { printf -- '---\nupdated: 2026-08-04\n---\n## For future Claude\n'
-      i=0; while [ $i -lt 40 ]; do echo "- строка $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
+      i=0; while [ $i -lt 40 ]; do echo "- line $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
-    [ $? -eq 2 ] || missing+="перерасход не даёт exit 2"$'\n'
-    # счётчик не отработал: это ошибка, а не «в пределах бюджета»
+    [ $? -eq 2 ] || missing+="an overrun does not give exit 2"$'\n'
+    # a counter did not run: that is an error, not "within budget"
     sed 's|^_budget_ffc()   { _lc_section|_budget_ffc()   { _no_such_counter|' "$lb" > "$fx/broken.sh"
     if cmp -s "$fx/broken.sh" "$lb" || [ ! -s "$fx/broken.sh" ] || ! bash -n "$fx/broken.sh" 2>/dev/null; then
-        missing+="МЕТА: поломка счётчика не применилась — тест проверял бы свою опечатку"$'\n'
+        missing+="META: the counter breakage did not apply — the test would be checking its own typo"$'\n'
     else
         bash "$fx/broken.sh" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
-        [ $? -eq 1 ] || missing+="неотработавший счётчик не даёт exit 1 (зелёное вместо ошибки)"$'\n'
+        [ $? -eq 1 ] || missing+="a counter that did not run gives no exit 1 (green instead of an error)"$'\n'
     fi
     rm -rf "$fx"
     if [ -n "$missing" ]; then
-        fail "бюджет не меряется при записи или меряется вторым кодом" "$missing"
+        fail "the budget is not measured at write time, or is measured by a second implementation" "$missing"
     else
-        pass "prose-budget вызывается после правок, различает три исхода, пороги в одном месте"
+        pass "prose-budget runs after the writes, tells three outcomes apart, thresholds in one place"
     fi
 fi
 
-# ─── 33. Имена секций матчатся на ОБОИХ языках ──────────────────────────────
+# ─── 33. Section names are matched in BOTH languages ─────────────────────────
 # The tool does not switch languages, it matches both name sets at once:
 # (Done|Завершено), (In progress|В работе), (Current state|Статус). That is strictly
 # stronger than a language setting would be, because a real vault is MIXED — measured
@@ -1318,7 +1324,7 @@ fi
 missing=""
 LB="$SCRIPT_DIR/lib/brain.sh"
 if [ ! -f "$LB" ]; then
-    fail "проверка 33: нет lib/brain.sh — вход пуст, а не чист"
+    fail "check 33: no lib/brain.sh — empty input, not a clean repo"
 else
     checked=0
     while IFS='|' read -r en ru; do
@@ -1330,7 +1336,7 @@ else
                   grep -E '~ /|grep -qE|_lc_section' |
                   grep -vF "$ru")
         checked=$((checked + 1))
-        [ -n "$orphans" ] && missing+="  '$en' матчится без '$ru':"$'\n'"$(printf '%s\n' "$orphans" | cut -c1-90 | sed 's/^/    /')"$'\n'
+        [ -n "$orphans" ] && missing+="  '$en' is matched without '$ru':"$'\n'"$(printf '%s\n' "$orphans" | cut -c1-90 | sed 's/^/    /')"$'\n'
     done <<'PAIRS'
 Done|Завершено
 In progress|В работе
@@ -1345,28 +1351,28 @@ PAIRS
     lb_code=$(grep -vE '^[[:space:]]*#' "$LB")
     for ru in Завершено 'В работе' Статус 'Последняя сессия' ЗАКРЫТО; do
         printf '%s\n' "$lb_code" | grep -qF "$ru" ||
-            missing+="  паттерн '$ru' исчез из кода lib/brain.sh"$'\n'
+            missing+="  the pattern '$ru' disappeared from the code of lib/brain.sh"$'\n'
     done
     if [ -n "$missing" ]; then
-        fail "имена секций матчатся не на обоих языках — русский ваулт станет невидим" "$missing"
+        fail "section names are not matched in both languages — a Russian vault will go invisible" "$missing"
     else
-        pass "имена секций матчатся на обоих языках ($checked пар + 5 паттернов на месте)"
+        pass "section names are matched in both languages ($checked pairs + 5 patterns present)"
     fi
 fi
 
-# ─── 32. Публичное — по-английски: коммиты и комментарии в коде ─────────────
-# Репо публичный. Сообщение коммита и комментарий в коде читает посторонний и
-# следующий сопровождающий — раньше всего остального. Правило про язык существовало,
-# но перечисляло ФАЙЛЫ (`SKILL.md`, `brain-*.md`, имена файлов, Block 1) и не называло
-# ни коммиты, ни комментарии, при том что вся видимая история была на английском.
-# 2026-08-04 в репозиторий уехало 8 коммитов на русском: формат Conventional Commits
-# они прошли (проверка 9 смотрит форму, не язык), практику — нет.
-# Две вещи, которые проверка обязана различать и которые грубый грep смешивает:
-#   * heredoc в *.sh генерирует РУССКИЕ файлы ваулта (index.md, SOUL.md) — это
-#     содержимое пользователя, а не комментарий;
-#   * `##`-заголовки в шаблонах внутри commands/*.md — тоже содержимое, не код.
-# Перевод того и другого сломал бы ваулт, поэтому область — только shell-комментарии
-# вне heredoc и только в блоках ```bash у промптов.
+# ─── 32. What the repo publishes is English: commits and code comments ───────
+# The repo is public. A commit message and a code comment are read by a stranger, and by
+# the next maintainer, before anything else. The language rule existed but enumerated
+# FILES (`SKILL.md`, `brain-*.md`, file names, Block 1) and named neither commits nor
+# comments, while the entire visible history was English.
+# On 2026-08-04 eight Russian commits went out: they passed Conventional Commits (check 9
+# looks at form, not language) but not the practice.
+# Two things this check must tell apart, which a blunt grep conflates:
+#   * heredocs in *.sh generate RUSSIAN vault files (index.md, SOUL.md) — that is the
+#     user's content, not a comment;
+#   * `##` headings inside templates in commands/*.md are content too.
+# Translating either would break the vault, so the scope is shell comments outside
+# heredocs, plus ```bash blocks in the prompts.
 missing=""
 scanned=0
 for f in "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh" "$SCRIPT_DIR"/lib/*.sh; do
@@ -1399,8 +1405,8 @@ for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md; do
     ' "$f")
     [ -n "$h" ] && missing+="$(printf '%s\n' "$h" | sed 's|.*/||; s/^/    /')"$'\n'
 done
-# Сообщения коммитов — с даты принятия правила. Раньше неё история не переписывается,
-# та же граница, что у проверки 9.
+# Commit messages, from the date the rule was adopted. History before it is not rewritten,
+# the same boundary as check 9.
 LANG_SINCE="2026-07-23"
 # Subject AND body: the first version looked at `%s` alone and reported zero while two
 # commit bodies carried Cyrillic. A check that measures less than it claims is the very
@@ -1422,51 +1428,51 @@ for c in $(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%H' 2>/de
         *[А-Яа-яЁё]*) bad_msgs="$bad_msgs$(cd "$SCRIPT_DIR" && git log -1 --format='%h %s' "$c")"$'\n' ;;
     esac
 done
-[ -n "$bad_msgs" ] && missing+="  сообщения коммитов с кириллицей:"$'\n'"$(printf '%s\n' "$bad_msgs" | sed 's/^/    /')"$'\n'
-# Правило существует в трёх местах и обязано называть обе вещи во всех трёх.
+[ -n "$bad_msgs" ] && missing+="  commit messages containing Cyrillic:"$'\n'"$(printf '%s\n' "$bad_msgs" | sed 's/^/    /')"$'\n'
+# The rule exists in three places and must name both things in all three.
 for f in "$SCRIPT_DIR/CLAUDE.md" "$SCRIPT_DIR/chat-skills/brain-onboarding/SKILL.md"; do
     [ -f "$f" ] || continue
-    # Окно, а не строка: правило может занимать абзац, и построчный грep объявил бы
-    # нарушением собственную развёрнутую формулировку.
+    # A window, not a line: the rule may span a paragraph, and a line-based grep would
+    # call the rule's own expanded wording a violation.
     n_rule=$(grep -c 'Language:' "$f")
     n_named=$(awk '
         /Language:/ { w = $0; for (i = 0; i < 6 && (getline nxt) > 0; i++) w = w " " nxt
-                      # Точные формулировки во множественном числе, а не любое
-                      # упоминание слов: соседняя проза («a comment and a commit
-                      # message are read by strangers») удовлетворяла слабой версии
-                      # этой проверки, и негативный тест это показал.
+                      # The exact plural phrases, not any mention of the words: the
+                      # neighbouring prose ("a comment and a commit message are read by
+                      # strangers") satisfied the weak version of this check, and the
+                      # negative test showed it.
                       if (w ~ /commit messages/ && w ~ /code comments/) n++ }
         END { print n + 0 }' "$f")
     [ "$n_rule" -eq "$n_named" ] ||
-        missing+="  $(basename "$f"): $n_rule формулировок правила, коммиты и комментарии названы в $n_named"$'\n'
+        missing+="  $(basename "$f"): $n_rule statements of the rule, commits and comments named in $n_named"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 32 не открыла ни одного файла — вход пуст, а не чист"
+    fail "check 32 opened no files — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
-    fail "русский там, где репо говорит с посторонними" "$missing"
+    fail "Russian where the repo speaks to strangers" "$missing"
 else
-    pass "коммиты и комментарии в поставляемом коде по-английски ($scanned файлов)"
-    # Область названа вслух: preflight.sh сюда не входит и это НЕ значит, что он чист.
-    echo "      (вне области: preflight.sh — 491 русский комментарий, dev-only, не ставится)"
+    pass "commits and comments in the shipped code are English ($scanned files)"
+    # The scope is stated out loud: preflight.sh is outside it, which does NOT mean it is clean.
+    echo "      (outside this scope: preflight.sh — dev-only, never installed)"
 fi
 
-# ─── 31. `grep -q` не стоит на конце конвейера под pipefail ─────────────────
-# `set -uo pipefail` стоит строкой 13. Под ним `grep -q` (и `-qv`) выходит по первому
-# подходящему входу, продюсер получает SIGPIPE и завершается с 141, а статусом всего
-# конвейера становится именно 141 — то есть УСПЕШНОЕ совпадение читается как провал.
-# Замерено 2026-08-04: проверка 26 краснела при полностью рабочем предупреждении, и —
-# что хуже — негативный тест на ней дал ложное «краснеет», потому что она была красной
-# и до мутации. Одна такая строка обесценивает и проверку, и тест на неё.
-# Мера: забрать вывод в переменную и грепать `printf '%s\n' "$var"`. Тогда продюсер
-# завершается до грепа и SIGPIPE не возникает.
-# Свип по существующему коду под это правило нашёл второй экземпляр — проверку
-# «obsidian без timeout», где не стреляло только из-за короткого вывода.
+# ─── 31. `grep -q` never ends a pipeline under pipefail ──────────────────────
+# `set -uo pipefail` is on line 13. Under it, `grep -q` (and `-qv`) exits at the first
+# qualifying input, the producer takes SIGPIPE and dies with 141, and 141 becomes the
+# status of the whole pipeline — so a SUCCESSFUL match reads as a failure.
+# Measured 2026-08-04: check 26 went red against a fully working warning, and — worse —
+# the negative test on it reported a false "goes red", because it was red before the
+# mutation too. One such line voids both the check and the test on it.
+# The remedy: take the output into a variable and grep `printf '%s\n' "$var"`. The
+# producer then finishes before the grep and no SIGPIPE occurs.
+# The sweep this rule demanded over existing code found a second instance — the "obsidian
+# without timeout" check, where it had not fired only because the output was short.
 missing=""
 scanned=0
 for f in "$SCRIPT_DIR/preflight.sh" "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh"; do
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
-    # Продюсер printf/echo/cat/sed завершается сам и SIGPIPE не получает — они не в счёт.
+    # A printf/echo/cat/sed producer finishes on its own and takes no SIGPIPE — not counted.
     # Quoted spans are stripped first: a check may legitimately SEARCH for the string
     # "grep -q", and a pattern is data, not a pipeline. Caught by check 33's own line.
     h=$(sed -E "s@'[^']*'@@g; s@\"[^\"]*\"@@g" "$f" | grep -nE '\| *grep -q' |
@@ -1475,62 +1481,63 @@ for f in "$SCRIPT_DIR/preflight.sh" "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR/install.
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 31 не открыла ни одного файла — вход пуст, а не чист"
+    fail "check 31 opened no files — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
-    fail "grep -q на конце конвейера: под pipefail SIGPIPE продюсера читается как провал" "$missing"
+    fail "grep -q at the end of a pipeline: under pipefail the producer's SIGPIPE reads as failure" "$missing"
 else
-    pass "grep -q не стоит за долгим продюсером ($scanned файлов)"
+    pass "grep -q never follows a long-running producer ($scanned files)"
 fi
 
-# ─── 29. В публичный репо не уезжают личные данные ──────────────────────────
-# Правило «не добавлять личные данные в этот репо» стояло в CLAUDE.md Block 2 с самого
-# начала и НЕ имело машинной проверки — при том что тот же Block 2 требует проверку для
-# каждого своего правила. Прозой оно живёт ровно до следующей сессии, а цена ошибки
-# необратима: репо публичный, и запушенное уже склонировано.
-# Имя пользователя и хост НЕ захардкожены, а берутся из окружения: хардкод был бы сам
-# той утечкой, которую проверка ищет, и сломал бы её у всех, кто поставит пакет.
+# ─── 29. No personal data goes out to the public repo ────────────────────────
+# The rule "do not add personal data to this repo" stood in CLAUDE.md Block 2 from the
+# start and had NO machine check — in a Block that requires a check for every rule in it.
+# As prose it survives exactly until the next session, and the cost of a mistake is
+# irreversible: the repo is public and what was pushed has already been cloned.
+# The user name and host are NOT hardcoded but read from the environment: hardcoding them
+# would be the very leak this check looks for, and would break it for everyone who
+# installs the package.
 missing=""
 scanned=0
 PD_U=$(basename "$HOME")
 PD_HN=$(hostname 2>/dev/null | sed 's/\..*//')
-# Паттерны ключей собраны из кусков, иначе проверка нашла бы саму себя.
+# The key patterns are assembled from pieces, or the check would match itself.
 PD_KEY="sk-""[A-Za-z0-9]{20,}|ghp_""[A-Za-z0-9]{20,}|AKIA""[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY"
 PD_FILES=$(cd "$SCRIPT_DIR" && git ls-files 2>/dev/null | grep -v '^preflight\.sh$')
 if [ -z "$PD_FILES" ]; then
-    fail "проверка 29 не получила списка файлов (git ls-files пуст) — вход пуст, а не чист"
+    fail "check 29 got no file list (git ls-files empty) — empty input, not a clean repo"
 else
     for f in $PD_FILES; do
         [ -f "$SCRIPT_DIR/$f" ] || continue
         scanned=$((scanned + 1))
         h=""
-        [ -n "$PD_U" ] && grep -qF "/$PD_U" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}домашний путь пользователя; "
-        [ -n "$PD_HN" ] && [ ${#PD_HN} -ge 4 ] && grep -qiF "$PD_HN" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}имя машины; "
+        [ -n "$PD_U" ] && grep -qF "/$PD_U" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}the user's home path; "
+        [ -n "$PD_HN" ] && [ ${#PD_HN} -ge 4 ] && grep -qiF "$PD_HN" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}the machine name; "
         grep -qE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}' "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}e-mail; "
-        grep -qE "$PD_KEY" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}похоже на ключ/токен; "
+        grep -qE "$PD_KEY" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}looks like a key or token; "
         [ -n "$h" ] && missing+="  $f: $h"$'\n'
     done
     if [ "$scanned" -eq 0 ]; then
-        fail "проверка 29 не открыла ни одного файла — вход пуст, а не чист"
+        fail "check 29 opened no files — empty input, not a clean repo"
     elif [ -n "$missing" ]; then
-        fail "личные данные в файле публичного репо" "$missing"
+        fail "personal data in a file of the public repo" "$missing"
     else
-        pass "личных данных в отслеживаемых файлах нет ($scanned файлов)"
+        pass "no personal data in the tracked files ($scanned files)"
     fi
 fi
 
-# ─── 30. Данные ваулта не исполняются ───────────────────────────────────────
-# Весь lib/ читает ваулт: имена файлов, значения frontmatter, тела заметок. Это ВХОДНЫЕ
-# данные, и часть их приходит из `raw/`, который пакет сам объявляет недоверенным.
-# Проверяется запуском на враждебной фикстуре, а не чтением кода: признак — не слово в
-# выводе, а НЕИЗМЕННОСТЬ дерева. Любой файл, появившийся после прогона, означает, что
-# подстановка выполнилась.
-# Что этот тест НЕ доказывает, и это важно записать: снятие кавычек его не краснит —
-# bash не переисполняет значение переменной, так что неквотированный `$p` даёт
-# словоделение, а не исполнение. Красит его только настоящий вектор: eval, sh -c,
-# bash -c. Поэтому к динамической половине добавлена статическая — их отсутствие.
+# ─── 30. Vault data is never executed ────────────────────────────────────────
+# Everything in lib/ reads the vault: file names, frontmatter values, note bodies. That is
+# INPUT, and part of it arrives from `raw/`, which the package itself declares untrusted.
+# Verified by running it on a hostile fixture rather than by reading the code: the signal
+# is not a word in the output but the tree being UNCHANGED. Any file appearing after the
+# run means a substitution executed.
+# What this test does NOT prove, worth writing down: removing quotes does not turn it red —
+# bash does not re-parse a variable's value, so an unquoted `$p` yields word-splitting, not
+# execution. Only a real vector reddens it: eval, sh -c, bash -c. Hence the static half
+# beside the dynamic one — asserting their absence.
 missing=""
 grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh >/dev/null 2>&1 &&
-    missing+="в lib/ появился eval / sh -c / bash -c — данные ваулта могут стать командой:"$'\n'"$(grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh | sed 's/^/    /')"$'\n'
+    missing+="eval / sh -c / bash -c appeared in lib/ — vault data could become a command:"$'\n'"$(grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh | sed 's/^/    /')"$'\n'
 ij=$(mktemp -d)
 mkdir -p "$ij/00-system" "$ij/proj/wiki"
 printf -- '# index\n- [[proj/_PROJECT]]\n' > "$ij/00-system/index.md"
@@ -1545,7 +1552,7 @@ IJ_FM='---\nstatus: draft\ndate: 2020-01-01\n---\n# x\n[[somename]]\n'
   printf -- '---\nstatus: draft\ndate: 2020-01-01\nsupersedes: $(touch zzz4)\n---\n`touch zzz5`\n[[$(touch zzz6)]]\n' > 'hostile.md' )
 n_fx=$(find "$ij/proj/wiki" -name '*.md' | wc -l | tr -d ' ')
 if [ "$n_fx" -lt 6 ]; then
-    fail "проверка 30: враждебная фикстура не создалась ($n_fx файлов) — тест проверял бы свою опечатку"
+    fail "check 30: the hostile fixture was not created ($n_fx files) — the test would check its own typo"
     rm -rf "$ij"
 else
     find "$ij" | sort > "$ij.before"
@@ -1554,69 +1561,69 @@ else
     bash "$SCRIPT_DIR/lib/brain.sh" local-conventions "$ij" proj "$ij/proj/_PROJECT.md" >/dev/null 2>&1
     find "$ij" | sort > "$ij.after"
     added=$(diff "$ij.before" "$ij.after" | grep '^>' | sed 's/^> /    /')
-    [ -n "$added" ] && missing+="после прогона появились файлы — подстановка выполнилась:"$'\n'"$added"$'\n'
+    [ -n "$added" ] && missing+="files appeared after the run — a substitution executed:"$'\n'"$added"$'\n'
     grep -qiE 'untrusted|недовер' "$SCRIPT_DIR/SKILL.md" ||
-        missing+="SKILL.md не объявляет raw/ недоверенным"$'\n'
+        missing+="SKILL.md does not declare raw/ untrusted"$'\n'
     grep -qiE 'untrusted|недовер' "$SCRIPT_DIR/commands/brain-ingest.md" ||
-        missing+="/brain-ingest не объявляет raw/ недоверенным — а читает его именно он"$'\n'
+        missing+="/brain-ingest does not declare raw/ untrusted — and it is the one that reads it"$'\n'
     rm -rf "$ij" "$ij.before" "$ij.after"
     if [ -n "$missing" ]; then
-        fail "данные ваулта могут исполниться или объявлены доверенными" "$missing"
+        fail "vault data can execute, or is declared trusted" "$missing"
     else
-        pass "враждебные имена и содержимое ваулта не исполняются, eval в lib/ нет ($n_fx файлов фикстуры)"
+        pass "hostile names and vault content do not execute, no eval in lib/ ($n_fx fixture files)"
     fi
 fi
 
-# ─── 28. --project скоупит все проверки, кроме двух заявленных ──────────────
-# Замерено 2026-08-04: `lint-collect --project nf-content` возвращал 16 находок, из
-# которых 12 — про семь ДРУГИХ проектов. Скоуп применялся только к проектному циклу,
-# а файловые свипы шли по всему ваулту. Это не «строже», это отчёт, который не значит
-# того, что написано в его заголовке, и он приучает читателя пролистывать.
-# Ровно два исключения, и оба по устройству, а не по недосмотру:
-#   ambiguous-link — ссылка ломается от появления дубликата ИМЕНИ где угодно, поэтому
-#     скоупленный взгляд на неё даёт лишь нижнюю границу;
-#   project-unregistered / registry-stale — расхождение реестра с ФС есть факт уровня
-#     ваулта, у него нет владельца-проекта.
-# Проверка гоняет lint-collect на фикстуре, а не грепает форму: скоуп — это поведение.
+# ─── 28. --project scopes every check but two declared exceptions ────────────
+# Measured 2026-08-04: `lint-collect --project nf-content` returned 16 findings, 12 of them
+# about seven OTHER projects. The scope reached the per-project loop only, while the file
+# sweeps ran over the whole vault. That is not "stricter" — it is a report that does not
+# mean what its header says, and it trains the reader to skim.
+# Exactly two exceptions, both by construction rather than oversight:
+#   ambiguous-link — a link breaks because a NAME was duplicated anywhere, so a scoped view
+#     of it yields only a lower bound;
+#   project-unregistered / registry-stale — a registry-versus-filesystem disagreement is a
+#     vault-level fact with no owning project.
+# The check runs lint-collect on a fixture rather than grepping shape: scope is behaviour.
 sc2=$(mktemp -d)
 mkdir -p "$sc2/00-system" "$sc2/a/wiki" "$sc2/b/wiki"
 printf -- '# index\n- [[a/_PROJECT]]\n- [[b/_PROJECT]]\n' > "$sc2/00-system/index.md"
 for pr in a b; do
-    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nок\n' > "$sc2/$pr/_PROJECT.md"
+    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nok\n' > "$sc2/$pr/_PROJECT.md"
     printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n# n\n[[../_PROJECT|_PROJECT]]\n' > "$sc2/$pr/wiki/note-$pr.md"
 done
 missing=""
 out=$(bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project a 2>/dev/null)
 if [ -z "$out" ]; then
-    missing+="скоупленный прогон не дал ни одной находки — фикстура или скоуп сломаны"$'\n'
+    missing+="the scoped run produced no findings — the fixture or the scope is broken"$'\n'
 else
     printf '%s\n' "$out" | grep -qF 'stale-draft:a/wiki/note-a' ||
-        missing+="находка внутри скоупа потеряна"$'\n'
+        missing+="a finding inside the scope was lost"$'\n'
     printf '%s\n' "$out" | grep -qE ':b(/|$)' &&
-        missing+="в скоупленный отчёт попали находки чужого проекта: $(printf '%s\n' "$out" | grep -E ':b(/|$)' | tr '\n' ' ')"$'\n'
+        missing+="another project's findings reached the scoped report: $(printf '%s\n' "$out" | grep -E ':b(/|$)' | tr '\n' ' ')"$'\n'
 fi
 bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project nosuchproj >/dev/null 2>&1 &&
-    missing+="несуществующий --project не уронил проверку (пустой охват читается как чистый проект)"$'\n'
+    missing+="a non-existent --project did not fail the run (empty coverage reads as a clean project)"$'\n'
 rm -rf "$sc2"
 grep -qF 'ambiguous-link' "$SCRIPT_DIR/commands/brain-lint.md" ||
-    missing+="brain-lint не называет исключение, которое остаётся vault-wide"$'\n'
+    missing+="brain-lint does not name the exception that stays vault-wide"$'\n'
 if [ -n "$missing" ]; then
-    fail "--project скоупит не всё или роняет нужное" "$missing"
+    fail "--project scopes too little, or fails what it should not" "$missing"
 else
-    pass "--project скоупит файловые свипы, вайд остаются два заявленных исключения"
+    pass "--project scopes the file sweeps; two declared exceptions stay vault-wide"
 fi
 
-# ─── 27. У decision-заметки две формы, и все её источники об этом знают ─────
-# Замерено 2026-08-04 по ваулту: 286 заметок, медиана 68 строк, НИ ОДНОЙ короче 20 —
-# лёгкой формы не существовало, поэтому решение на одну фразу либо раздувалось до
-# секций, либо их выдумывало. 29 заметок несут `Alternatives rejected` пустой или в
-# одну строку — это и есть раздувание, видимое в файлах.
-# Вторая половина проверки — про источники. Тело decision-заметки описано в ЧЕТЫРЁХ
-# местах: brain-save, brain-ingest, SKILL.md и chat-skill. Правило, внесённое в одно,
-# оставляет три требовать прежнего — ровно так шаг синхронизации проехал мимо
-# chat-skill'а и попал в backlog. Поэтому список источников здесь не перечислен
-# вручную, а ВЫВЕДЕН: файл, описывающий тяжёлую форму, обязан описывать и лёгкую.
-# Так пятый источник поймается сам, без правки этой проверки.
+# ─── 27. The decision note has two forms, and every source knows it ──────────
+# Measured 2026-08-04 across the vault: 286 notes, median 68 lines, NOT ONE under 20 — no
+# lighter form existed, so a one-sentence decision either inflated to fill the sections or
+# invented content for them. 29 notes carry `Alternatives rejected` empty or one line long,
+# and that inflation is visible in the files.
+# The second half of the check is about sources. The decision-note body is described in
+# FOUR places: brain-save, brain-ingest, SKILL.md and the chat-skill. A rule added to one
+# leaves three demanding the old form — exactly how the sync step missed the chat-skill and
+# ended up in the backlog. So the list of sources is not written out here by hand but
+# DERIVED: a file describing the heavy form must also describe the light one. A fifth
+# source is then caught by itself, with no edit to this check.
 missing=""
 scanned=0
 for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md \
@@ -1625,135 +1632,135 @@ for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md \
     grep -qF 'Alternatives rejected' "$f" || continue
     scanned=$((scanned + 1))
     grep -qF 'alternatives worth recording' "$f" ||
-        missing+="$(basename "$(dirname "$f")")/$(basename "$f"): описывает тяжёлую форму, не описывает выбор между формами"$'\n'
+        missing+="$(basename "$(dirname "$f")")/$(basename "$f"): describes the heavy form but not the choice between forms"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 27 не нашла ни одного описания decision-заметки — вход пуст, а не чист"
+    fail "check 27 found no description of a decision note — empty input, not a clean repo"
 else
-    # Там, где есть НАСТОЯЩИЙ шаблон, короткая форма обязана быть настоящей короткой:
-    # без тяжёлых секций, но с той же frontmatter и обязательным backlink'ом — иначе
-    # это не вторая форма, а вторая схема, и property-запросы разъедутся.
+    # Where there is a REAL template, the short form must be genuinely short: without the
+    # heavy sections but with the same frontmatter and the mandatory backlink — otherwise
+    # it is not a second form but a second schema, and property queries drift apart.
     for f in "$SCRIPT_DIR/commands/brain-save.md" "$SCRIPT_DIR/commands/brain-ingest.md"; do
-        [ -f "$f" ] || { missing+="$(basename "$f") отсутствует"$'\n'; continue; }
+        [ -f "$f" ] || { missing+="$(basename "$f") is missing"$'\n'; continue; }
         short=$(awk '/\*\*Short form:\*\*/ { s = 1; next }
                      s && /\*\*Full form\*\*/ { exit }
                      s { print }' "$f")
         if [ -z "$short" ]; then
-            missing+="$(basename "$f"): короткой формы нет"$'\n'; continue
+            missing+="$(basename "$f"): no short form"$'\n'; continue
         fi
         printf '%s\n' "$short" | grep -qF '[[../_PROJECT|_PROJECT]]' ||
-            missing+="$(basename "$f"): в короткой форме нет обязательного backlink'а"$'\n'
+            missing+="$(basename "$f"): the short form lacks the mandatory backlink"$'\n'
         printf '%s\n' "$short" | grep -qF 'status: accepted' ||
-            missing+="$(basename "$f"): короткая форма несёт другую frontmatter"$'\n'
+            missing+="$(basename "$f"): the short form carries different frontmatter"$'\n'
         printf '%s\n' "$short" | grep -qF '## Alternatives rejected' &&
-            missing+="$(basename "$f"): короткая форма несёт тяжёлую секцию — это не вторая форма"$'\n'
+            missing+="$(basename "$f"): the short form carries a heavy section — that is not a second form"$'\n'
     done
     if [ -n "$missing" ]; then
-        fail "формы decision-заметки разошлись между источниками" "$missing"
+        fail "the decision-note forms have drifted between sources" "$missing"
     else
-        pass "decision-заметка имеет две формы, все $scanned источника согласованы"
+        pass "the decision note has two forms, all $scanned sources agree"
     fi
 fi
 
-# ─── 26. Переносчик смотрит туда же, куда смотрит счётчик ───────────────────
-# `archive` двигал только Done, а порог, который срабатывает, — это `In progress`.
-# Тот же перекос уже чинили дважды: у счётчика Done (грепал весь файл) и у бюджета
-# `_PROJECT.md` (складывал прозу со списками ссылок). Правило одно — мерить и двигать
-# ту часть, которая мешает.
-# Первая версия sweep-closed собиралась двигать закрытые ЦЕЛИКОМ секции. Замер по семи
-# проектам 2026-08-04: таких секций ноль, во всех. Вес — в секциях, смешивающих оба
-# состояния (в goprofi одна на 1073 строки: 42 закрытых пункта и 40 открытых). Отсюда
-# единица переноса — пункт, а не секция; проверка ниже фиксирует именно это поведение.
+# ─── 26. The mover looks where the counter looks ─────────────────────────────
+# `archive` only ever moved Done, while the threshold that fires is `In progress`.
+# The same distortion was fixed twice already: in the Done counter (it grepped the whole
+# file) and in the `_PROJECT.md` budget (it summed prose with link lists). One rule —
+# measure and move the part that hurts.
+# The first version of sweep-closed was going to move sections closed in their ENTIRETY.
+# Measured across seven projects 2026-08-04: there are none, anywhere. The weight sits in
+# sections mixing both states (goprofi has one of 1073 lines: 42 closed items and 40 open).
+# Hence the unit of the move is an item, not a section; the check below pins that down.
 sc_fx=$(mktemp -d)
 {
   echo "# t"; echo; echo "## In progress"; echo
-  echo "- [ ] открытый"
-  echo "  - [x] подпункт закрыт, но объясняет родителя"
-  echo "- [x] закрытый верхнего уровня"
-  echo "      тело"
-  echo; echo "## Done"; echo; echo "- [x] 2026-07-01 старое"
+  echo "- [ ] open"
+  echo "  - [x] closed sub-item that explains its parent"
+  echo "- [x] closed top-level"
+  echo "      body"
+  echo; echo "## Done"; echo; echo "- [x] 2026-07-01 old"
 } > "$sc_fx/tb.md"
 cp "$sc_fx/tb.md" "$sc_fx/orig.md"
 missing=""
 BL="$SCRIPT_DIR/lib/brain.sh"
-# dry-run обязан не писать
+# a dry run must not write
 bash "$BL" sweep-closed "$sc_fx/tb.md" >/dev/null 2>&1
-cmp -s "$sc_fx/tb.md" "$sc_fx/orig.md" || missing+="dry-run изменил файл"$'\n'
+cmp -s "$sc_fx/tb.md" "$sc_fx/orig.md" || missing+="the dry run changed the file"$'\n'
 bash "$BL" sweep-closed "$sc_fx/tb.md" --apply >/dev/null 2>&1 ||
-    missing+="sweep-closed отказал на корректной фикстуре"$'\n'
+    missing+="sweep-closed refused a valid fixture"$'\n'
 prog=$(awk '/^## /{ p = ($0 ~ /In progress/) } p' "$sc_fx/tb.md")
-printf '%s\n' "$prog" | grep -qF 'подпункт закрыт' ||
-    missing+="закрытый ПОДПУНКТ уехал от своего открытого родителя"$'\n'
-printf '%s\n' "$prog" | grep -qF '[x] закрытый верхнего уровня' &&
-    missing+="закрытый пункт верхнего уровня остался в In progress"$'\n'
+printf '%s\n' "$prog" | grep -qF 'closed sub-item' ||
+    missing+="the closed SUB-item left its open parent"$'\n'
+printf '%s\n' "$prog" | grep -qF '[x] closed top-level' &&
+    missing+="the closed top-level item stayed in In progress"$'\n'
 sort "$sc_fx/orig.md" > "$sc_fx/a"; sort "$sc_fx/tb.md" > "$sc_fx/b"
-cmp -s "$sc_fx/a" "$sc_fx/b" || missing+="результат не является перестановкой входа"$'\n'
-# Заголовок не переносится — переносятся пункты. Значит заголовок, чей ТЕКСТ есть
-# заявление о закрытии, может остаться стоять над открытыми пунктами: данные целы
-# (перенос — перестановка), но файл начинает утверждать неверное, а таскборд читают
-# по заголовкам. Замерено 2026-08-04 в goprofi-voronka: `### ✅ ЗАКРЫТО 03.08 …` на
-# 1073 строки нёс 42 закрытых пункта и 40 открытых.
+cmp -s "$sc_fx/a" "$sc_fx/b" || missing+="the result is not a permutation of the input"$'\n'
+# Headings are not moved, items are. So a heading whose TEXT is a closure claim can end up
+# standing over open items: the data is intact (the move is a permutation) but the file
+# starts asserting something false, and a taskboard is read by its headings first.
+# Measured 2026-08-04 in goprofi-voronka: one `### ✅ ЗАКРЫТО 03.08 …` section of 1073
+# lines carried 42 closed items and 40 open ones.
 cat > "$sc_fx/lying.md" <<'LY'
 # t
 
 ## In progress
 
 ### ✅ ЗАКРЫТО 2026-08-01 — всё сделано
-- [x] закрытый
-- [ ] на самом деле открытый
+- [x] closed
+- [ ] actually open
 
 ## Done
 
-- [x] 2026-07-01 старое
+- [x] 2026-07-01 old
 LY
-# Вывод забирается в переменную, а НЕ подаётся в `grep -q` конвейером. Под
-# `set -o pipefail` (строка 13) `grep -q` выходит по первому совпадению, продюсер
-# получает SIGPIPE, и статусом конвейера становится 141 — то есть УСПЕШНОЕ совпадение
-# читается как провал. Замерено здесь же 2026-08-04: проверка краснела при полностью
-# рабочем предупреждении, а негативный тест на ней дал ложное «краснеет», потому что
-# она была красной и до мутации.
+# The output is taken into a variable rather than piped into `grep -q`. Under
+# `set -o pipefail` (line 13) `grep -q` exits at the first match, the producer takes
+# SIGPIPE, and the pipeline status becomes 141 — a SUCCESSFUL match reads as a failure.
+# Measured right here 2026-08-04: the check went red against a fully working warning, and
+# the negative test on it reported a false "goes red", because it was red before the
+# mutation too.
 ly_out=$(bash "$BL" sweep-closed "$sc_fx/lying.md" 2>&1)
 printf '%s\n' "$ly_out" | grep -qF 'this heading claims closure' ||
-    missing+="перенос не предупреждает про заголовок, который станет неверным"$'\n'
-# И обратное: честный заголовок предупреждения не вызывает.
-sed 's/✅ ЗАКРЫТО 2026-08-01 — всё сделано/Работа в процессе/' "$sc_fx/lying.md" > "$sc_fx/honest.md"
+    missing+="the move does not warn about a heading that will become false"$'\n'
+# And the reverse: an honest heading raises no warning.
+sed 's/✅ ЗАКРЫТО 2026-08-01 — всё сделано/Work in progress/' "$sc_fx/lying.md" > "$sc_fx/honest.md"
 ho_out=$(bash "$BL" sweep-closed "$sc_fx/honest.md" 2>&1)
 printf '%s\n' "$ho_out" | grep -qF 'this heading claims closure' &&
-    missing+="предупреждение срабатывает на честном заголовке — ложная тревога"$'\n'
-# Страховка проверяется ЗАПУСКОМ сломанной копии, а не грепом её наличия.
-sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /тело/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
+    missing+="the warning fires on an honest heading — a false alarm"$'\n'
+# The guard is verified by RUNNING a broken copy, not by grepping for its presence.
+sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /body/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
 if cmp -s "$sc_fx/broken.sh" "$BL" || [ ! -s "$sc_fx/broken.sh" ] || ! bash -n "$sc_fx/broken.sh" 2>/dev/null; then
-    missing+="МЕТА: поломка не применилась — тест проверял бы свою опечатку"$'\n'
+    missing+="META: the breakage did not apply — the test would be checking its own typo"$'\n'
 else
     cp "$sc_fx/orig.md" "$sc_fx/tb2.md"
     bash "$sc_fx/broken.sh" sweep-closed "$sc_fx/tb2.md" --apply >/dev/null 2>&1 &&
-        missing+="потеря строки не остановила запись"$'\n'
+        missing+="losing a line did not stop the write"$'\n'
     cmp -s "$sc_fx/tb2.md" "$sc_fx/orig.md" ||
-        missing+="страховка отказала, но файл всё равно изменён"$'\n'
+        missing+="the guard refused but the file changed anyway"$'\n'
 fi
 rm -rf "$sc_fx"
 grep -qF 'sweep-closed' "$SCRIPT_DIR/commands/brain-lint.md" ||
-    missing+="/brain-lint не называет sweep-closed для находки taskboard-inprogress"$'\n'
+    missing+="/brain-lint does not name sweep-closed for the taskboard-inprogress finding"$'\n'
 if [ -n "$missing" ]; then
-    fail "sweep-closed двигает не то или двигает без страховки" "$missing"
+    fail "sweep-closed moves the wrong thing, or moves without a guard" "$missing"
 else
-    pass "sweep-closed двигает пункты (не секции), бережёт подпункты, отказ не портит файл"
+    pass "sweep-closed moves items (not sections), spares sub-items, and a refusal leaves the file intact"
 fi
 
-# ─── 24. Переменная в блоке промпта обязана быть где-то введена ─────────────
-# Найдено 2026-08-04 свипом по всем промптам: /brain-save Step 0c грепал
-# "$PROJECT_CLAUDE_MD" — имя, которое во всём пакете встречается ровно один раз, в
-# самой этой строке. Ни присваивания, ни упоминания в прозе, откуда сессия могла бы
-# понять, что подставлять. Grep получал пустое имя файла, ошибка уходила в
-# `2>/dev/null`, вывод был пуст — и половина шага, единственная работающая для нового
-# проекта, не выполнялась ни разу с момента написания.
-# Проверка 16 этого не видела: она требует, чтобы шаг СУЩЕСТВОВАЛ и стоял выше
-# шаблонов. Наличие шага и его исполнимость — разные факты, и зелёное по первому
-# читается как второе. Ровно та же форма, что `mapfile` и `except ImportError`.
-# Критерий введения намеренно широкий: либо присваивание в блоке, либо упоминание
-# в прозе того же файла. Блоки промптов исполняет не шелл, а сессия, и `$PROJECT`,
-# введённый фразой «that is `$PROJECT`», — законный способ. Не введённое нигде —
-# не способ, а опечатка.
+# ─── 24. A variable in a prompt block must be introduced somewhere ───────────
+# Found 2026-08-04 by a sweep over every prompt: /brain-save Step 0c grepped
+# "$PROJECT_CLAUDE_MD" — a name occurring exactly once in the whole package, in that very
+# line. No assignment, no mention in prose from which a session could tell what to
+# substitute. grep received an empty filename, the error went to `2>/dev/null`, the output
+# was empty — and the half of the step that is the only one working for a NEW project had
+# never run since it was written.
+# Check 16 did not see this: it requires the step to EXIST and to sit above the templates.
+# A step's presence and its executability are different facts, and a green on the first
+# reads as a green on the second. Exactly the shape of `mapfile` and `except ImportError`.
+# The criterion for "introduced" is deliberately broad: either an assignment in a block or
+# a mention in the same file's prose. Prompt blocks are executed by a session, not only by
+# a shell, and a `$PROJECT` introduced by the phrase "that is `$PROJECT`" is a legitimate
+# way. Introduced nowhere is not a way — it is a typo.
 missing=""
 scanned=0
 for f in "${TARGETS[@]}"; do
@@ -1768,40 +1775,40 @@ for f in "${TARGETS[@]}"; do
         case "$v" in HOME|PATH|PWD|USER|TMPDIR|SHELL|IFS) continue ;; esac
         printf '%s\n' "$assigned" | grep -qx "$v" && continue
         printf '%s\n' "$prose"    | grep -qF "\$$v" && continue
-        h+="  \$$v — ни присваивания в блоке, ни упоминания в прозе файла"$'\n'
+        h+="  \$$v — no assignment in a block and no mention in the file's prose"$'\n'
     done
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$h"
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 24 не открыла ни одного файла — вход пуст, а не чист"
+    fail "check 24 opened no files — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
-    fail "блок промпта ссылается на переменную, которую негде взять" "$missing"
+    fail "a prompt block refers to a variable with nowhere to come from" "$missing"
 else
-    pass "все переменные блоков промптов введены присваиванием или прозой ($scanned файлов)"
+    pass "every variable in a prompt block is introduced by assignment or prose ($scanned files)"
 fi
 
-echo -e "${BLUE}[2/3] Скрипты${NC}"
+echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then
-        pass "$(basename "$s"): синтаксис ок"
+        pass "$(basename "$s"): syntax ok"
     else
-        fail "$(basename "$s"): синтаксическая ошибка" "$(bash -n "$s" 2>&1)"
+        fail "$(basename "$s"): syntax error" "$(bash -n "$s" 2>&1)"
     fi
 done
 
-# ─── Установка в чистый $HOME ────────────────────────────────────────────────
+# ─── Install into a clean $HOME ──────────────────────────────────────────────
 echo ""
-echo -e "${BLUE}[3/3] Установка в чистый \$HOME${NC}"
+echo -e "${BLUE}[3/3] Install into a clean \$HOME${NC}"
 if [ "$FAST" = "1" ]; then
-    echo -e "  ${YELLOW}—${NC} пропущено (--fast)"
+    echo -e "  ${YELLOW}—${NC} skipped (--fast)"
 else
     TMPHOME=$(mktemp -d)
     trap 'rm -rf "$TMPHOME"' EXIT
 
     if HOME="$TMPHOME" bash "$SCRIPT_DIR/install.sh" </dev/null >"$TMPHOME/install.log" 2>&1; then
-        pass "install.sh отработал неинтерактивно (exit 0)"
+        pass "install.sh ran non-interactively (exit 0)"
     else
-        fail "install.sh упал в чистом \$HOME" "$(tail -5 "$TMPHOME/install.log")"
+        fail "install.sh failed in a clean \$HOME" "$(tail -5 "$TMPHOME/install.log")"
     fi
 
     missing=""
@@ -1822,50 +1829,50 @@ else
         [ -f "$TMPHOME/$expected" ] || missing+="$expected"$'\n'
     done
     if [ -n "$missing" ]; then
-        fail "install.sh не создал ожидаемые файлы" "$missing"
+        fail "install.sh did not create the expected files" "$missing"
     else
-        pass "все 13 ожидаемых файлов на месте"
+        pass "all 13 expected files are present"
     fi
 
-    # update.sh поверх установки, дважды — должен быть идемпотентен
+    # update.sh over an install, twice — it must be idempotent
     if HOME="$TMPHOME" bash "$SCRIPT_DIR/update.sh" >/dev/null 2>&1 &&
        HOME="$TMPHOME" bash "$SCRIPT_DIR/update.sh" >/dev/null 2>&1; then
-        pass "update.sh идемпотентен (два прогона подряд, exit 0)"
+        pass "update.sh is idempotent (two runs in a row, exit 0)"
     else
-        fail "update.sh падает поверх свежей установки"
+        fail "update.sh fails over a fresh install"
     fi
 
-    # Установленное должно совпадать с репозиторием байт в байт
+    # What is installed must match the repository byte for byte
     drift=""
     for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do
         cmp -s "$SCRIPT_DIR/commands/$cmd.md" "$TMPHOME/.claude/commands/$cmd.md" ||
-            drift+="$cmd.md расходится с репозиторием"$'\n'
+            drift+="$cmd.md differs from the repository"$'\n'
     done
     cmp -s "$SCRIPT_DIR/SKILL.md" "$TMPHOME/.claude/skills/second-brain/SKILL.md" ||
-        drift+="SKILL.md расходится с репозиторием"$'\n'
+        drift+="SKILL.md differs from the repository"$'\n'
     cmp -s "$SCRIPT_DIR/lib/brain.sh" "$TMPHOME/.claude/skills/second-brain/lib/brain.sh" ||
-        drift+="lib/brain.sh расходится с репозиторием"$'\n'
+        drift+="lib/brain.sh differs from the repository"$'\n'
     [ -x "$TMPHOME/.claude/skills/second-brain/lib/brain.sh" ] ||
-        drift+="lib/brain.sh установлен без флага +x"$'\n'
+        drift+="lib/brain.sh was installed without the +x flag"$'\n'
     if [ -n "$drift" ]; then
-        fail "установленные файлы не совпадают с исходниками" "$drift"
+        fail "the installed files do not match the sources" "$drift"
     else
-        pass "установленные файлы идентичны исходникам"
+        pass "the installed files are identical to the sources"
     fi
 fi
 
-# ─── Итог ────────────────────────────────────────────────────────────────────
+# ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
 if [ "$FAILED" -eq 0 ]; then
-    echo -e "${GREEN}━━━ preflight пройден: $PASSED проверок ━━━${NC}"
+    echo -e "${GREEN}━━━ preflight passed: $PASSED checks ━━━${NC}"
     echo ""
-    echo "  Механическая часть чиста. Это НЕ означает, что можно ставить тег:"
-    echo "  правило обкатки требует прогона /brain-lint --all на живом vault и"
-    echo "  минимум одной сессии использования до тега (см. CLAUDE.md → Release gate)."
+    echo "  The mechanical part is clean. That does NOT mean a tag can be cut:"
+    echo "  the soak rule requires /brain-lint --all on the live vault and at least"
+    echo "  one session of use before tagging (see CLAUDE.md -> Release gate)."
     echo ""
     exit 0
 else
-    echo -e "${RED}━━━ preflight провален: $FAILED из $((PASSED + FAILED)) ━━━${NC}"
+    echo -e "${RED}━━━ preflight failed: $FAILED of $((PASSED + FAILED)) ━━━${NC}"
     echo ""
     exit 1
 fi

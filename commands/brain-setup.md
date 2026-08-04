@@ -8,20 +8,20 @@ Run once after installation, or to refresh your profile.
 Read `~/Workspace/second-brain-vault/00-shared/CRITICAL_FACTS.md`
 and `~/Workspace/second-brain-vault/00-shared/SOUL.md`.
 
-If files contain placeholder text (e.g. "(заполни)") → proceed with setup.
-If already filled → ask: "Эти файлы уже заполнены. Обновить? (да / нет)"
-If answer is "нет" → stop.
+If files contain placeholder text (e.g. "(fill in)") → proceed with setup.
+If already filled → ask: "These files are already filled in. Update them? (yes / no)"
+If answer is "no" → stop.
 
 ## Step 2: Fill CRITICAL_FACTS.md
 
 Ask questions one by one, wait for each answer:
 
-1. "Как тебя зовут?"
-2. "Часовой пояс? (например: Europe/Berlin UTC+2)"
-3. "На каких устройствах работаешь?"
-4. "Путь к vault? (по умолчанию: ~/Workspace/second-brain-vault/)"
-5. "Язык работы? (по умолчанию: русский)"
-6. "Твои основные роли? (например: лидер FieldForce, вайб-кодер)"
+1. "What is your name?"
+2. "Time zone? (e.g. Europe/Berlin UTC+2)"
+3. "Which devices do you work on?"
+4. "Path to the vault? (default: ~/Workspace/second-brain-vault/)"
+5. "Working language? Claude will answer in it, and templates will use it for free-prose headings."
+6. "Your main roles? (e.g. team lead, hobby coder)"
 
 Write to `00-shared/CRITICAL_FACTS.md`. Keep under 120 tokens.
 
@@ -40,34 +40,34 @@ Roles: [ANSWER 6]
 
 Ask questions one by one:
 
-1. "Опиши себя в 2-3 предложениях: ценности, чем занимаешься, что важно"
-2. "Как ты думаешь и принимаешь решения?"
-3. "Как тебе нравится работать с ИИ? (тон, формат, скорость vs качество)"
-4. "Что раздражает в работе с ИИ?"
+1. "Describe yourself in 2-3 sentences: values, what you do, what matters"
+2. "How do you think and make decisions?"
+3. "How do you like working with AI? (tone, format, speed vs quality)"
+4. "What irritates you when working with AI?"
 
 Write to `00-shared/SOUL.md` in Russian.
 
 ```markdown
 # Soul
 
-## Кто я
+## Who I am
 [ANSWER 1]
 
-## Как я думаю
+## How I think
 [ANSWER 2]
 
-## Как мне нравится работать с ИИ
+## How I like working with AI
 [ANSWER 3]
 
-## Чего не терплю
+## What I cannot stand
 [ANSWER 4]
 ```
 
 ## Step 4: Confirm
 
 Show the filled content of both files.
-Ask: "Всё верно? (да / исправить)"
-If "исправить" → ask which file and what to change, then redo.
+Ask: "Is this all correct? (yes / fix)"
+If "fix" → ask which file and what to change, then redo.
 
 ## Result
 
