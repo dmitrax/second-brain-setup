@@ -33,19 +33,19 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo -e "${BLUE}━━━ Установка skill: Второй Мозг ━━━${NC}"
+echo -e "${BLUE}━━━ Installing skill: Second Brain ━━━${NC}"
 echo ""
 
 # ─── Ask for the vault path if not given ─────────────────────────────────────
-echo -e "Путь к vault: ${YELLOW}$VAULT${NC}"
-ask "Изменить? (Enter = оставить, или введи новый путь): " CUSTOM_VAULT
+echo -e "Vault path: ${YELLOW}$VAULT${NC}"
+ask "Change it? (Enter = keep, or type a new path): " CUSTOM_VAULT
 if [ -n "$CUSTOM_VAULT" ]; then
     VAULT="$CUSTOM_VAULT"
 fi
 
 # ─── Create directories ──────────────────────────────────────────────────────
 echo ""
-echo "Создаю директории..."
+echo "Creating directories..."
 
 mkdir -p "$SKILL_DIR"
 mkdir -p "$COMMANDS_DIR"
@@ -54,7 +54,7 @@ mkdir -p "$COMMANDS_DIR"
 mkdir -p "$VAULT/00-system" "$VAULT/00-shared"
 
 # ─── Copy the skill files ────────────────────────────────────────────────────
-echo "Устанавливаю skill файлы..."
+echo "Installing skill files..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -78,7 +78,7 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     printf '%s\n' "$INSTALLED_VERSION" > "$SKILL_DIR/lib/VERSION"
     echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($INSTALLED_VERSION) → $SKILL_DIR/lib/"
 else
-    echo -e "  ${YELLOW}!${NC} lib/brain.sh не найден — команды будут работать без CLI"
+    echo -e "  ${YELLOW}!${NC} lib/brain.sh not found — commands will run without the CLI"
 fi
 
 for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do
@@ -86,23 +86,23 @@ for cmd in brain-setup brain-init brain-save brain-ingest brain-lint; do
         cp "$SCRIPT_DIR/commands/$cmd.md" "$COMMANDS_DIR/$cmd.md"
         echo -e "  ${GREEN}✓${NC} /commands/$cmd.md → ~/.claude/commands/"
     else
-        echo -e "  ${YELLOW}!${NC} $cmd.md не найден — пропускаю"
+        echo -e "  ${YELLOW}!${NC} $cmd.md not found — skipping"
     fi
 done
 
 # ─── Create the vault system files (only if absent) ──────────────────────────
 echo ""
-echo "Инициализирую vault системные файлы..."
+echo "Initialising the vault system files..."
 
 # index.md
 if [ ! -f "$VAULT/00-system/index.md" ]; then
     cat > "$VAULT/00-system/index.md" << 'EOF'
 # Index
 
-## Проекты
-(проекты появятся после /brain-init)
+## Projects
+(projects appear here after /brain-init)
 
-## Последние изменения
+## Recent changes
 EOF
     echo -e "  ${GREEN}✓${NC} 00-system/index.md"
 fi
@@ -110,14 +110,14 @@ fi
 # connections.md
 if [ ! -f "$VAULT/00-system/connections.md" ]; then
     cat > "$VAULT/00-system/connections.md" << 'EOF'
-# Connections — связи между проектами
+# Connections — links between projects
 
-## Общие знания
+## Shared knowledge
 
-## Перетоки знаний
+## Knowledge transfers
 
-## Последнее обновление
-(обновляется автоматически при /brain-lint)
+## Last updated
+(refreshed automatically by /brain-lint)
 EOF
     echo -e "  ${GREEN}✓${NC} 00-system/connections.md"
 fi
@@ -127,15 +127,15 @@ if [ ! -f "$VAULT/00-shared/CRITICAL_FACTS.md" ]; then
     cat > "$VAULT/00-shared/CRITICAL_FACTS.md" << EOF
 # Critical Facts
 
-Имя: (заполни)
-Часовой пояс: (заполни, например: Europe/Berlin UTC+2)
-Устройства: (заполни)
+Name: (fill in)
+Time zone: (fill in, e.g. Europe/Berlin UTC+2)
+Devices: (fill in)
 Vault: $VAULT
-Язык работы: русский
-(добавь другие ключевые факты о себе — максимум ~120 токенов)
+Working language: (fill in — Claude will answer in this language)
+(add any other key facts about yourself — ~120 tokens maximum)
 EOF
     echo -e "  ${GREEN}✓${NC} 00-shared/CRITICAL_FACTS.md"
-    echo -e "  ${YELLOW}→ Заполни CRITICAL_FACTS.md своими данными!${NC}"
+    echo -e "  ${YELLOW}→ Fill CRITICAL_FACTS.md with your own details!${NC}"
 fi
 
 # SOUL.md
@@ -143,20 +143,20 @@ if [ ! -f "$VAULT/00-shared/SOUL.md" ]; then
     cat > "$VAULT/00-shared/SOUL.md" << 'EOF'
 # Soul
 
-## Кто я
-(2-3 предложения: ценности, чем занимаюсь, что важно)
+## Who I am
+(2-3 sentences: values, what I do, what matters)
 
-## Как я думаю
-(стиль мышления, как принимаю решения)
+## How I think
+(thinking style, how I make decisions)
 
-## Как мне нравится работать с ИИ
-(предпочтения: тон, формат, скорость vs качество)
+## How I like working with AI
+(preferences: tone, format, speed vs quality)
 
-## Чего не терплю
-(что раздражает в работе с ИИ)
+## What I cannot stand
+(what irritates me when working with AI)
 EOF
     echo -e "  ${GREEN}✓${NC} 00-shared/SOUL.md"
-    echo -e "  ${YELLOW}→ Заполни SOUL.md своими данными!${NC}"
+    echo -e "  ${YELLOW}→ Fill SOUL.md with your own details!${NC}"
 fi
 
 # .gitignore
@@ -166,18 +166,18 @@ if [ ! -f "$VAULT/.gitignore" ]; then
 .obsidian/workspace*
 .obsidian/cache
 
-# Бинарные файлы — обрабатывай через Whisper, в vault клади только транскрипты
+# Binary media — transcribe with Whisper; keep only the transcripts in the vault
 raw/**/*.mp3
 raw/**/*.mp4
 raw/**/*.m4a
 raw/**/*.wav
 raw/**/*.pdf
 
-# Системное
+# System
 .DS_Store
 *.swp
 
-# Секреты и ключи
+# Secrets and keys
 .env
 .env.*
 *.key
@@ -189,12 +189,12 @@ credentials.json
 token.json
 secrets.*
 
-# Базы данных
+# Databases
 *.sqlite
 *.sqlite3
 *.db
 
-# Claude Code локальный контекст
+# Claude Code local context
 .claude/
 CLAUDE.local.md
 EOF
@@ -204,37 +204,37 @@ fi
 # ─── Git initialisation ──────────────────────────────────────────────────────
 echo ""
 if [ ! -d "$VAULT/.git" ]; then
-    ask "Инициализировать Git в vault? (y/n): " INIT_GIT
+    ask "Initialise Git in the vault? (y/n): " INIT_GIT
     if [ "$INIT_GIT" = "y" ]; then
         cd "$VAULT"
         git init
         git add .
         git commit -m "init: Second Brain vault"
-        echo -e "  ${GREEN}✓${NC} Git инициализирован"
+        echo -e "  ${GREEN}✓${NC} Git initialised"
         echo ""
-        ask "Добавить remote репозиторий? (Enter = пропустить, или вставь URL): " REMOTE_URL
+        ask "Add a remote repository? (Enter = skip, or paste a URL): " REMOTE_URL
         if [ -n "$REMOTE_URL" ]; then
             git remote add origin "$REMOTE_URL"
-            echo -e "  ${GREEN}✓${NC} Remote добавлен: $REMOTE_URL"
+            echo -e "  ${GREEN}✓${NC} Remote added: $REMOTE_URL"
         fi
     fi
 fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}━━━ Установка завершена ━━━${NC}"
+echo -e "${GREEN}━━━ Installation complete ━━━${NC}"
 echo ""
 echo -e "Vault:    ${YELLOW}$VAULT${NC}"
 echo -e "Skill:    ${YELLOW}$SKILL_DIR/SKILL.md${NC}"
-echo -e "Команды:  ${YELLOW}$COMMANDS_DIR/brain-*.md${NC}"
+echo -e "Commands: ${YELLOW}$COMMANDS_DIR/brain-*.md${NC}"
 echo ""
-echo "Следующие шаги:"
-echo "  1. Запусти guided setup — заполни профиль:"
+echo "Next steps:"
+echo "  1. Run the guided setup — fill in your profile:"
 echo "     cd ~/Workspace/projects && claude"
 echo "     /brain-setup"
 echo ""
-echo "  2. Создай первый проект:"
-echo "     mkdir ~/Workspace/projects/[название] && cd ~/Workspace/projects/[название]"
+echo "  2. Create your first project:"
+echo "     mkdir ~/Workspace/projects/[name] && cd ~/Workspace/projects/[name]"
 echo "     claude"
-echo "     /brain-init [название]"
+echo "     /brain-init [name]"
 echo ""

@@ -15,6 +15,14 @@
 #
 # bash 3.2 floor: macOS ships /bin/bash 3.2 and it is one of the two machines.
 # No mapfile/readarray, no declare -A, no ${var^^}.
+#
+# Language: every message this file prints is English — the package is installed by
+# people who may not read Russian, and the Russian documentation is separate
+# (README_RU.md, WORKFLOW.md, ВТОРОЙ_МОЗГ_*.md). The Cyrillic that remains is NOT
+# text: it is search patterns matching section names inside a user's vault
+# ("Завершено", "В работе", "Статус", "Последняя сессия", "ЗАКРЫТО"). Translating
+# those would stop the checks from seeing a Russian-language vault at all. Do not
+# "finish the translation" here — add patterns for new languages instead.
 
 set -u
 
@@ -94,7 +102,7 @@ lint_diff() {
     # first live baseline, where the type had been written without the object.
     dup=$(cut -f1 "$cur" | sort | uniq -d)
     if [ -n "$dup" ]; then
-        echo "lint-diff: ключи не уникальны — добавьте объект в ключ:" >&2
+        echo "lint-diff: keys are not unique — add the object to the key:" >&2
         printf '%s\n' "$dup" | sed 's/^/  /' >&2
         rm -f "$cur"; return 1
     fi
@@ -430,7 +438,7 @@ sweep_closed() {
         echo "sweep-closed: refused — Done heading not found while splitting" >&2
         rm -rf "$work"; return 1
     fi
-    echo "sweep-closed: $n_moved закрытых пунктов ($moved_lines строк) -> Done, $n_kept открытых остаются"
+    echo "sweep-closed: $n_moved closed items ($moved_lines lines) -> Done, $n_kept open ones stay"
     # Say what this move does NOT solve. `archive` never moves an undated entry — that
     # is deliberate, it cannot place what it cannot date — and In progress items were
     # historically written without one. So a sweep can put the taskboard's Done count
@@ -445,7 +453,7 @@ sweep_closed() {
         n_dated=$(grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
         n_undated=$((n_moved - ${n_dated:-0}))
         if [ "$n_undated" -gt 0 ]; then
-            echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
+            echo "sweep-closed: $n_undated of them carry no date — archive cannot move those, they stay in Done"
             # Where that date used to be: the item often has none because it sat in
             # the section HEADING, and headings are not moved. So the sweep does not
             # merely leave an item undated — it separates it from the only date it
@@ -462,10 +470,10 @@ sweep_closed() {
                 END { for (k in seen) print k }
             ' "$tb")
             if [ -n "$dated_h" ]; then
-                echo "sweep-closed: дата этих пунктов стоит в заголовке, а заголовок не переносится —"
+                echo "sweep-closed: their date sits in the heading, and headings are not moved —"
                 printf '%s\n' "$dated_h" | sed 's/^/sweep-closed:   /'
-                echo "sweep-closed:   перенеся их, вы оторвёте пункты от единственной их даты."
-                echo "sweep-closed:   Проставьте дату в самих пунктах ДО переноса, иначе archive их уже не увезёт"
+                echo "sweep-closed:   moving them separates the items from the only date they have."
+                echo "sweep-closed:   Date the items themselves BEFORE moving, or archive can never take them"
             fi
         fi
 
@@ -486,14 +494,14 @@ sweep_closed() {
             END { for (k in lying) if (k ~ /✅|ЗАКРЫТО|DONE|CLOSED|ЗАВЕРШ/) print k }
         ' "$tb" | while IFS= read -r bad; do
             [ -n "$bad" ] || continue
-            echo "sweep-closed: ВНИМАНИЕ — заголовок объявляет закрытие, но под ним остаются открытые пункты:"
+            echo "sweep-closed: WARNING — this heading claims closure but open items remain under it:"
             echo "sweep-closed:   $bad"
-            echo "sweep-closed:   перенос ничего не теряет, но этот заголовок станет неверным — разделите секцию вручную"
+            echo "sweep-closed:   the move loses nothing, but this heading becomes false — split the section by hand"
         done
     fi
     if [ "$n_moved" -eq 0 ]; then rm -rf "$work"; return 0; fi
     if [ "$apply" != "--apply" ]; then
-        echo "sweep-closed: dry-run, ничего не записано (нужен --apply)"
+        echo "sweep-closed: dry run, nothing written (pass --apply)"
         rm -rf "$work"; return 0
     fi
 
@@ -503,19 +511,19 @@ sweep_closed() {
     # Permutation check, both halves. Line count alone would miss a swap; the sorted
     # multiset alone would miss a duplicate paired with a loss of the same size.
     if [ "$(grep -c '' "$work/new")" -ne "$(grep -c '' "$tb")" ]; then
-        echo "sweep-closed: refused — число строк изменилось ($(grep -c '' "$tb") -> $(grep -c '' "$work/new"))" >&2
+        echo "sweep-closed: refused — line count changed ($(grep -c '' "$tb") -> $(grep -c '' "$work/new"))" >&2
         rm -rf "$work"; return 1
     fi
     sort "$tb" > "$work/a.sorted"; sort "$work/new" > "$work/b.sorted"
     if ! cmp -s "$work/a.sorted" "$work/b.sorted"; then
-        echo "sweep-closed: refused — множество строк изменилось, это не перестановка" >&2
+        echo "sweep-closed: refused — the multiset of lines changed, this is not a permutation" >&2
         diff "$work/a.sorted" "$work/b.sorted" | head -6 >&2
         rm -rf "$work"; return 1
     fi
 
     cp "$tb" "$work/tb.bak"
     mv "$work/new" "$tb" || { rm -rf "$work"; return 1; }
-    echo "sweep-closed: перенесено $n_moved пунктов ($moved_lines строк) в Done"
+    echo "sweep-closed: moved $n_moved items ($moved_lines lines) into Done"
     rm -rf "$work"
 }
 
@@ -573,27 +581,27 @@ prose_budget() {
         # Hit live while writing it: _lc_section was nested inside lint_collect and
         # unreachable from here, and the first output said ok for both prose sections.
         case "$2" in
-            ''|*[!0-9]*) echo "prose-budget: счётчик «$1» не дал числа ('$2') — измерения не было" >&2
+            ''|*[!0-9]*) echo "prose-budget: counter '$1' returned no number ('$2') — nothing was measured" >&2
                          over=2; return 1 ;;
         esac
         if [ "$2" -gt "$3" ]; then
-            printf 'ПЕРЕРАСХОД +%s  %s: %s/%s\n' "$(( $2 - $3 ))" "$1" "$2" "$3"
+            printf 'OVER +%s  %s: %s/%s\n' "$(( $2 - $3 ))" "$1" "$2" "$3"
             over=1
         else
             printf 'ok              %s: %s/%s\n' "$1" "$2" "$3"
         fi
     }
-    report "_PROJECT.md проза" "$(_budget_prose "$pm")" "$BUDGET_PROSE"
+    report "_PROJECT.md prose" "$(_budget_prose "$pm")" "$BUDGET_PROSE"
     report "_PROJECT.md For future Claude" "$(_budget_ffc "$pm")" "$BUDGET_FFC"
     if [ -z "$tb" ]; then
-        echo "taskboard.md                       не передан — измерены только секции _PROJECT.md"
+        echo "taskboard.md                       not given — only the _PROJECT.md sections measured"
     elif [ ! -f "$tb" ]; then
         # NOT READ, never silence: "no taskboard" and "no overrun" are different facts.
-        echo "taskboard.md                       NOT READ — нет файла $tb"
+        echo "taskboard.md                       NOT READ — no file at $tb"
     else
-        report "taskboard Done (записей)" "$(_budget_done "$tb")" "$BUDGET_DONE"
-        report "taskboard In progress (строк)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
-        report "taskboard всего (строк)" "$(_budget_size "$tb")" "$BUDGET_SIZE"
+        report "taskboard Done (entries)" "$(_budget_done "$tb")" "$BUDGET_DONE"
+        report "taskboard In progress (lines)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
+        report "taskboard total (lines)" "$(_budget_size "$tb")" "$BUDGET_SIZE"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
@@ -837,11 +845,11 @@ lint_collect() {
     fi
     for p in $FS_P; do
         printf '%s\n' "$REG_P" | grep -qxF "$p" || \
-            printf 'project-unregistered:%s\tесть в vault, нет в %s\n' "$p" "$REG"
+            printf 'project-unregistered:%s\tin the vault, absent from %s\n' "$p" "$REG"
     done
     for p in $REG_P; do
         [ -f "$p/_PROJECT.md" ] || \
-            printf 'registry-stale:%s\tчислится в %s, файла нет\n' "$p" "$REG"
+            printf 'registry-stale:%s\tlisted in %s, no such file\n' "$p" "$REG"
     done
     PROJECTS="$FS_P"
     [ -n "$only" ] && PROJECTS="$only"
@@ -849,16 +857,16 @@ lint_collect() {
     # ── per project ──────────────────────────────────────────────────────────
     for P in $PROJECTS; do
         f="$P/_PROJECT.md"
-        [ -f "$f" ] || { printf 'project-missing:%s\t_PROJECT.md отсутствует\n' "$P"; continue; }
+        [ -f "$f" ] || { printf 'project-missing:%s\tno _PROJECT.md\n' "$P"; continue; }
 
         prose=$(_budget_prose "$f")
         ffc=$(_budget_ffc "$f")
-        [ "$prose" -gt "$BUDGET_PROSE" ] && printf 'prose-budget:%s\t%s строк при бюджете ~%s\n' "$P" "$prose" "$BUDGET_PROSE"
-        [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s строк\n' "$P" "$ffc"
+        [ "$prose" -gt "$BUDGET_PROSE" ] && printf 'prose-budget:%s\t%s lines against a budget of ~%s\n' "$P" "$prose" "$BUDGET_PROSE"
+        [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s lines\n' "$P" "$ffc"
 
         upd=$(_lc_fm "$f" updated)
         if [ -z "$upd" ]; then
-            printf 'missing-updated:%s\t_PROJECT.md без поля updated:\n' "$P"
+            printf 'missing-updated:%s\t_PROJECT.md has no updated: field\n' "$P"
         else
             us=$(_lc_epoch "$upd")
             if [ -z "$us" ]; then
@@ -866,7 +874,7 @@ lint_collect() {
                 return 1
             fi
             days=$(( (TODAY - us) / 86400 ))
-            [ "$days" -gt 14 ] && printf 'stale-project:%s\t%s дней без обновления _PROJECT.md\n' "$P" "$days"
+            [ "$days" -gt 14 ] && printf 'stale-project:%s\t%s days without an _PROJECT.md update\n' "$P" "$days"
         fi
 
         tb="$P/taskboard.md"
@@ -884,9 +892,9 @@ lint_collect() {
                        d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ &&
                        /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
                        END { print n + 0 }' "$tb")
-            [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s закрытых записей в Done, с датой %s — archive увезёт только их\n' "$P" "$dn" "$dnd"
-            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s строк\n' "$P" "$prog"
-            [ "$tot" -gt "$BUDGET_SIZE" ] && printf 'taskboard-size:%s\t%s строк, In progress %s\n' "$P" "$tot" "$prog"
+            [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
+            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s lines\n' "$P" "$prog"
+            [ "$tot" -gt "$BUDGET_SIZE" ] && printf 'taskboard-size:%s\t%s lines, In progress %s\n' "$P" "$tot" "$prog"
         fi
 
         am="$P/architecture-map.md"
@@ -897,7 +905,7 @@ lint_collect() {
             if [ -n "$mu" ] && [ -n "$ls_" ]; then
                 a=$(_lc_epoch "$mu"); b=$(_lc_epoch "$ls_")
                 [ -n "$a" ] && [ -n "$b" ] && [ "$b" -gt "$a" ] && \
-                    printf 'map-stale:%s\tкарта %s против сессии %s\n' "$P" "$mu" "$ls_"
+                    printf 'map-stale:%s\tmap %s against session %s\n' "$P" "$mu" "$ls_"
             fi
         fi
 
@@ -911,7 +919,7 @@ lint_collect() {
         d=$(_lc_fm "$p" date); [ -n "$d" ] || continue
         ds=$(_lc_epoch "$d"); [ -n "$ds" ] || continue
         days=$(( (TODAY - ds) / 86400 ))
-        [ "$days" -gt 14 ] && printf 'stale-draft:%s\t%s дней\n' "$(echo "${p#./}" | sed 's|\.md$||')" "$days"
+        [ "$days" -gt 14 ] && printf 'stale-draft:%s\t%s days\n' "$(echo "${p#./}" | sed 's|\.md$||')" "$days"
     done
 
     # ── decision-note schema ─────────────────────────────────────────────────
@@ -922,13 +930,13 @@ lint_collect() {
         st=$(_lc_fm "$p" status)
         case "$st" in
             accepted|superseded|deprecated) ;;
-            "") printf 'decision-schema:%s\tнет status:\n' "${p#./}" ;;
-            *)  printf 'decision-schema:%s\tstatus вне схемы: %s\n' "${p#./}" "$st" ;;
+            "") printf 'decision-schema:%s\tno status:\n' "${p#./}" ;;
+            *)  printf 'decision-schema:%s\tstatus off-schema: %s\n' "${p#./}" "$st" ;;
         esac
         # legacy one-line form, frontmatter only (a fenced quote of it is not one)
         awk '/^---$/ { c++; next } c == 1 && /^status:[[:space:]]*superseded-by:/ { found = 1 }
              END { exit !found }' "$p" && \
-            printf 'decision-legacy:%s\tодностроч. status: superseded-by: — невалидный YAML\n' "${p#./}"
+            printf 'decision-legacy:%s\tone-line status: superseded-by: — invalid YAML\n' "${p#./}"
         for k in supersedes superseded-by corrected-by; do
             v=$(_lc_fm "$p" "$k")
             case "$v" in ""|"~"|"null"|"[]") continue ;; esac
@@ -941,7 +949,7 @@ lint_collect() {
             # (see ambiguous-link).
             hits=$(find . -name "$base.md" -not -path './.git/*')
             [ -n "$hits" ] || \
-                printf 'decision-ref:%s\t%s → %s не существует\n' "${p#./}" "$k" "$v"
+                printf 'decision-ref:%s\t%s → %s does not exist\n' "${p#./}" "$k" "$v"
         done
     done
 
@@ -949,7 +957,7 @@ lint_collect() {
     printf '%s\n' "$SCOPED_MD" | while read -r p; do
         head -1 "$p" | grep -qx -- '---' || continue
         awk 'NR == 1 { next } /^---$/ { ok = 1; exit } END { exit ok }' "$p" && \
-            printf 'frontmatter:%s\tблок не закрыт\n' "${p#./}"
+            printf 'frontmatter:%s\tblock not terminated\n' "${p#./}"
     done
 
     # ── ambiguous bare links ─────────────────────────────────────────────────
@@ -979,7 +987,7 @@ lint_collect() {
     # One key per file, count in the detail: the key must be stable, and a per-hit
     # key would repeat — lint-diff refuses a set with duplicate keys.
     sort "$LC_TMP/amb" | uniq -c | while read -r n hf; do
-        printf 'ambiguous-link:%s\t%s голых ссылок\n' "$hf" "$n"
+        printf 'ambiguous-link:%s\t%s bare links\n' "$hf" "$n"
     done
 
     # ── links per wiki note ──────────────────────────────────────────────────
@@ -1002,9 +1010,9 @@ lint_collect() {
     # per-note key would rewrite the baseline on every note anyone touches.
     sort "$LC_TMP/links" | uniq -c | while read -r n cls proj; do
         case "$cls" in
-            no-links)    printf 'wiki-no-links:%s\t%s заметок\n' "$proj" "$n" ;;
-            no-backlink) printf 'wiki-no-backlink:%s\t%s заметок\n' "$proj" "$n" ;;
-            no-sibling)  printf 'wiki-no-sibling:%s\t%s заметок\n' "$proj" "$n" ;;
+            no-links)    printf 'wiki-no-links:%s\t%s notes\n' "$proj" "$n" ;;
+            no-backlink) printf 'wiki-no-backlink:%s\t%s notes\n' "$proj" "$n" ;;
+            no-sibling)  printf 'wiki-no-sibling:%s\t%s notes\n' "$proj" "$n" ;;
         esac
     done
 }
@@ -1044,7 +1052,7 @@ _lc_keys() {
             printf '%s\n' "$have" | grep -qxF "$k" || echo "$k"
         done < "$ct"
     done | sort | uniq -c | while read -r cnt k; do
-        printf 'key-uniformity:%s\t%s записей без %s (всего %s)\n' "$label" "$cnt" "$k" "$n"
+        printf 'key-uniformity:%s\t%s entries lack %s (of %s)\n' "$label" "$cnt" "$k" "$n"
     done
     rm -f "$kt" "$ct"
 }

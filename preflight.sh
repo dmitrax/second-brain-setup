@@ -1312,10 +1312,20 @@ scanned=0
 for f in "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh" "$SCRIPT_DIR"/lib/*.sh; do
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
+    # Quoted spans inside a comment are stripped first: a comment may legitimately
+    # QUOTE the Russian section names the code searches for ("Завершено", "В работе"),
+    # and documenting that boundary must not itself count as a violation — the same
+    # reason strip_inline_code exists for the markdown checks.
     h=$(awk '
         /<<[[:space:]]*.?(EOF|USAGE|LY|PY)/ { inhd = 1; next }
         /^[[:space:]]*(EOF|USAGE|LY|PY)[[:space:]]*$/ { inhd = 0; next }
-        !inhd && /^[[:space:]]*#/ && /[А-Яа-яЁё]/ { print FILENAME ":" FNR ": " $0 }
+        !inhd && /^[[:space:]]*#/ {
+            t = $0
+            gsub(/"[^"]*"/, "", t)
+            gsub(/`[^`]*`/, "", t)
+            gsub(/[^ \t]+\.md/, "", t)      # a filename, not prose — same as in commits
+            if (t ~ /[А-Яа-яЁё]/) print FILENAME ":" FNR ": " $0
+        }
     ' "$f")
     [ -n "$h" ] && missing+="$(printf '%s\n' "$h" | sed 's|.*/||; s/^/    /')"$'\n'
 done
@@ -1630,12 +1640,12 @@ LY
 # рабочем предупреждении, а негативный тест на ней дал ложное «краснеет», потому что
 # она была красной и до мутации.
 ly_out=$(bash "$BL" sweep-closed "$sc_fx/lying.md" 2>&1)
-printf '%s\n' "$ly_out" | grep -qF 'заголовок объявляет закрытие' ||
+printf '%s\n' "$ly_out" | grep -qF 'this heading claims closure' ||
     missing+="перенос не предупреждает про заголовок, который станет неверным"$'\n'
 # И обратное: честный заголовок предупреждения не вызывает.
 sed 's/✅ ЗАКРЫТО 2026-08-01 — всё сделано/Работа в процессе/' "$sc_fx/lying.md" > "$sc_fx/honest.md"
 ho_out=$(bash "$BL" sweep-closed "$sc_fx/honest.md" 2>&1)
-printf '%s\n' "$ho_out" | grep -qF 'заголовок объявляет закрытие' &&
+printf '%s\n' "$ho_out" | grep -qF 'this heading claims closure' &&
     missing+="предупреждение срабатывает на честном заголовке — ложная тревога"$'\n'
 # Страховка проверяется ЗАПУСКОМ сломанной копии, а не грепом её наличия.
 sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /тело/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
