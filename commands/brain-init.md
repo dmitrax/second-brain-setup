@@ -268,15 +268,19 @@ Project: [PROJECT]
 ### Obsidian CLI
 Requires Obsidian 1.12.7+ with CLI enabled (Settings → General → Command line interface).
 Obsidian must be running. The system works without CLI — it's optional enhancement.
-Behind the guard — `bash "$HOME/.claude/skills/second-brain/lib/brain.sh"
-obsidian-available "$VAULT"`, one copy of code that everyone calls — use `obsidian move`
-for renames. It is the only mutating CLI call left, so it needs the guard that also
-verifies *which* vault is active, not just that the CLI exists. Call it; never
-reconstruct it inline, every clause in it encodes a separate incident. Until v1.7.0 this
-file named a guard that existed only inside `/brain-lint`, i.e. prescribed a mutating
-call under protection it did not have. Never use `property:set` for
-frontmatter — it re-serializes the whole block and loses data; edit the file directly.
-Address files with `path=<project>/<name>.md` (exact), never `file=<name>` — `file=`
+**The CLI is read-only here.** Queries only — `orphans`, `unresolved`, `deadends`,
+`vault info` — and each behind the guard `bash
+"$HOME/.claude/skills/second-brain/lib/brain.sh" obsidian-available "$VAULT"`, one copy of
+code that everyone calls: a zero exit from the CLI proves only that *some* vault is open,
+and every path is relative to that one. Call the guard, never reconstruct it inline —
+every clause in it encodes a separate incident.
+
+Nothing writes to the vault through the CLI. `property:set` re-serializes the whole
+frontmatter block and loses data. `obsidian move` set a vault setting nobody asked for and
+then corrupted 8 places in 6 files from a stale cache, minutes after the call returned 0
+(measured 2026-08-04). Renames go through `bash "$BRAIN" rename "$VAULT" <old> <new>
+--apply`, which repoints links itself; edit frontmatter directly with a normal file edit.
+Address any query with `path=<project>/<name>.md` (exact), never `file=<name>` — `file=`
 resolves by name like a wikilink and silently targets another project's file.
 
 ---

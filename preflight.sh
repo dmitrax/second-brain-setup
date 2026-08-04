@@ -67,6 +67,29 @@ code_blocks() {
     awk '/^[[:space:]]*```/ { inblock = !inblock; next } inblock { print }' "$1"
 }
 
+# exec_blocks <file> — code_blocks minus the blocks declared markdown or yaml, which are
+# note templates rather than commands, prefixed with the source line number.
+# Why the distinction is load-bearing: several prohibitions in this file are about naming
+# a call ("never `obsidian property:set`"), and /brain-init states them INSIDE the
+# ```markdown template it writes into a new project's CLAUDE.md. Scanned as executable,
+# the file cannot state the rule it is required to state. Checks 1 and 2 read as green
+# today only because their wording happens to miss by one word: adding `obsidian ` in
+# front of `property:set` in that template turned check 2 red — found 2026-08-04 by the
+# differentiating negative test for check 39, not by a failure.
+exec_blocks() {
+    awk '
+        FNR == 1 { inb = 0; lang = "" }
+        /^[[:space:]]*```/ {
+            if (!inb) { inb = 1; lang = $0; sub(/^[[:space:]]*```[[:space:]]*/, "", lang) }
+            else      { inb = 0; lang = "" }
+            next
+        }
+        !inb               { next }
+        lang == "markdown" { next }
+        lang == "yaml"     { next }
+        { print FNR ":" $0 }' "$1"
+}
+
 # unquoted_globs <file> — prints lines of shell blocks where `*` is not quoted.
 # Blocks declared markdown/yaml are skipped on purpose: those are note templates, not
 # commands, and an asterisk there is markup.
@@ -145,7 +168,7 @@ echo -e "${BLUE}[1/3] Our own prohibitions (CLAUDE.md Block 2)${NC}"
 # `file=` resolves by name like a bare wikilink, takes the first match, exits 0.
 hits=""
 for f in "${TARGETS[@]}"; do
-    h=$(code_blocks "$f" | grep -n "obsidian .*[^a-z_]file=" || true)
+    h=$(exec_blocks "$f" | grep "obsidian .*[^a-z_]file=" || true)
     [ -n "$h" ] && hits+="$(basename "$f"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
@@ -159,7 +182,7 @@ fi
 # inline lists, turns 007 into 7. Data loss without a warning, exit 0.
 hits=""
 for f in "${TARGETS[@]}"; do
-    h=$(code_blocks "$f" | grep -n "obsidian property:set" || true)
+    h=$(exec_blocks "$f" | grep "obsidian property:set" || true)
     [ -n "$h" ] && hits+="$(basename "$f"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
@@ -199,9 +222,15 @@ for f in "${TARGETS[@]}"; do
     # PRESCRIBES a call from prose that FORBIDS one ("Do not use obsidian property:set").
     calls=$(code_blocks "$f" | grep -cE "^[[:space:]]*(if |\[|.*\$\()?[[:space:]]*obsidian " || true)
     mentions=$(grep -c "obsidian-available" "$f" || true)
-    [ "$calls" -eq 0 ] && [ "$mentions" -eq 0 ] && continue
-
-    if [ "$mentions" -eq 0 ]; then
+    # A file that touches the CLI nowhere is a legitimate outcome, but it is SAID rather
+    # than skipped. `continue` here made the number of emitted checks depend on the text
+    # of the files: measured 2026-08-04, rewriting SKILL.md's rename section dropped its
+    # last `obsidian-available` mention, this file fell out of the loop, and the run went
+    # from 53 checks to 52 with nothing red — a check that stops running looks exactly
+    # like a check that never existed.
+    if [ "$calls" -eq 0 ] && [ "$mentions" -eq 0 ]; then
+        pass "$name: does not touch the Obsidian CLI, so no guard is owed"
+    elif [ "$mentions" -eq 0 ]; then
         fail "$name calls obsidian in a code block without calling the guard from lib/brain.sh"
     else
         pass "$name: the guard is called from lib/brain.sh"
@@ -2031,6 +2060,94 @@ elif [ -n "$missing" ]; then
     fail "a prompt block refers to a variable with nowhere to come from" "$missing"
 else
     pass "every variable in a prompt block is introduced by assignment or prose ($scanned files)"
+fi
+
+# ─── 39. The Obsidian CLI never writes; renaming is ours and keeps quotations ─
+# The CLI was allowed exactly one mutating call, `obsidian move`, behind a guard, with an
+# after-the-fact check of which file changed. Measured 2026-08-04, all three protections
+# missed it: it wrote `"alwaysUpdateLinks": true` into the vault's .obsidian/app.json,
+# repointed nothing at call time — `git status` right after showed only the note itself —
+# and minutes later, while the session edited those files, the GUI rewrote their backlinks
+# from its cached copy at pre-edit offsets. 8 corrupted spots in 6 files, exit 0. A check
+# placed after a call cannot see damage that arrives later, so the rule is now the one a
+# grep can hold whole: nothing writes through the CLI.
+# The replacement is `brain.sh rename`, and it is verified by RUNNING it: the link forms
+# a vault actually uses, the boundary that tells `note` from `note-two`, and the line
+# between a pointer (updated) and a quotation (left as written) — the last one is why the
+# renamed note's only mention in sessions/ survived that day: it was inline code.
+missing=""
+scanned=0
+for f in "${TARGETS[@]}"; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    # Executable blocks only — a ```markdown block is a template, see exec_blocks.
+    h=$(exec_blocks "$f" | grep -E 'obsidian +(move|property:set|create|delete|rm)')
+    [ -n "$h" ] && missing+="$(basename "$f") — a mutating obsidian call inside a code block:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+done
+# lib/ may name the CLI only in the read-only guard and in comments explaining the ban.
+# Two forms are legitimate and everything else is a finding: asking whether the binary
+# exists, and the one read-only query the guard makes. `command -v obsidian` is not an
+# invocation, and a whitelist of exact forms says that better than a blacklist of verbs —
+# a blacklist would have to predict every subcommand the CLI grows next.
+# An INVOCATION is `obsidian <subcommand>`; the function name `obsidian_available` and the
+# SingletonLock path are not, which is why the word boundary excludes `_` and `/`.
+h=$(grep -nE '(^|[^-_/[:alnum:]])obsidian[[:space:]]+[a-z]' "$SCRIPT_DIR/lib/brain.sh" |
+    grep -vE '^[0-9]+:[[:space:]]*#' |
+    grep -v 'command -v obsidian' | grep -v 'obsidian vault info=name')
+[ -n "$h" ] && missing+="lib/brain.sh — a CLI call that is not the read-only guard:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+# Both code-vs-prose state machines carry the same three rules; if one loses a rule the
+# two disagree about what a quotation is, and only one of them is covered by a fixture.
+for fn in '_lc_strip' 'rename_note'; do
+    # Stop at the closing brace AT THE DEFINITION'S OWN INDENT. Stopping at the first
+    # `}` on a line of its own ends the capture inside the embedded awk program, which
+    # is where the three rules live — the first draft did exactly that and reported all
+    # three as missing from a function that has them.
+    body=$(awk -v f="$fn" '
+        !on && $0 ~ "^[[:space:]]*" f "\\(\\) \\{" {
+            on = 1; match($0, /^[[:space:]]*/); ind = substr($0, 1, RLENGTH); print; next }
+        on { print; if ($0 == ind "}") exit }' "$SCRIPT_DIR/lib/brain.sh")
+    [ -n "$body" ] || { missing+="$fn not found — the state-machine comparison had nothing to read"$'\n'; continue; }
+    printf '%s\n' "$body" | grep -q 'fence = !fence'   || missing+="$fn lost the fenced-block rule"$'\n'
+    printf '%s\n' "$body" | grep -q 'incode = 0'       || missing+="$fn lost the blank-line reset"$'\n'
+    printf '%s\n' "$body" | grep -q 'split($0, part'   || missing+="$fn lost the inline-code split"$'\n'
+done
+# Behavioural: one fixture, every form, run for real.
+rf=$(mktemp -d); mkdir -p "$rf/proj/wiki" "$rf/proj/sessions"
+printf '# note\n' > "$rf/proj/wiki/note.md"
+printf '# note-two\n' > "$rf/proj/wiki/note-two.md"
+{ printf -- '[[note]] [[proj/wiki/note]] [[note|alias]] [[note#head]] [[note^blk]] ![[note]] [[proj/wiki/note.md]]\n'
+  printf -- '[[note-two]] [[proj/wiki/note-two|two]]\n'
+  printf -- 'inline `[[note]]` and `wiki/note.md`\n'; } > "$rf/proj/_PROJECT.md"
+{ printf -- 'pointer [[../wiki/note]]\n\n'; printf -- '```\nquoted [[note]]\n```\n'; } > "$rf/proj/sessions/s.md"
+bash "$LIBSH" rename "$rf" proj/wiki/note.md proj/wiki/renamed.md --apply >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 0 ] || missing+="rename failed on a valid fixture (exit $rc)"$'\n'
+[ -f "$rf/proj/wiki/renamed.md" ] || missing+="rename did not move the file"$'\n'
+[ -f "$rf/proj/wiki/note.md" ] && missing+="rename left the old file behind"$'\n'
+pm=$(cat "$rf/proj/_PROJECT.md")
+for form in '[[renamed]]' '[[proj/wiki/renamed]]' '[[renamed|alias]]' '[[renamed#head]]' \
+            '[[renamed^blk]]' '![[renamed]]' '[[proj/wiki/renamed.md]]'; do
+    printf '%s\n' "$pm" | grep -qF "$form" || missing+="rename did not produce $form"$'\n'
+done
+printf '%s\n' "$pm" | grep -qF '[[note-two]]'  || missing+="rename damaged the longer name note-two"$'\n'
+printf '%s\n' "$pm" | grep -qF '`[[note]]`'    || missing+="rename rewrote a quotation in inline code"$'\n'
+grep -qF 'pointer [[../wiki/renamed]]' "$rf/proj/sessions/s.md" || missing+="rename skipped a pointer in sessions/"$'\n'
+grep -qF 'quoted [[note]]' "$rf/proj/sessions/s.md" || missing+="rename rewrote a quotation inside a fenced block"$'\n'
+# Refusals: a taken basename elsewhere in the vault must stop it before anything moves.
+bash "$LIBSH" rename "$rf" proj/wiki/renamed.md proj/sessions/note-two.md --apply >/dev/null 2>&1 &&
+    missing+="rename accepted a basename already taken elsewhere in the vault"$'\n'
+[ -f "$rf/proj/wiki/renamed.md" ] || missing+="a refused rename moved the file anyway"$'\n'
+bash "$LIBSH" rename "$rf" proj/wiki/absent.md proj/wiki/x.md --apply >/dev/null 2>&1 &&
+    missing+="rename accepted a source that does not exist"$'\n'
+bash "$LIBSH" rename "$rf" ../outside.md proj/wiki/x.md >/dev/null 2>&1 &&
+    missing+="rename accepted a path escaping the vault"$'\n'
+rm -rf "$rf"
+if [ "$scanned" -eq 0 ]; then
+    fail "check 39 opened no files — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "the CLI writes to the vault, or rename mishandles a link form" "$missing"
+else
+    pass "the Obsidian CLI is read-only and rename repoints links without touching quotations ($scanned files)"
 fi
 
 # ─── 38. A date fallback names the time of day, or it borrows the clock ──────

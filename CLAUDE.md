@@ -512,8 +512,36 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   Confirmed live 2026-07-22: a `/brain-save` Step 0b run in one project stamped
   `updated:` into a different project's `_PROJECT.md`; caught only by `git status`
   in the vault. Fixed in
-  brain-save Step 0b, brain-lint Step 11, SKILL.md. Mutating CLI branches must also
-  verify afterwards which file actually changed
+  brain-save Step 0b, brain-lint Step 11, SKILL.md.
+- **The Obsidian CLI does not write to the vault at all, and "verify afterwards which file
+  changed" is why that had to become absolute.** That clause stood here as the safeguard on
+  mutating calls, and it is not wrong so much as unable to fire: measured 2026-08-04, a
+  single `obsidian move` behind the guard, addressed by `path=`, verified right after with
+  `git status` — clean, only the renamed note — then corrupted **8 places across 6 files**
+  minutes later, while the session edited them. The call had written
+  `"alwaysUpdateLinks": true` into the vault's own `.obsidian/app.json` (a setting change
+  nobody requested), after which the GUI repointed backlinks from its cached copy at
+  offsets valid for the pre-edit text, splicing `[[new-name|old-alias]]` into the middle of
+  unrelated sentences. Exit 0, empty stderr, and the links it was supposed to fix were
+  still not fixed — the session had rewritten them itself. **A verification placed after a
+  call cannot see damage that arrives after the verification**, so the rule a check can
+  hold whole is the absolute one. This is the third narrowing along one line, not a
+  reversal: `property:set` was dropped inside v1.5.0, the version that introduced the CLI,
+  and `file=` addressing right after — both for writing silently to the wrong place.
+  Renames go through `brain.sh rename`, which repoints every link form itself and refuses a
+  basename already taken elsewhere in the vault. It draws one line worth restating: **a
+  pointer is updated, a quotation is not** — `[[name]]` in a session log points at a note
+  that still exists, while `` `wiki/name.md` `` in prose records what was created that day,
+  and the run prints how many quoted mentions it left so "not repointed" is never silent.
+  Checked by preflight 39, which runs `rename` over every link form, the `note`/`note-two`
+  boundary and both quotation kinds, and greps for any mutating CLI call in an executable
+  block. Note what that check must NOT do: the prohibition itself is stated inside the
+  fenced template `/brain-init` writes, so a block declared `markdown` or `yaml` is a
+  template, not a command — `exec_blocks` in `preflight.sh` is the one place that decides
+  this, and checks 1 and 2 were reading them as executable until the differentiating
+  negative test for 39 exposed it. They were green only because their wording missed by one
+  word.
+  [[decision-the-cli-never-writes-because-a-check-after-the-call-cannot-see-later-damage]]
 - `path=` is relative to the *active* vault, so it does not fix the same failure one
   level up: `_obsidian_available()` must compare `obsidian vault info=name` against
   `basename "$VAULT"`, not just check its exit code. Exit code alone confirms only that

@@ -300,6 +300,139 @@ brain_version() {
     fi
 }
 
+# ── rename ───────────────────────────────────────────────────────────────────
+# Renames a note and repoints every [[wikilink]] to it. This exists because
+# `obsidian move` — the one mutating CLI call the package used to prescribe — was
+# measured on 2026-08-04 doing three things nobody asked for. It wrote
+# `"alwaysUpdateLinks": true` into the vault's own .obsidian/app.json; it updated no
+# link at the time of the call (git status right after showed only the note itself);
+# and minutes later, while the session was editing those files, the GUI rewrote their
+# backlinks from its own cached copy, at offsets valid for the pre-edit text — 8
+# corrupted spots across 6 files, exit 0, nothing on stderr. A verification placed
+# right after a mutating call cannot see damage that arrives afterwards, which is why
+# the answer is not a better guard but no CLI write at all.
+#
+# Two lines this draws, both learned from that incident:
+#   * A POINTER is updated, a QUOTATION is not. `[[name]]` in a session log points at a
+#     note that still exists under a new name, so repointing keeps the old statement
+#     true; `` `wiki/name.md` `` in prose is a record of what was created that day, and
+#     rewriting it would falsify history. Measured the same day: the only mention of the
+#     renamed note in sessions/ was inline code, which is exactly why `obsidian
+#     unresolved` never flagged it.
+#   * The target's LAST PATH COMPONENT must match in full. A substring replace renames
+#     `note` inside `note-two`; the scan below compares components, never text.
+#
+# The code-vs-prose state machine here is the same three rules as `_lc_strip` inside
+# lint-collect (fence toggles, blank line resets, backticks split the line) — if you
+# change one, change the other; preflight 39 asserts both still carry all three.
+rename_note() {
+    vault="${1:-}"; old_rel="${2:-}"; new_rel="${3:-}"; apply="${4:-}"
+    [ -n "$vault" ] && [ -n "$old_rel" ] && [ -n "$new_rel" ] || {
+        echo "rename: need <vault> <old-relative-path> <new-relative-path> [--apply]" >&2; return 1; }
+    [ -d "$vault" ] || { echo "rename: no vault at $vault" >&2; return 1; }
+    case "$old_rel" in /*|*..*) echo "rename: give a path relative to the vault, got '$old_rel'" >&2; return 1 ;; esac
+    case "$new_rel" in /*|*..*) echo "rename: give a path relative to the vault, got '$new_rel'" >&2; return 1 ;; esac
+    [ -f "$vault/$old_rel" ] || { echo "rename: no file at $old_rel" >&2; return 1; }
+    [ -e "$vault/$new_rel" ] && { echo "rename: $new_rel already exists" >&2; return 1; }
+
+    old_base=$(basename "$old_rel" .md)
+    new_base=$(basename "$new_rel" .md)
+    [ "$old_base" = "$new_base" ] && { echo "rename: the basename does not change — nothing to repoint" >&2; return 1; }
+
+    # Read-time uniqueness: a bare [[link]] resolves to the first shortest-path match,
+    # so a basename that already exists elsewhere makes every link to it ambiguous the
+    # moment this one lands. Refuse rather than create the class the lint hunts for.
+    clash=$(cd "$vault" && find . -name "$new_base.md" -not -path './.git/*' | sed 's|^\./||')
+    [ -n "$clash" ] && {
+        echo "rename: the basename $new_base is already taken in this vault, links to it would be ambiguous:" >&2
+        printf '%s\n' "$clash" | sed 's/^/  /' >&2
+        return 1; }
+
+    rn_tmp=$(mktemp -d) || return 1
+    touched=0; links=0; quoted=0
+    for f in $(cd "$vault" && find . -name '*.md' -not -path './.git/*' | sed 's|^\./||'); do
+        src="$vault/$f"
+        grep -qF "$old_base" "$src" 2>/dev/null || continue
+        awk -v OLD="$old_base" -v NEW="$new_base" '
+            function firstsep(s,   a, b, c, m) {
+                a = index(s, "|"); b = index(s, "#"); c = index(s, "^"); m = 0
+                if (a > 0) m = a
+                if (b > 0 && (m == 0 || b < m)) m = b
+                if (c > 0 && (m == 0 || c < m)) m = c
+                return m
+            }
+            # Compare the last path component in full, never a substring: [[note]] and
+            # [[note-two]] differ, and so do [[a/note]] and [[b/note]] only in prefix.
+            function retarget(inner,   m, tgt, rest, pre, base, i, p, ext) {
+                m = firstsep(inner)
+                if (m > 0) { tgt = substr(inner, 1, m - 1); rest = substr(inner, m) }
+                else       { tgt = inner; rest = "" }
+                pre = ""; base = tgt; i = 0
+                while ((p = index(substr(tgt, i + 1), "/")) > 0) i = i + p
+                if (i > 0) { pre = substr(tgt, 1, i); base = substr(tgt, i + 1) }
+                ext = ""
+                if (length(base) > 3 && substr(base, length(base) - 2) == ".md") {
+                    ext = ".md"; base = substr(base, 1, length(base) - 3)
+                }
+                if (base != OLD) return inner
+                hits++
+                return pre NEW ext rest
+            }
+            function rewriteseg(s,   out, i, j, inner) {
+                out = ""
+                while (1) {
+                    i = index(s, "[[")
+                    if (i == 0) break
+                    out = out substr(s, 1, i + 1)
+                    s = substr(s, i + 2)
+                    j = index(s, "]]")
+                    if (j == 0) break          # unterminated: leave the rest untouched
+                    inner = substr(s, 1, j - 1)
+                    out = out retarget(inner) "]]"
+                    s = substr(s, j + 2)
+                }
+                return out s
+            }
+            # A quotation is counted, not changed — so a run never claims to have
+            # repointed something it deliberately left alone.
+            function countquoted(s) { if (index(s, OLD) > 0) quoted++ }
+            /^[[:space:]]*```/ { fence = !fence; countquoted($0); print; next }
+            fence              { countquoted($0); print; next }
+            !NF                { incode = 0; print; next }
+            {
+                n = split($0, part, "`"); out = ""
+                for (i = 1; i <= n; i++) {
+                    if (incode) { countquoted(part[i]); out = out part[i] }
+                    else        { out = out rewriteseg(part[i]) }
+                    if (i < n) { out = out "`"; incode = !incode }
+                }
+                print out
+            }
+            END { print hits + 0 " " quoted + 0 > "/dev/stderr" }
+        ' "$src" > "$rn_tmp/out" 2>"$rn_tmp/n"
+        read -r h q < "$rn_tmp/n"
+        quoted=$(( quoted + q ))
+        [ "$h" -gt 0 ] || continue
+        links=$(( links + h )); touched=$(( touched + 1 ))
+        printf '  %s (%s link(s))\n' "$f" "$h"
+        [ "$apply" = "--apply" ] && cat "$rn_tmp/out" > "$src"
+    done
+    rm -rf "$rn_tmp"
+
+    if [ "$apply" = "--apply" ]; then
+        if git -C "$vault" rev-parse --git-dir >/dev/null 2>&1; then
+            git -C "$vault" mv "$old_rel" "$new_rel" 2>/dev/null || mv "$vault/$old_rel" "$vault/$new_rel"
+        else
+            mv "$vault/$old_rel" "$vault/$new_rel"
+        fi
+        printf 'rename: %s -> %s, %s link(s) repointed in %s file(s), %s quoted mention(s) left as written\n' \
+            "$old_rel" "$new_rel" "$links" "$touched" "$quoted"
+    else
+        printf 'rename: dry run — would move %s -> %s and repoint %s link(s) in %s file(s); %s quoted mention(s) stay as written (pass --apply)\n' \
+            "$old_rel" "$new_rel" "$links" "$touched" "$quoted"
+    fi
+}
+
 # ── obsidian-available ───────────────────────────────────────────────────────
 # Electron keeps a SingletonLock symlink in its userData dir while it runs — on
 # every OS. Test it with -L, not -e: the link deliberately points at a target
@@ -1157,6 +1290,7 @@ _lc_keys() {
 case "${1:-}" in
     obsidian-available) shift; obsidian_available "${1:-}" ;;
     vault-name)         timeout 2 obsidian vault info=name 2>/dev/null || true ;;
+    rename)             shift; rename_note "${1:-}" "${2:-}" "${3:-}" "${4:-}" ;;
     vault-sync)         shift; vault_sync "${1:-}" ;;
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
