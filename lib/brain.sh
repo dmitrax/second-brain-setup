@@ -128,13 +128,26 @@ lint_diff() {
 
     # LC_ALL=C on every sort that feeds comm, and on comm itself. Collation is
     # locale-dependent: measured 2026-08-04, the C locale orders `Note-Alone.md` before
-    # `note-alone.md` while en_US.UTF-8 orders them the other way. The baseline is written
-    # on one machine and compared on another, so a differing locale makes `comm` mispair
-    # the two lists and report the SAME key as both NEW and GONE in one run — the exact
-    # fake delta this whole mechanism exists to avoid. `comm` does warn on unsorted input,
-    # but only on stderr, which nothing here surfaces.
-    # Deliberately NOT exported for the whole script: under LC_ALL=C the Cyrillic
-    # character classes that match a Russian vault stop working.
+    # `note-alone.md` while en_US.UTF-8 orders them the other way, and `comm` requires
+    # both inputs ordered the same way. Pinning makes the order a property of the code
+    # rather than of whichever machine happens to run it.
+    #
+    # What this comment claimed until 2026-08-04 and what measuring it showed:
+    #   - claimed: an unpinned run reports the SAME key as both NEW and GONE.
+    #     Not reproducible on Arch (glibc 2.4x, coreutils 9.11): `sort` and `comm` read
+    #     one environment, so they agree, and glibc's collation has a codepoint tiebreak
+    #     that keeps `sort -u` from collapsing keys distinct only in punctuation or case.
+    #     Whether BSD `sort`/`comm` behave differently is untested — see the taskboard.
+    #   - claimed: exporting LC_ALL=C globally would blind the Cyrillic patterns.
+    #     Measured false in the dangerous direction. Literal patterns (`Статус`,
+    #     `Завершено`) match fine under C — they are byte sequences. The character
+    #     CLASS `[А-Яа-яЁё]` does not stop matching either; under C it degrades into a
+    #     byte range that matches ANY non-ASCII, so `café` reads as Cyrillic.
+    # So the pinning stays — it costs nothing and removes a machine-dependent property
+    # from a cross-machine comparison — but it is defence, not a repair of a measured
+    # break. Still not exported globally: over-matching classes are the reason now.
+    # Anything asserting an equivalent of `[А-Яа-яЁё]` must state the locale it needs
+    # instead of assuming one; preflight self-tests exactly that before using the class.
     cut_keys() { cut -f1 "$1" | LC_ALL=C sort -u; }
     new_keys="${TMPDIR:-/tmp}/brain-lint-new.$$"
     gone_keys="${TMPDIR:-/tmp}/brain-lint-gone.$$"
@@ -194,8 +207,17 @@ archive_done() {
         }
         part != "done" { print > (w "/" part); next }
         {
-            # New entry? `- [x] 2026-08-03` / `- ✅ 2026-08-03`
-            if ($0 ~ /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/) {
+            # New entry? `- [x] 2026-08-03` / `- ✅ 2026-08-03`, at column 0 only.
+            # An INDENTED closed item is a sub-item of the entry above it, not an entry:
+            # it is one line of the body of that entry and must travel with it. Anchoring this
+            # at ^[[:space:]]* instead tore parents from their children — measured
+            # 2026-08-04 on a fixture, `--apply` moved a dated parent into the archive
+            # note and left its two closed sub-items behind in Done, orphaned and
+            # meaningless. Silently: exit 0, and the balance check below agreed, because
+            # it counted the same wrong population (2 moved + 2 kept = 4).
+            # Continuation lines fall through to `dest` below, which is what makes the
+            # sub-items follow their parent once they stop being counted as entries.
+            if ($0 ~ /^-[[:space:]]*(\[x\]|✅)/) {
                 d = ""
                 if (match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/))
                     d = substr($0, RSTART, RLENGTH)
@@ -223,9 +245,11 @@ archive_done() {
     # appear under In progress (sub-items of an open task), and counting the whole
     # file compares two different populations — which is exactly what the first
     # version of this check did, and it refused on a perfectly good taskboard.
+    # Same anchor as the splitter above, deliberately: a balance check that counts a
+    # different population than the thing it is balancing cannot detect anything.
     total_before=$(awk '
         /^## / { done_sec = ($0 ~ /^## (Done|Завершено)/); next }
-        done_sec && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+        done_sec && /^-[[:space:]]*(\[x\]|✅)/ { n++ }
         END { print n + 0 }
     ' "$tb")
     if [ "$((n_moved + n_kept))" -ne "$total_before" ]; then
@@ -576,7 +600,7 @@ _budget_size()  { grep -c . "$1"; }
 # only — a closed sub-item under an open task is not an archivable entry.
 _budget_done() {
     awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
-         d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+         d && /^-[[:space:]]*(\[x\]|✅)/ { n++ }
          END { print n + 0 }' "$1"
 }
 _budget_prog() { awk '/^## /{ p = ($0 ~ /In progress|В работе/) } p' "$1" | grep -c .; }
@@ -700,12 +724,12 @@ local_conventions() {
         # find, never a glob: unmatched, a glob is a fatal error in zsh and a literal
         # argument in bash, and neither of those is an empty list.
         latest=""
-        [ -d "$dir" ] && latest=$(find "$dir" -maxdepth 1 -type f -name "$pat" | sort | tail -1)
+        [ -d "$dir" ] && latest=$(find "$dir" -maxdepth 1 -type f -name "$pat" | LC_ALL=C sort | tail -1)
         if [ -z "$latest" ]; then
             printf '%s\tnone yet — nothing of this kind written in this project\n' "$label"
             continue
         fi
-        keys=$(_fm_keys "$latest" | sort -u | tr '\n' ' ')
+        keys=$(_fm_keys "$latest" | LC_ALL=C sort -u | tr '\n' ' ')
         keys=${keys% }
         if [ -z "$keys" ]; then
             printf '%s\tNOT READ — %s has no frontmatter block\n' "$label" "$(basename "$latest")"
@@ -768,6 +792,22 @@ local_conventions() {
 # Output contract: one finding per line, `key<TAB>detail`. The key is stable —
 # type plus object, never a changing number — and is what lint-diff compares.
 # Keys must be unique; lint-diff refuses a set that repeats one.
+#
+# READ THIS BEFORE EDITING ANY printf BELOW. The two halves of a finding line are
+# governed differently, and only one of them is safe to touch:
+#   - the DETAIL (after the tab) is display text. Rewrite it freely, in English —
+#     it is data a session renders, never a sentence shown to the owner as written.
+#   - the KEY (before the tab) is a contract with `00-system/lint-baseline.txt`,
+#     which lives in the vault and is shared across machines. Renaming one emits a
+#     GONE for the old name and a NEW for the new one, for a finding that did not
+#     change — a fabricated regression on one side and a fabricated fix on the
+#     other, in the same run. Dropping a check silently retires every finding it
+#     owned, which is indistinguishable from those findings being fixed.
+#     So: changing a key is a deliberate act that must be announced to the user and
+#     followed by an explicit re-seal, never folded into an unrelated edit.
+# The rule was written only in `commands/brain-lint.md` until 2026-08-04 — read by
+# the session RUNNING a lint, while keys are renamed by the session editing this
+# file. A warning in the wrong file is not a warning.
 #
 # NOT moved here, deliberately: the full YAML parse. It needs PyYAML, and this
 # package promises no external dependencies — `install.sh` ships SKILL.md,
@@ -940,7 +980,7 @@ lint_collect() {
             # The detail names the ACTIONABLE part: archive only moves dated entries,
             # and "archive it" is useless advice when not one entry carries a date.
             dnd=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
-                       d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ &&
+                       d && /^-[[:space:]]*(\[x\]|✅)/ &&
                        /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
                        END { print n + 0 }' "$tb")
             [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
@@ -952,7 +992,7 @@ lint_collect() {
         if [ -f "$am" ]; then
             mu=$(_lc_fm "$am" updated)
             ls_=$(find "$P/sessions" -maxdepth 1 -name '*_session.md' 2>/dev/null |
-                  sed 's|.*/||' | cut -c1-10 | sort | tail -1)
+                  sed 's|.*/||' | cut -c1-10 | LC_ALL=C sort | tail -1)
             if [ -n "$mu" ] && [ -n "$ls_" ]; then
                 a=$(_lc_epoch "$mu"); b=$(_lc_epoch "$ls_")
                 [ -n "$a" ] && [ -n "$b" ] && [ "$b" -gt "$a" ] && \
@@ -1077,7 +1117,7 @@ lint_collect() {
 _lc_keys() {
     dir="$1"; pat="$2"; label="$3"
     [ -d "$dir" ] || return 0
-    files=$(find "$dir" -maxdepth 1 -name "$pat" | sort)   # not ls: it may be a
+    files=$(find "$dir" -maxdepth 1 -name "$pat" | LC_ALL=C sort)  # not ls: it may be a
     n=$(printf '%s\n' "$files" | grep -c .)                # shell function (eza)
     [ "$n" -lt 3 ] && return 0
     kt=$(mktemp); ct=$(mktemp)

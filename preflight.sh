@@ -25,6 +25,27 @@ NC='\033[0m'
 FAILED=0
 PASSED=0
 
+# ─── Locale self-test, before any check that uses a Cyrillic character class ─────
+# Checks 32 and 33 match `[А-Яа-яЁё]`, and that class is only a class in a UTF-8
+# locale. Measured 2026-08-04 on Arch: under LC_ALL=C it does not go blind — it
+# degrades into a byte range matching ANY non-ASCII, so `café`, `naïve` and `Müller`
+# all read as Cyrillic. Same in grep, in awk and in a bash `case` glob. A commit
+# message naming a French word would then fail a check about Russian, in CI or cron
+# where a C locale is the norm — and the failure would be argued with, not believed.
+# So: state the locale this file needs instead of assuming it, and fail loudly when it
+# is absent. "The environment cannot run this check" and "the repo is clean" are
+# different facts, and only one deserves a green — the same rule as the PyYAML
+# provisioning below (check 7) and the empty-input rule (check 14).
+# Detected by behaviour, not by reading $LANG: the variable can name a locale the
+# machine does not actually have, and it is the behaviour that the checks depend on.
+if printf 'caf\xc3\xa9\n' | grep -qE '[А-Яа-яЁё]'; then
+    echo -e "${RED}✗${NC} the locale makes [А-Яа-яЁё] match any non-ASCII byte"
+    echo "  Checks 32 and 33 would flag 'café' and 'Müller' as Russian."
+    echo "  Current: LANG=${LANG:-unset} LC_ALL=${LC_ALL:-unset} LC_CTYPE=${LC_CTYPE:-unset}"
+    echo "  Re-run under a UTF-8 locale, e.g.: LC_ALL=en_US.UTF-8 bash preflight.sh"
+    exit 1
+fi
+
 # Scan targets. preflight.sh is deliberately NOT among them: it holds the forbidden
 # patterns as search strings and would match itself — the same class of mistake as
 # `pgrep -f`, which made the guard find its own process (v1.3 -> 2026-07-11).
@@ -354,8 +375,34 @@ if [ -f "$LIBSH" ]; then
         problems+="archive: the entry-count reconciliation was removed"$'\n'
     grep -q 'refused — line balance off' "$LIBSH" ||
         problems+="archive: the line-count reconciliation was removed"$'\n'
-    grep -q 'done_sec && /\^\[\[:space:\]\]\*-' "$LIBSH" ||
+    grep -qE 'done_sec && /\^' "$LIBSH" ||
         problems+="archive: entries are counted outside the Done section"$'\n'
+    # An entry is anchored at column 0, in every place that defines one. An INDENTED
+    # closed item is a sub-item — one line of the body of the entry above it — and the
+    # four definitions must agree, or the splitter, its own balance check, the budget
+    # counter and the lint report different populations of the same file.
+    # Measured 2026-08-04 on a fixture with `^[[:space:]]*`: `archive --apply` moved a
+    # dated parent into the archive note and left its two closed sub-items behind in Done,
+    # orphaned. Exit 0, no warning, and the balance check agreed because it was counting
+    # the same wrong population. The previous form of this check pinned the indentation
+    # prefix as a literal, so it asserted the defect rather than the property.
+    n_loose=$(grep -cE '\^\[\[:space:\]\]\*-\[\[:space:\]\]\*\(\\\[x\\\]\|✅\)' "$LIBSH")
+    [ "$n_loose" -eq 0 ] ||
+        problems+="archive/budget: $n_loose entry pattern(s) still count an indented sub-item as an entry"$'\n'
+    n_anchored=$(grep -cE '\^-\[\[:space:\]\]\*\(\\\[x\\\]\|✅\)' "$LIBSH")
+    [ "$n_anchored" -ge 4 ] ||
+        problems+="archive/budget: only $n_anchored of the 4 entry definitions are anchored at column 0"$'\n'
+    # And prove it by running: a dated parent with two closed sub-items must archive as
+    # ONE entry, taking its children with it, leaving Done empty.
+    nest=$(mktemp -d)
+    printf '# t\n\n## In progress\n\n## Done\n- [x] 2026-08-01 parent\n  - [x] sub one\n  - [x] sub two\n' > "$nest/taskboard.md"
+    printf -- '---\nproject: t\n---\n# archive\n' > "$nest/archive-2026.md"
+    bash "$LIBSH" archive "$nest/taskboard.md" "$nest/archive-2026.md" --before 2026-08-03 --apply >/dev/null 2>&1
+    left=$(grep -c '\[x\]' "$nest/taskboard.md")
+    took=$(grep -c 'sub one' "$nest/archive-2026.md")
+    { [ "$left" -eq 0 ] && [ "$took" -eq 1 ]; } ||
+        problems+="archive: a nested entry was torn apart ($left closed lines left behind, sub-item archived: $took)"$'\n'
+    rm -rf "$nest"
     # Whether they WORK is verified by RUNNING a deliberately broken copy. Otherwise a
     # guard is unverifiable by construction: while the rest of the code is correct,
     # disabling it produces no observable effect, and "it is there" rests on a line of
@@ -1345,10 +1392,109 @@ else
     esac
     rm -rf "$kf"
     if [ -n "$missing" ]; then
-        fail "сравнение ключей зависит от локали — фальшивые NEW/GONE между машинами" "$missing"
+        fail "key comparison depends on the locale — fake NEW and GONE between machines" "$missing"
     else
-        pass "сравнение ключей не зависит от локали (sort/comm под LC_ALL=C, глобально не экспортирован)"
+        pass "key comparison is locale-independent (sort/comm pinned to LC_ALL=C, never exported)"
     fi
+fi
+
+# ─── 36. lib/ prints data, not prose: everything it emits is English ─────────
+# The companion to check 34. That one says a REPORT is in the owner's language; this one
+# says the strings `lib/brain.sh` emits are not a report — they are data a session renders.
+# The boundary is drawn by who prints it, which a check can see, rather than by what kind
+# of text it is, which needs a judgement per string.
+# Why it matters beyond tidiness: a finding detail is written into
+# `00-system/lint-baseline.txt`, which is committed to the vault and read on every machine.
+# Localising it would make a change of working language rewrite the entire baseline.
+# Measured 2026-08-04: the details had been Russian (`66 строк при бюджете ~60`) and the
+# same session that wrote the language rule turned them English while turning the report
+# labels the other way — the file ended up half and half, and nothing could tell.
+# Scope is emitted strings only. The awk/grep PATTERNS in this file are Russian on purpose
+# (check 33 requires it) and must not be confused for output — so a line is examined only
+# where the Cyrillic sits inside a printf/echo format or literal.
+missing=""
+scanned=0
+for f in "$SCRIPT_DIR"/lib/*.sh; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    h=$(awk '
+        # heredocs are usage text, scanned the same way; comments are check 32.
+        /^[[:space:]]*#/ { next }
+        /(printf|echo)[[:space:]]/ {
+            t = $0
+            # Drop everything that is a match pattern rather than a message: awk regex
+            # literals /.../ and the bracketed alternations they live in.
+            gsub(/\/[^\/]*\//, "", t)
+            gsub(/~[[:space:]]*\/[^\/]*\//, "", t)
+            if (t ~ /[А-Яа-яЁё]/) print FILENAME ":" FNR ": " $0
+        }
+    ' "$f")
+    [ -n "$h" ] && missing+="$(printf '%s\n' "$h" | sed 's|.*/||; s/^/    /')"$'\n'
+done
+# And the rule must be stated where a session will read it before writing a report.
+grep -q 'is not a speaker' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="  SKILL.md does not state that lib/ prints data in English"$'\n'
+if [ "$scanned" -eq 0 ]; then
+    fail "check 36 opened no files in lib/ — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "lib/ speaks to the user instead of emitting data" "$missing"
+else
+    pass "lib/ emits English data, the rule is stated in SKILL.md ($scanned files)"
+fi
+
+# ─── 37. A matched section name is an identifier: English in every template ──
+# Decided 2026-08-04. A matched name is what prose-budget, sweep-closed, archive and
+# /brain-lint search for literally, so it is an identifier and identifiers are not
+# translated. The Russian spellings stay in every alternation in lib/ forever (check 33
+# enforces that) — they are how existing files keep working, not an option for a new one.
+# What this replaces: "pick the spelling that fits the vault's language", which had no way
+# to converge. Measured 2026-08-04 on the live vault — all 9 taskboards English, while
+# _PROJECT.md split 6 projects to 4, and a /brain-init run following the instruction
+# literally produced a Russian taskboard unlike any of the nine.
+# Templates only. Vault CONTENT is never rewritten by this rule, and this check never
+# looks at the vault.
+missing=""
+scanned=0
+for f in "$SCRIPT_DIR"/commands/*.md; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    # A heading inside a fenced block is a template being written out.
+    h=$(awk '
+        /^[[:space:]]*```/ { inb = !inb; next }
+        inb && /^#{2,3} +(Статус|Последняя сессия|В работе|Завершено|Бэклог)/ {
+            print FILENAME ":" FNR ": " $0 }
+    ' "$f")
+    [ -n "$h" ] && missing+="$(printf '%s\n' "$h" | sed 's|.*/||; s/^/    /')"$'\n'
+done
+# The taskboard template is where the gap was: Step 3 carried a whole subsection on
+# heading language and Step 3b none, while the taskboard is made of matched sections.
+grep -q 'Every heading here is a matched section' "$SCRIPT_DIR/commands/brain-init.md" ||
+    missing+="  brain-init Step 3b does not say its headings are matched sections"$'\n'
+# And the rule that makes the Done threshold satisfiable at all. The set of files that
+# must carry it is DERIVED, not listed: any command that creates a Done section or hands
+# entries to `archive` is a place where an entry gets closed, so a sixth such command is
+# caught by this check rather than by someone remembering to extend it.
+# The assertion is a line carrying BOTH the date format and a closing verb, not the format
+# alone. The first version grepped `YYYY-MM-DD`, which appears 5 times in brain-save.md as
+# a session-log filename — so it stayed green with the rule deleted, and its own negative
+# test said so. A check that can pass without the property holding is worse than none.
+for f in "$SCRIPT_DIR"/commands/*.md; do
+    [ -f "$f" ] || continue
+    writes_done=$(awk '
+        /^[[:space:]]*```/ { inb = !inb; next }
+        (inb && /^#{2,3} +Done/) || /brain\.sh archive/ { n++ }
+        END { print n + 0 }' "$f")
+    [ "$writes_done" -gt 0 ] || continue
+    states_rule=$(grep -cE 'YYYY-MM-DD.*clos|clos.*YYYY-MM-DD' "$f")
+    [ "$states_rule" -gt 0 ] ||
+        missing+="  $(basename "$f") closes Done entries but never says one carries a date"$'\n'
+done
+if [ "$scanned" -eq 0 ]; then
+    fail "check 37 opened no command files — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a template writes a matched section in Russian, or the dating rule is missing" "$missing"
+else
+    pass "templates write matched sections in English, closed entries carry a date ($scanned files)"
 fi
 
 # ─── 34. Reports are in the owner's language, identifiers are not ────────────
@@ -1378,11 +1524,11 @@ for f in "$SCRIPT_DIR"/commands/*.md; do
         missing+="  $(basename "$f"): не сказано, что идентификаторы остаются как есть"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
-    fail "проверка 34 не нашла ни одного Result-блока — вход пуст, а не чист"
+    fail "this check found no Result block at all — the input is empty, not clean"
 elif [ -n "$missing" ]; then
-    fail "язык итогового отчёта не определён (или переводятся идентификаторы)" "$missing"
+    fail "the report language is undeclared (or identifiers get translated)" "$missing"
 else
-    pass "отчёты печатаются на языке владельца ваулта, идентификаторы не переводятся ($scanned команд)"
+    pass "reports print in the vault owner's language, identifiers are never translated ($scanned commands)"
 fi
 
 # ─── 33. Section names are matched in BOTH languages ─────────────────────────
@@ -1506,6 +1652,24 @@ for c in $(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%H' 2>/de
     esac
 done
 [ -n "$bad_msgs" ] && missing+="  commit messages containing Cyrillic:"$'\n'"$(printf '%s\n' "$bad_msgs" | sed 's/^/    /')"$'\n'
+# preflight.sh's own check labels. Its COMMENTS are out of scope (dev-only, never
+# installed) and the exclusion was written that way — but it leaked onto the labels,
+# which are a different thing: this file is tracked in a public repo and prints them.
+# Measured 2026-08-04 on Arch: 2 labels of 50 came out Russian, ungrammatically
+# ("4 команд"), while the other 48 were English. Nothing was watching, because the
+# word "comments" in the exclusion was read as "everything in preflight.sh".
+# Backtick spans are stripped for the same reason as in comments: a label may have to
+# quote the Russian section name its check is about.
+scanned=$((scanned + 1))
+h=$(awk '
+    match($0, /^[[:space:]]*(pass|fail) "/) {
+        t = substr($0, RSTART + RLENGTH)
+        sub(/".*/, "", t)
+        gsub(/`[^`]*`/, "", t)
+        if (t ~ /[А-Яа-яЁё]/) print FILENAME ":" FNR ": " $0
+    }
+' "$SCRIPT_DIR/preflight.sh")
+[ -n "$h" ] && missing+="$(printf '%s\n' "$h" | sed 's|.*/||; s/^/    /')"$'\n'
 # The rule exists in three places and must name both things in all three.
 for f in "$SCRIPT_DIR/CLAUDE.md" "$SCRIPT_DIR/chat-skills/brain-onboarding/SKILL.md"; do
     [ -f "$f" ] || continue
@@ -1528,9 +1692,10 @@ if [ "$scanned" -eq 0 ]; then
 elif [ -n "$missing" ]; then
     fail "Russian where the repo speaks to strangers" "$missing"
 else
-    pass "commits and comments in the shipped code are English ($scanned files)"
-    # The scope is stated out loud: preflight.sh is outside it, which does NOT mean it is clean.
-    echo "      (outside this scope: preflight.sh — dev-only, never installed)"
+    pass "commits, comments and check labels are English ($scanned files)"
+    # The scope is stated out loud, and now names what is IN it as well as what is out —
+    # the previous wording named only the exclusion, and the labels fell through the gap.
+    echo "      (preflight.sh: its check labels are in scope, its comments are not — dev-only)"
 fi
 
 # ─── 31. `grep -q` never ends a pipeline under pipefail ──────────────────────

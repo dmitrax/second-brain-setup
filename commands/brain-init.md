@@ -93,23 +93,31 @@ in code and commits") — that is a judgement to read, not a token to switch on.
 
 Then, and this is the part that is not free choice:
 
-- **Sections the tooling matches have a fixed vocabulary, two spellings each** —
-  `Current state` / `Статус`, `Последняя сессия`, `For future Claude`. Pick the spelling
-  that fits the vault's language and **never invent a third**: `## Текущее состояние`
-  would be invisible to `prose-budget` and to `/brain-lint`, and invisible silently,
-  because a section that is not found and a section that is empty look the same from
-  outside. See CLAUDE.md Block 2 on matching both languages at once.
+- **A section the tooling matches is written in English, always, in every new file** —
+  `## Current state`, `## Last session`, `## For future Claude`, and in the taskboard
+  `## In progress`, `## Backlog`, `## Done`. A matched name is an identifier: it is what
+  `prose-budget`, `sweep-closed`, `archive` and `/brain-lint` search for literally, and
+  identifiers are never translated (see `SKILL.md`, "Language of everything you say to
+  the user"). **Never invent a third spelling** — `## Текущее состояние` is invisible to
+  every one of those, and invisible silently, because a section that is not found and a
+  section that is empty look the same from outside.
 - **Every other heading is free prose** (`Что это` / `What this is`, `Цель` / `Goal`,
   the stack and working-style sections) and follows the vault's language with no
-  constraint at all.
-- **Never rename a heading in an existing file** to match the current answer. Renaming
-  breaks nothing mechanically — both spellings are matched — but it rewrites history for
-  no gain, and `/brain-save` already forbids it.
+  constraint at all. This is where the vault-language answer above is spent.
+- **The Russian spellings stay matched forever** — `Статус`, `Последняя сессия`,
+  `В работе`, `Завершено` remain in every alternation in `lib/brain.sh` and are not going
+  away. They are how existing files keep working, not a choice offered to a new one.
+- **Never rename a heading in an existing file.** Renaming breaks nothing mechanically —
+  both spellings are matched — but it rewrites history for no gain, and `/brain-save`
+  already forbids it.
 
-The template below is written with the English spellings. Measured 2026-08-04: the
-shipped template mixed them — `## Что это` sat next to `## Current state` in the same
-block — which is how the vault ended up with `## Статус` in three projects and
-`## Current state` in others.
+Why English rather than "pick what fits the vault's language", which is what this file
+said until 2026-08-04: that instruction had no way to converge. Measured the same day on
+this vault — all 9 taskboards were English while `_PROJECT.md` was split 6 projects to 4,
+and a `/brain-init` run following the instruction literally produced a Russian taskboard
+unlike any of the nine. The split does not come from carelessness; it comes from asking a
+question that has two right answers. Making the matched vocabulary an identifier removes
+the question. Existing files are left exactly as they are.
 
 ```markdown
 ---
@@ -146,8 +154,8 @@ Full context here: what we are building, current status, how to work.
 [Significant decisions live as immutable decision-*.md notes in wiki/.
 List active ones here as [[wikilinks]]. If none yet — write "No major decisions made yet."]
 
-## Последняя сессия
-(matched section — keep this spelling or `Last session`, never a third one)
+## Last session
+(matched section — English in every new file, see the language rule above)
 [TODAY] — project initialized
 ```
 
@@ -158,6 +166,11 @@ List active ones here as [[wikilinks]]. If none yet — write "No major decision
 
 File: `$VAULT/$PROJECT/taskboard.md`
 
+Every heading here is a matched section — `sweep-closed` moves items between the first
+and the third, `archive` empties the third, `prose-budget` measures both. So they are
+written in English exactly as below, whatever the vault's working language; the rule and
+its reasoning are in Step 3 above. The task *text* follows the vault's language.
+
 ```markdown
 # Taskboard — [PROJECT]
 
@@ -167,6 +180,15 @@ File: `$VAULT/$PROJECT/taskboard.md`
 
 ## Done
 ```
+
+A closed task at the top level carries the date it was closed — `- [x] YYYY-MM-DD …`.
+This is not decoration: `archive` moves dated entries and cannot move undated ones, so an
+entry written without a date is one no tool will ever be able to file. Measured
+2026-08-04 in this project — 35 closed entries, 2 of them dated, and a threshold that no
+amount of running `archive` could satisfy. `sweep-closed` warns about undated items, but
+it warns *after* the item has already lost its date, which is too late to be the only
+place this is said. A closed **sub-item** under an open task needs no date; it is not an
+archivable entry and is not counted as one.
 
 ## Step 3c: Create architecture-map.md (code / mixed projects only)
 
@@ -343,7 +365,9 @@ Inform the user:
 
 ## Step 6: Update vault system files
 
-**00-system/index.md** — add line in "Projects" section:
+**00-system/index.md** — add a line under the registry's projects heading. That heading
+is vault content, not a matched section, so it carries whatever the vault already uses —
+here `## Проекты`. Find it, do not assume its spelling:
 ```
 - [[PROJECT]] — [short description from question 1], [PROJECT_TYPE], active
 ```

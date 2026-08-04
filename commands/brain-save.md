@@ -451,7 +451,15 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   note written this same session. Replace it with one line plus the `[[wikilink]]`.
 - `For future Claude` → drop what has aged into a fact no longer surprising; it stays
   findable by grep in `wiki/`.
-- taskboard Done → `brain.sh archive`, never retype entries by hand.
+- taskboard Done → `brain.sh archive`, never retype entries by hand. **A top-level task
+  gets `YYYY-MM-DD` at the moment you close it** — `- [x] 2026-08-04 …`. `archive` moves
+  dated entries and cannot move undated ones, so an entry closed without a date is one no
+  tool will ever file, and the Done threshold it then trips is unsatisfiable by any amount
+  of running `archive`. Measured 2026-08-04 in this project: 35 closed entries, 2 dated.
+  A closed **sub-item** under a parent needs no date — it is not an archivable entry and
+  is not counted as one. Where the date usually goes missing: it sat in a section heading
+  (`### ✅ ЗАКРЫТО 03.08`), and headings are not moved, so the sweep separates the item
+  from the only date it ever had. Date the items before sweeping, not after.
 - taskboard `In progress` / total → `brain.sh sweep-closed <taskboard>` (dry-run by
   default) moves closed top-level items with their bodies into Done; a closed *sub-item*
   stays, because its text explains the open parent above it. Then `archive` what landed

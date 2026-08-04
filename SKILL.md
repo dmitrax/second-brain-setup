@@ -279,6 +279,22 @@ it — the same split as everywhere else in this package: the key is data, the s
 around it is language. The package's own files stay English regardless (see the language
 rule in `CLAUDE.md`): that is what the repo publishes, this is what one person reads.
 
+**`lib/brain.sh` is not a speaker — it is a source of data, and everything it prints is
+English.** Finding details (`66 lines against a budget of ~60`), budget lines, refusals,
+warnings: a session reads them and writes the sentence around them in the owner's
+language. Two reasons, and the second is the load-bearing one:
+
+- a finding detail is written into `00-system/lint-baseline.txt`, which is committed to
+  the vault and read on every machine — localising it would make a change of working
+  language rewrite the whole baseline, and the file is data, not a report;
+- "the explanation of a finding" above means the explanation **a session writes**, not
+  the string `lib/` emitted. Until 2026-08-04 nothing said which, and the same session
+  that wrote the language rule translated the details from Russian to English while
+  translating the report labels the other way — half and half, in one pass.
+
+The boundary is therefore drawn by *who prints it*, which is checkable, rather than by
+what kind of text it is, which needs a judgement on every string.
+
 **What belongs where — one fact, one home.**
 Three memories are read at different moments, so a fact copied across them does not
 become easier to find; the copies drift, and a stale copy is worse than no copy because

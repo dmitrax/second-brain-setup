@@ -326,6 +326,49 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   carry both halves — so it survives call sites being added or removed. Its companion
   assertion looks at code only, because the file header quotes these very patterns to
   explain why they stay, and a comment must never be able to satisfy a check about code.
+  **Matching both is not the same as writing both, and the second half is now decided:
+  a new file writes the matched name in English.** `## Current state`, `## Last session`,
+  `## For future Claude`, `## In progress`, `## Backlog`, `## Done` — a matched name is
+  what `prose-budget`, `sweep-closed`, `archive` and the lint search for literally, which
+  makes it an identifier, and the rule above already exempts identifiers from translation.
+  The Russian spellings stay in every alternation forever and existing files are never
+  renamed; they are how a live vault keeps working, not an option offered to a new file.
+  What this replaces is "pick the spelling that fits the vault's language", which had no
+  way to converge — measured 2026-08-04, all 9 taskboards were English while `_PROJECT.md`
+  was split 6 projects to 4, and a `/brain-init` run following that instruction literally
+  produced a Russian taskboard unlike any of the nine. The split was not carelessness: it
+  is what a question with two right answers produces, asked once per project. Note the gap
+  that hid it — `/brain-init` Step 3 carried a whole subsection on heading language and
+  Step 3b, which writes a file made entirely of matched sections, carried none. Checked by
+  preflight 37, which reads templates only and never looks at the vault.
+- **`lib/brain.sh` is not a speaker: everything it prints is English data.** Finding
+  details, budget lines, refusals, warnings — a session reads them and writes the sentence
+  around them in the owner's language. The load-bearing reason is not tidiness: a finding
+  detail is written into `00-system/lint-baseline.txt`, which is committed to the vault
+  and read on every machine, so localising it would make a change of working language
+  rewrite the entire baseline. "The explanation of a finding" in the rule below therefore
+  means the explanation a *session* writes, not the string `lib/` emitted. Nothing said
+  which until 2026-08-04, and the same session that wrote the language rule translated the
+  details from Russian to English while translating the report labels the other way — the
+  output ended up half and half in one pass, exactly the state the rule was written to
+  end. The boundary is drawn by **who prints it**, which a check can see, rather than by
+  what kind of text it is, which needs a judgement on every string. Checked by preflight 36.
+- **A closed top-level task carries `YYYY-MM-DD` from the moment it is closed.** `archive`
+  moves dated entries and cannot move undated ones, so an entry closed without a date is
+  one no tool will ever file — and the Done threshold it then trips is unsatisfiable by any
+  amount of running `archive`, which by this project's own classification makes it a
+  permanent violation rather than a standard. Measured 2026-08-04 in this project: 35
+  closed entries, 2 dated. A closed **sub-item** under a parent needs no date and is not
+  counted as an entry. Where the date usually goes missing: it sat in a section heading
+  (`### ✅ ЗАКРЫТО 03.08`), and headings are not moved, so `sweep-closed` separates the
+  item from the only date it ever had — which is why it must be said before the sweep, not
+  by the warning after it. Do not repair such a backlog from git history: a commit date is
+  not a completion date, and 33 near-identical ones are noise where chronology was wanted.
+  Nest the undated entries under the dated parent step they were sub-results of. Checked by
+  preflight 37, whose file list is **derived** — any command that creates a `## Done`
+  section or hands entries to `archive` must state the rule, so a sixth such command is
+  caught without anyone extending a list. It found `brain-lint.md` on its first run, which
+  the hand-written list of two had missed.
 - **Two languages, two audiences, and the boundary between them is the identifier.**
   What the repo PUBLISHES is English (rule above). What a command SAYS TO ITS USER is the
   working language recorded once in the vault's `00-shared/CRITICAL_FACTS.md` and read by
@@ -343,16 +386,35 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   command, never exported.** The baseline is written on one machine and diffed on another,
   and `comm` requires both inputs ordered identically. Collation is locale-dependent:
   measured 2026-08-04, the C locale orders `Note-Alone.md` before `note-alone.md` while
-  `en_US.UTF-8` orders them the other way. Feed `comm` two differently-ordered lists and it
-  reports the SAME key as both NEW and GONE in one run — precisely the fake delta
-  `lint-diff` exists to prevent — while its "input is not in sorted order" warning goes to
-  stderr, which nothing surfaces. Found the day before a cross-machine verification run,
-  where it would have poisoned every comparison and been read as regressions.
-  **Global export is the wrong fix and is itself checked for:** under `LC_ALL=C` the
-  Cyrillic character classes that match a Russian vault stop matching, so exporting it
-  would trade one silent blindness for another. Pin it on each `sort`/`comm`; leave every
-  pattern match alone. Checked by preflight 35, which asserts both halves and runs the same
-  key set through `lint-diff` under two locales expecting no delta.
+  `en_US.UTF-8` orders them the other way. Pinning makes the order a property of the code
+  rather than of whichever machine runs it. **Both halves of the original rationale were
+  re-measured on Arch 2026-08-04 and neither survived as written — the rule stands, its
+  reasons do not, and the corrected reasons are the ones to act on:**
+  - it claimed an unpinned run reports the SAME key as both NEW and GONE. Not reproducible
+    on glibc/coreutils 9.11: `sort` and `comm` read one environment, so they agree, and
+    glibc's collation has a codepoint tiebreak that stops `sort -u` collapsing keys that
+    differ only in case or punctuation. Whether BSD behaves differently is **untested** —
+    until it is, this is defence against a machine-dependent property, not a repair of a
+    measured break, and it should be described that way.
+  - it claimed a global export would blind the Cyrillic patterns. False in the dangerous
+    direction. Literal patterns (`Статус`, `Завершено`) match fine under `LC_ALL=C` —
+    they are byte sequences, verified by running `prose-budget` and `sweep-closed` with it
+    set. The character CLASS `[А-Яа-яЁё]` does not go blind either: under C it degrades
+    into a byte range matching **any** non-ASCII, so `café`, `naïve` and `Müller` all read
+    as Cyrillic, in grep, in awk and in a bash `case` glob alike. So do not export it —
+    but because it over-matches, not because it under-matches, and the practical victims
+    are checks 32 and 33 in a C-locale CI, not a Russian vault.
+  Pin it on each `sort`/`comm`; leave every pattern match alone. Checked by preflight 35,
+  which asserts both halves and runs the same key set through `lint-diff` under two locales
+  expecting no delta, and by the locale self-test at the top of `preflight.sh`, which
+  refuses to run at all where `[А-Яа-яЁё]` matches `café` — detected by behaviour, never by
+  reading `$LANG`, which can name a locale the machine does not have.
+  **The general lesson, which is why this is written out rather than quietly patched:** a
+  rationale is the part of a fix that no check can hold. Preflight 19 forces a *command* to
+  verify the premise of a diagnosis it reports, but a premise recorded in a comment or a
+  decision note has no executable form, so it survives on the authority of whoever wrote
+  it. Both of these read as authoritative for a day and were wrong within an hour of being
+  run. When a fix is defensive, say so in the fix.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)
