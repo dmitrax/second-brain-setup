@@ -66,7 +66,11 @@ echo "  Restart active Claude Code sessions to pick up changes."
 echo ""
 
 # Напомнить про vault если это был breaking change
-if git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null | grep -q "^v[0-9]*\.0"; then
+# `|| true` обязателен: под `set -e` голое присваивание из команды, которая штатно
+# выходит с ненулевым кодом (нет точного тега — обычное состояние), роняет скрипт.
+# Раньше вызов стоял внутри `if` и потому прощался; вынос из конвейера это вскрыл.
+exact_tag=$(git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null || true)
+if printf '%s\n' "$exact_tag" | grep -q "^v[0-9]*\.0"; then
     echo -e "${YELLOW}⚠️  Major version detected.${NC}"
     echo "   Check migration guide before using on existing vaults."
     echo ""

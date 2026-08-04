@@ -289,7 +289,8 @@ vault_sync() {
     # or add a remote on the user's behalf.
     git -C "$vault" rev-parse --git-dir >/dev/null 2>&1 || {
         echo "sync skipped: not a git repo"; return 0; }
-    git -C "$vault" remote | grep -q . || {
+    remotes=$(git -C "$vault" remote)
+    [ -n "$remotes" ] || {
         echo "sync skipped: no remote"; return 0; }
 
     out=$(timeout 30 git -C "$vault" pull --rebase --autostash 2>&1)
@@ -444,6 +445,28 @@ sweep_closed() {
         n_dated=$(grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
         n_undated=$((n_moved - ${n_dated:-0}))
         [ "$n_undated" -gt 0 ] && echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
+
+        # A heading is not moved — only items are — so a heading whose own text is a
+        # closure claim can end up standing over the open items that stayed. The file
+        # loses nothing (this is a permutation), but it starts asserting something
+        # false, and a taskboard is read by its headings first.
+        # Measured 2026-08-04 in goprofi-voronka: one `### ✅ ЗАКРЫТО 03.08 …` section
+        # of 1073 lines held 42 closed items and 40 open ones. Sweeping it would have
+        # left "ЗАКРЫТО" as the title of forty open tasks. That is not a defect of the
+        # sweep, it is bookkeeping that predates it — but the sweep is what makes it
+        # visible, so the sweep is what has to say it.
+        awk '
+            /^## / { inprog = ($0 ~ /In progress|В работе/); h = ""; next }
+            !inprog { next }
+            /^### / { h = $0; open = 0; next }
+            h != "" && /^- \[ \]/ { if (open++ == 0) lying[h] = 1 }
+            END { for (k in lying) if (k ~ /✅|ЗАКРЫТО|DONE|CLOSED|ЗАВЕРШ/) print k }
+        ' "$tb" | while IFS= read -r bad; do
+            [ -n "$bad" ] || continue
+            echo "sweep-closed: ВНИМАНИЕ — заголовок объявляет закрытие, но под ним остаются открытые пункты:"
+            echo "sweep-closed:   $bad"
+            echo "sweep-closed:   перенос ничего не теряет, но этот заголовок станет неверным — разделите секцию вручную"
+        done
     fi
     if [ "$n_moved" -eq 0 ]; then rm -rf "$work"; return 0; fi
     if [ "$apply" != "--apply" ]; then
@@ -882,7 +905,13 @@ lint_collect() {
             case "$v" in ""|"~"|"null"|"[]") continue ;; esac
             v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/|.*//; s/\.md$//')
             base=$(printf '%s' "$v" | sed 's|.*/||')
-            find . -name "$base.md" -not -path './.git/*' | grep -q . || \
+            # Вывод в переменную, не `find | grep -q .`: под pipefail grep -q выходит
+            # по первой строке, find получает SIGPIPE и даёт 141, и статус конвейера
+            # говорит «не найдено» о существующем файле. Стреляет ровно там, где
+            # basename дублируется — то есть в том самом классе, который этот ваулт
+            # и несёт (см. ambiguous-link).
+            hits=$(find . -name "$base.md" -not -path './.git/*')
+            [ -n "$hits" ] || \
                 printf 'decision-ref:%s\t%s → %s не существует\n' "${p#./}" "$k" "$v"
         done
     done

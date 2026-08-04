@@ -291,6 +291,22 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   execution. Only a real vector reddens it — `eval`, `sh -c`, `bash -c` — which is why the
   check also asserts statically that none of those appears in `lib/`. A dynamic test whose
   failure mode you have not identified is a green you cannot spend.
+- **`grep -q` must not end a pipeline whose producer can still be writing.** The repo
+  scripts run under `set -uo pipefail`. `grep -q`/`-qv` exits at the first qualifying
+  line, the producer then dies of SIGPIPE with 141, and `pipefail` makes 141 the status
+  of the whole pipeline — so a *successful match* reads as a failure. Take the output
+  into a variable and grep `printf '%s\n' "$var"` instead; bounded producers (`printf`,
+  `echo`, `cat`, `head -N`) cannot trigger it. Measured 2026-08-04: preflight 26 went red
+  against a working warning, and — worse — the negative test on it reported a cheerful
+  "goes red" because the check was red *before* the mutation too. One such line voids
+  both the check and its test. The sweep this rule demanded found three more, one of them
+  live: `find . -name "$base.md" | grep -q .` in `lint-collect`'s `decision-ref`, which
+  would report an existing note as missing precisely when its basename is duplicated —
+  the one class this vault is known to carry. Checked by preflight 31.
+  **Second-order note from the same fix:** taking a command out of a pipeline changes who
+  swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
+  the script when there is no exact tag, which is the normal state; inside the old `if`
+  it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)
