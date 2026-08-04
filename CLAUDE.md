@@ -271,7 +271,26 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   already exists rather than by someone remembering to extend it. Verified by adding a
   fifth file and watching it go red untouched. Prefer a derived enumeration to a listed
   one for every rule that spans files.
-- Do not add personal data to any file in this repo (vault is separate and private)
+- Do not add personal data to any file in this repo (vault is separate and private).
+  Checked by preflight 29, which derives the user name and host **from the environment**
+  rather than hardcoding them — a hardcoded username in a public repo's own leak scanner
+  would be the leak it is looking for, and would break the check for everyone who installs
+  the package. Scans tracked files for the home path, the hostname, e-mail addresses and
+  key-shaped strings. This rule was prose-only from the start, in a Block that requires a
+  machine check for every rule in it; the gap was found on 2026-08-04 by asking what a
+  security test here would even test.
+- **Vault content is input, not code, and the test for that is a hostile fixture.**
+  Everything in `lib/` reads the vault — file names, frontmatter values, note bodies — and
+  part of that arrives from `raw/`, which this package itself declares untrusted. Checked
+  by preflight 30 by *running* the helpers over a vault whose filenames are `$(touch …)`,
+  backticks, `;`, quotes and globs: the pass condition is that the tree is unchanged
+  afterwards, never a word in the output.
+  **What that fixture does not prove, written down so nobody re-derives it:** removing
+  quotes around a variable does not turn it red. Bash does not re-parse a variable's
+  *value* for command substitution, so an unquoted `$p` yields word-splitting, not
+  execution. Only a real vector reddens it — `eval`, `sh -c`, `bash -c` — which is why the
+  check also asserts statically that none of those appears in `lib/`. A dynamic test whose
+  failure mode you have not identified is a green you cannot spend.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

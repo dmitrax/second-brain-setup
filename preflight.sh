@@ -1289,6 +1289,91 @@ else
     fi
 fi
 
+# ─── 29. В публичный репо не уезжают личные данные ──────────────────────────
+# Правило «не добавлять личные данные в этот репо» стояло в CLAUDE.md Block 2 с самого
+# начала и НЕ имело машинной проверки — при том что тот же Block 2 требует проверку для
+# каждого своего правила. Прозой оно живёт ровно до следующей сессии, а цена ошибки
+# необратима: репо публичный, и запушенное уже склонировано.
+# Имя пользователя и хост НЕ захардкожены, а берутся из окружения: хардкод был бы сам
+# той утечкой, которую проверка ищет, и сломал бы её у всех, кто поставит пакет.
+missing=""
+scanned=0
+PD_U=$(basename "$HOME")
+PD_HN=$(hostname 2>/dev/null | sed 's/\..*//')
+# Паттерны ключей собраны из кусков, иначе проверка нашла бы саму себя.
+PD_KEY="sk-""[A-Za-z0-9]{20,}|ghp_""[A-Za-z0-9]{20,}|AKIA""[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY"
+PD_FILES=$(cd "$SCRIPT_DIR" && git ls-files 2>/dev/null | grep -v '^preflight\.sh$')
+if [ -z "$PD_FILES" ]; then
+    fail "проверка 29 не получила списка файлов (git ls-files пуст) — вход пуст, а не чист"
+else
+    for f in $PD_FILES; do
+        [ -f "$SCRIPT_DIR/$f" ] || continue
+        scanned=$((scanned + 1))
+        h=""
+        [ -n "$PD_U" ] && grep -qF "/$PD_U" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}домашний путь пользователя; "
+        [ -n "$PD_HN" ] && [ ${#PD_HN} -ge 4 ] && grep -qiF "$PD_HN" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}имя машины; "
+        grep -qE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-z]{2,}' "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}e-mail; "
+        grep -qE "$PD_KEY" "$SCRIPT_DIR/$f" 2>/dev/null && h="${h}похоже на ключ/токен; "
+        [ -n "$h" ] && missing+="  $f: $h"$'\n'
+    done
+    if [ "$scanned" -eq 0 ]; then
+        fail "проверка 29 не открыла ни одного файла — вход пуст, а не чист"
+    elif [ -n "$missing" ]; then
+        fail "личные данные в файле публичного репо" "$missing"
+    else
+        pass "личных данных в отслеживаемых файлах нет ($scanned файлов)"
+    fi
+fi
+
+# ─── 30. Данные ваулта не исполняются ───────────────────────────────────────
+# Весь lib/ читает ваулт: имена файлов, значения frontmatter, тела заметок. Это ВХОДНЫЕ
+# данные, и часть их приходит из `raw/`, который пакет сам объявляет недоверенным.
+# Проверяется запуском на враждебной фикстуре, а не чтением кода: признак — не слово в
+# выводе, а НЕИЗМЕННОСТЬ дерева. Любой файл, появившийся после прогона, означает, что
+# подстановка выполнилась.
+# Что этот тест НЕ доказывает, и это важно записать: снятие кавычек его не краснит —
+# bash не переисполняет значение переменной, так что неквотированный `$p` даёт
+# словоделение, а не исполнение. Красит его только настоящий вектор: eval, sh -c,
+# bash -c. Поэтому к динамической половине добавлена статическая — их отсутствие.
+missing=""
+grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh >/dev/null 2>&1 &&
+    missing+="в lib/ появился eval / sh -c / bash -c — данные ваулта могут стать командой:"$'\n'"$(grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh | sed 's/^/    /')"$'\n'
+ij=$(mktemp -d)
+mkdir -p "$ij/00-system" "$ij/proj/wiki"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$ij/00-system/index.md"
+printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nx\n' > "$ij/proj/_PROJECT.md"
+IJ_FM='---\nstatus: draft\ndate: 2020-01-01\n---\n# x\n[[somename]]\n'
+( cd "$ij/proj/wiki" || exit 1
+  printf -- "$IJ_FM" > '$(touch zzz1).md'
+  printf -- "$IJ_FM" > 'semi; touch zzz2.md'
+  printf -- "$IJ_FM" > '`touch zzz3`.md'
+  printf -- "$IJ_FM" > "quote'\"quote.md"
+  printf -- "$IJ_FM" > 'space and *glob*.md'
+  printf -- '---\nstatus: draft\ndate: 2020-01-01\nsupersedes: $(touch zzz4)\n---\n`touch zzz5`\n[[$(touch zzz6)]]\n' > 'hostile.md' )
+n_fx=$(find "$ij/proj/wiki" -name '*.md' | wc -l | tr -d ' ')
+if [ "$n_fx" -lt 6 ]; then
+    fail "проверка 30: враждебная фикстура не создалась ($n_fx файлов) — тест проверял бы свою опечатку"
+    rm -rf "$ij"
+else
+    find "$ij" | sort > "$ij.before"
+    bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$ij"                                  >/dev/null 2>&1
+    bash "$SCRIPT_DIR/lib/brain.sh" prose-budget "$ij/proj/_PROJECT.md"                 >/dev/null 2>&1
+    bash "$SCRIPT_DIR/lib/brain.sh" local-conventions "$ij" proj "$ij/proj/_PROJECT.md" >/dev/null 2>&1
+    find "$ij" | sort > "$ij.after"
+    added=$(diff "$ij.before" "$ij.after" | grep '^>' | sed 's/^> /    /')
+    [ -n "$added" ] && missing+="после прогона появились файлы — подстановка выполнилась:"$'\n'"$added"$'\n'
+    grep -qiE 'untrusted|недовер' "$SCRIPT_DIR/SKILL.md" ||
+        missing+="SKILL.md не объявляет raw/ недоверенным"$'\n'
+    grep -qiE 'untrusted|недовер' "$SCRIPT_DIR/commands/brain-ingest.md" ||
+        missing+="/brain-ingest не объявляет raw/ недоверенным — а читает его именно он"$'\n'
+    rm -rf "$ij" "$ij.before" "$ij.after"
+    if [ -n "$missing" ]; then
+        fail "данные ваулта могут исполниться или объявлены доверенными" "$missing"
+    else
+        pass "враждебные имена и содержимое ваулта не исполняются, eval в lib/ нет ($n_fx файлов фикстуры)"
+    fi
+fi
+
 # ─── 28. --project скоупит все проверки, кроме двух заявленных ──────────────
 # Замерено 2026-08-04: `lint-collect --project nf-content` возвращал 16 находок, из
 # которых 12 — про семь ДРУГИХ проектов. Скоуп применялся только к проектному циклу,
