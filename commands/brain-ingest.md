@@ -113,6 +113,39 @@ decision note and mark the old one `status: superseded` + `superseded-by:
 decision-<new>.md` (two fields — the one-line `status: superseded-by: x` form is
 invalid YAML and makes the whole frontmatter unparseable).
 
+**Two forms, same question as in `/brain-save`: were there alternatives worth recording?**
+If a future session that does not know why an option was rejected would reasonably try it,
+use the full form and put the substance in `Alternatives rejected`. Otherwise the short
+form is the complete note — same frontmatter, same mandatory backlink, same queries find
+it. Measured 2026-08-04: of 286 decision notes in the vault none is under 20 lines and 29
+carry `Alternatives rejected` empty or one line long, which is what a template with no
+lighter setting produces.
+
+**Short form:**
+
+```markdown
+---
+status: accepted
+date: [TODAY]
+supersedes:
+sources: ["$PROJECT/$ARGUMENTS"]
+---
+
+## For future Claude
+**Use when:** questions about [decision topic].
+**Decision:** [one line]
+**Reason:** [why]
+
+In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
+
+[one line: the fact in the source that forced it]
+
+## Links
+[[../_PROJECT|_PROJECT]] · related: [[wiki/<note>]]
+```
+
+**Full form** — the same, plus the sections that carry the alternatives:
+
 ```markdown
 ---
 status: accepted
@@ -141,8 +174,12 @@ In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
 [YYYY-MM-DD — condition that would reopen this decision]
 
 ## Links
-[[../_PROJECT|_PROJECT]] · [[related-wiki-note]]
+[[../_PROJECT|_PROJECT]] · related: [[wiki/<note>]]
 ```
+
+Note the `related:` link is written as an explicit path, never a bare `[[note-name]]`:
+a basename unique today stops being unique the moment another project reuses it, and
+every existing bare link to it goes ambiguous with no edit to the link itself.
 
 ## Step 6: Update system files
 

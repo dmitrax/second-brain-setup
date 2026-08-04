@@ -1289,6 +1289,55 @@ else
     fi
 fi
 
+# ─── 27. У decision-заметки две формы, и все её источники об этом знают ─────
+# Замерено 2026-08-04 по ваулту: 286 заметок, медиана 68 строк, НИ ОДНОЙ короче 20 —
+# лёгкой формы не существовало, поэтому решение на одну фразу либо раздувалось до
+# секций, либо их выдумывало. 29 заметок несут `Alternatives rejected` пустой или в
+# одну строку — это и есть раздувание, видимое в файлах.
+# Вторая половина проверки — про источники. Тело decision-заметки описано в ЧЕТЫРЁХ
+# местах: brain-save, brain-ingest, SKILL.md и chat-skill. Правило, внесённое в одно,
+# оставляет три требовать прежнего — ровно так шаг синхронизации проехал мимо
+# chat-skill'а и попал в backlog. Поэтому список источников здесь не перечислен
+# вручную, а ВЫВЕДЕН: файл, описывающий тяжёлую форму, обязан описывать и лёгкую.
+# Так пятый источник поймается сам, без правки этой проверки.
+missing=""
+scanned=0
+for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md \
+         "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
+    [ -f "$f" ] || continue
+    grep -qF 'Alternatives rejected' "$f" || continue
+    scanned=$((scanned + 1))
+    grep -qF 'alternatives worth recording' "$f" ||
+        missing+="$(basename "$(dirname "$f")")/$(basename "$f"): описывает тяжёлую форму, не описывает выбор между формами"$'\n'
+done
+if [ "$scanned" -eq 0 ]; then
+    fail "проверка 27 не нашла ни одного описания decision-заметки — вход пуст, а не чист"
+else
+    # Там, где есть НАСТОЯЩИЙ шаблон, короткая форма обязана быть настоящей короткой:
+    # без тяжёлых секций, но с той же frontmatter и обязательным backlink'ом — иначе
+    # это не вторая форма, а вторая схема, и property-запросы разъедутся.
+    for f in "$SCRIPT_DIR/commands/brain-save.md" "$SCRIPT_DIR/commands/brain-ingest.md"; do
+        [ -f "$f" ] || { missing+="$(basename "$f") отсутствует"$'\n'; continue; }
+        short=$(awk '/\*\*Short form:\*\*/ { s = 1; next }
+                     s && /\*\*Full form\*\*/ { exit }
+                     s { print }' "$f")
+        if [ -z "$short" ]; then
+            missing+="$(basename "$f"): короткой формы нет"$'\n'; continue
+        fi
+        printf '%s\n' "$short" | grep -qF '[[../_PROJECT|_PROJECT]]' ||
+            missing+="$(basename "$f"): в короткой форме нет обязательного backlink'а"$'\n'
+        printf '%s\n' "$short" | grep -qF 'status: accepted' ||
+            missing+="$(basename "$f"): короткая форма несёт другую frontmatter"$'\n'
+        printf '%s\n' "$short" | grep -qF '## Alternatives rejected' &&
+            missing+="$(basename "$f"): короткая форма несёт тяжёлую секцию — это не вторая форма"$'\n'
+    done
+    if [ -n "$missing" ]; then
+        fail "формы decision-заметки разошлись между источниками" "$missing"
+    else
+        pass "decision-заметка имеет две формы, все $scanned источника согласованы"
+    fi
+fi
+
 # ─── 26. Переносчик смотрит туда же, куда смотрит счётчик ───────────────────
 # `archive` двигал только Done, а порог, который срабатывает, — это `In progress`.
 # Тот же перекос уже чинили дважды: у счётчика Done (грепал весь файл) и у бюджета

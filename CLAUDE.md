@@ -252,6 +252,25 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   hurts: counting only Done passed `goprofi-voronka` as healthy at 2131 lines with 1091 in
   `## In progress`. Same distortion already fixed once for `_PROJECT.md`, where total size
   was replaced by a prose budget. Checked by preflight 17.
+- **A template needs a lighter setting, or it gets filled with nothing.** The decision
+  note had one weight — Y-statement + Context + Alternatives rejected + Consequences +
+  Review by — applied to decisions of every size. Measured 2026-08-04 across the vault:
+  286 notes, median 68 lines, **not one under 20**, and 29 carrying `Alternatives
+  rejected` empty or one line long. Both outcomes cost twice, in tokens now and in every
+  later read of a section that says nothing, and the third outcome is worse than either:
+  the note nobody wrote because the form was heavy. So the body has two forms chosen by
+  one question — *were there alternatives worth recording?* — with identical frontmatter
+  and the same mandatory backlink, so a short note answers every query a full one does.
+  Checked by preflight 27.
+  **The half of this rule that generalises is about sources.** The decision-note body was
+  described in four places (`/brain-save`, `/brain-ingest`, `SKILL.md`, the chat-skill),
+  so changing one leaves three demanding the old form — exactly how the session-sync step
+  reached two templates of three and the gap sat in the backlog. The check therefore does
+  not carry a hand-written list of the four: it **derives** them — any file describing the
+  heavy form must also describe the choice — so a fifth source is caught by the check that
+  already exists rather than by someone remembering to extend it. Verified by adding a
+  fifth file and watching it go red untouched. Prefer a derived enumeration to a listed
+  one for every rule that spans files.
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version

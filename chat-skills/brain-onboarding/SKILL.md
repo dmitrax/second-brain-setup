@@ -69,7 +69,7 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears.
 - File name: `decision-<slug>-because-<reason>.md` (flat in `wiki/`)
 - Frontmatter: `status` (`accepted` | `superseded` | `deprecated`), `date`, `supersedes`,
   plus `superseded-by` as its own field when superseded
-- Body: a one-line Y-statement — *"In context of X, facing Y, we chose Z to achieve W, accepting V"* — then `## Context`, `## Alternatives rejected`, `## Consequences`, `## Review by`.
+- Body: two forms, picked by one question — *were there alternatives worth recording?* Both open with a one-line Y-statement — *"In context of X, facing Y, we chose Z to achieve W, accepting V"*. If **no**, that line plus the one fact that forced the decision plus `## Links` is the whole note. If **yes**, add `## Context`, `## Alternatives rejected`, `## Consequences`, `## Review by`. Same frontmatter and the same mandatory `[[../_PROJECT|_PROJECT]]` backlink either way.
 - **Immutable.** Do not edit a decision to change it. Write a new decision note and
   mark the old one `status: superseded` + `superseded-by: <new note>` (two fields).
   This is the explicit exception to rewrite-not-append.

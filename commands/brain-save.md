@@ -297,6 +297,46 @@ judgements made minutes apart: the same session produced a log tagged `zone: roo
 delivery). Re-deciding per entry is the whole point; carrying the value over from the
 log defeats it silently.
 
+### Which of the two forms
+
+Answer one question before writing: **were there alternatives worth recording?**
+
+- **No** — the decision follows from a fact, and anyone who learns that fact would
+  decide the same way ("clear `supersedes:`, it holds YAML null and not a note name").
+  Use the **short form**. It is not a lesser note: it carries the same frontmatter, the
+  same mandatory backlink, and is found by exactly the same queries.
+- **Yes** — a real option was rejected, and a future session that does not know why
+  would reasonably try it. Use the **full form**, and put the substance in
+  `Alternatives rejected`.
+
+Measured across the vault 2026-08-04: 286 decision notes, median **68 lines**, **not one
+under 20** — there was no lighter setting, so a one-sentence decision either inflated to
+fill the sections or invented content for them. 29 notes carry `Alternatives rejected`
+empty or one line long, which is that inflation showing. Both failures cost the same
+thing twice: the session's tokens now, and every future read of a section that says
+nothing. The rule is *many decisions recorded slightly* over *few recorded exhaustively* —
+a note that never got written because the template was heavy is the worst outcome of all.
+
+**Short form:**
+
+```markdown
+---
+status: accepted
+date: [TODAY]
+supersedes:
+# + any project-specific keys found in Step 0c (e.g. zone:), value derived for THIS note
+---
+
+In context of <X>, facing <Y>, we chose <Z> to achieve <W>, accepting <V>.
+
+[one line: the fact or measurement that forced it — with the number, if there is one]
+
+## Links
+[[../_PROJECT|_PROJECT]] · related: [[wiki/...]]
+```
+
+**Full form** — same header, plus the sections that carry the alternatives:
+
 ```markdown
 ---
 status: accepted

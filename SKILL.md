@@ -132,7 +132,14 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
 - Frontmatter: `status` (`accepted` | `superseded` | `deprecated`), `date`, `supersedes`,
   and `superseded-by` when superseded — a separate field, never `status: superseded-by: x`
   (double colon is invalid YAML and voids the whole frontmatter)
-- Body: Y-statement + Context / Alternatives rejected / Consequences / Review by
+- Body: **two forms, chosen by one question — were there alternatives worth recording?**
+  Short (no): Y-statement + the one fact that forced it + Links. Full (yes): Y-statement +
+  Context / Alternatives rejected / Consequences / Review by / Links. Same frontmatter and
+  same mandatory backlink either way, so both answer the same queries. Measured
+  2026-08-04: 286 notes, median 68 lines, none under 20, and 29 with `Alternatives
+  rejected` empty or one line — with no lighter setting a small decision either inflates
+  or invents. Many decisions recorded slightly beats few recorded exhaustively; the note
+  never written because the template was heavy is the worst outcome
 - **Immutable.** To change a decision: write a NEW decision note and mark the old
   one `status: superseded` + `superseded-by: <new note>`. Never rewrite the body of
   an existing decision note. This is the explicit exception to rewrite-not-append.
