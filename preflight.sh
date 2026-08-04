@@ -2125,6 +2125,15 @@ printf '# note-two\n' > "$rf/proj/wiki/note-two.md"
 # fixture that had such a name, and this vault carries two of them.
 printf -- 'spaced [[note]]\n' > "$rf/proj/wiki/a name with spaces.md"
 printf -- 'meta [[note]]\n'   > "$rf/proj/wiki/star*glob;semi.md"
+# A symlink named *.md pointing outside the vault. Without -type f the sweep enumerates
+# it and `cat >` follows it, rewriting the TARGET — silently, outside the vault.
+mkdir -p "$rf/outside"
+printf -- 'outside [[note]]\n' > "$rf/outside/target.conf"
+ln -s "$rf/outside/target.conf" "$rf/proj/wiki/leak.md"
+# A symlink whose BASENAME is what a later rename wants, at a path that is otherwise
+# free. Obsidian resolves a bare link to it like any file, so it is a real collision —
+# narrowing the uniqueness sweep to -type f would stop seeing it.
+ln -s "$rf/outside/target.conf" "$rf/proj/sessions/taken-name.md"
 bash "$LIBSH" rename "$rf" proj/wiki/note.md proj/wiki/renamed.md --apply >/dev/null 2>&1
 rc=$?
 [ "$rc" -eq 0 ] || missing+="rename failed on a valid fixture (exit $rc)"$'\n'
@@ -2143,6 +2152,14 @@ grep -qF 'spaced [[renamed]]' "$rf/proj/wiki/a name with spaces.md" ||
     missing+="rename skipped a file whose name contains a space (word splitting), and still reported success"$'\n'
 grep -qF 'meta [[renamed]]' "$rf/proj/wiki/star*glob;semi.md" ||
     missing+="rename skipped a file whose name carries shell metacharacters"$'\n'
+grep -qF 'outside [[note]]' "$rf/outside/target.conf" ||
+    missing+="rename followed a symlink and rewrote a file outside the vault"$'\n'
+# A backslash in a basename is refused, not handled: awk -v reinterprets it, and both
+# directions silently report success while breaking or repointing nothing.
+bash "$LIBSH" rename "$rf" proj/wiki/renamed.md 'proj/wiki/tab\tnew.md' --apply >/dev/null 2>&1 &&
+    missing+="rename accepted a backslash in the new basename (awk -v would reinterpret it)"$'\n'
+bash "$LIBSH" rename "$rf" proj/wiki/renamed.md proj/wiki/taken-name.md --apply >/dev/null 2>&1 &&
+    missing+="rename accepted a basename already taken by a symlink elsewhere in the vault"$'\n'
 # Refusals: a taken basename elsewhere in the vault must stop it before anything moves.
 bash "$LIBSH" rename "$rf" proj/wiki/renamed.md proj/sessions/note-two.md --apply >/dev/null 2>&1 &&
     missing+="rename accepted a basename already taken elsewhere in the vault"$'\n'

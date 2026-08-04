@@ -339,9 +339,26 @@ rename_note() {
     new_base=$(basename "$new_rel" .md)
     [ "$old_base" = "$new_base" ] && { echo "rename: the basename does not change — nothing to repoint" >&2; return 1; }
 
+    # A backslash in a basename is refused rather than handled, because the value travels
+    # into awk through `-v`, and POSIX `awk -v` runs escape processing on the VALUE. Both
+    # directions are silent-wrong-answer, measured 2026-08-04: renaming *to* `tab\there`
+    # writes that name to disk while rewriting every link to `[[tab<TAB>here]]` and
+    # reporting success — every link broken, nothing said; renaming *from* a name that
+    # already carries one yields an OLD matching nothing, so the file moves and zero links
+    # are repointed, again reporting success. Passing the values through `ENVIRON[]`
+    # instead would handle it, but a backslash in a note name is not a case worth
+    # supporting — refusing states that, and a refusal is loud.
+    case "$old_base$new_base" in
+        *\\*) echo "rename: a backslash in a note name is not supported (awk -v would reinterpret it); rename the file by hand" >&2; return 1 ;;
+    esac
+
     # Read-time uniqueness: a bare [[link]] resolves to the first shortest-path match,
     # so a basename that already exists elsewhere makes every link to it ambiguous the
     # moment this one lands. Refuse rather than create the class the lint hunts for.
+    # No -type f here on purpose, unlike the rewrite loop below: this asks whether the
+    # NAME is taken, and Obsidian resolves a link to a symlink named foo.md just as it
+    # does to a regular file. Narrowing this to regular files would stop seeing exactly
+    # the collision it exists to prevent.
     clash=$(cd "$vault" && find . -name "$new_base.md" -not -path './.git/*' | sed 's|^\./||')
     [ -n "$clash" ] && {
         echo "rename: the basename $new_base is already taken in this vault, links to it would be ambiguous:" >&2
@@ -421,7 +438,12 @@ rename_note() {
         links=$(( links + h )); touched=$(( touched + 1 ))
         printf '  %s (%s link(s))\n' "$f" "$h"
         [ "$apply" = "--apply" ] && cat "$rn_tmp/out" > "$src"
-    done < <(cd "$vault" && find . -name '*.md' -not -path './.git/*' | sed 's|^\./||')
+    # -type f: a symlink named *.md would otherwise be enumerated, and `cat > "$src"`
+    # follows it — rewriting the symlink's TARGET instead of the link, silently, and
+    # outside the vault when the target points there. A symlink whose target is itself
+    # inside the vault loses nothing by being skipped: the target is enumerated on its
+    # own and rewritten once.
+    done < <(cd "$vault" && find . -type f -name '*.md' -not -path './.git/*' | sed 's|^\./||')
     rm -rf "$rn_tmp"
 
     if [ "$apply" = "--apply" ]; then
