@@ -252,207 +252,207 @@ else
     fi
 fi
 
-# ─── 4c. vault-sync и stamp-updated отрабатывают на настоящих файлах ─────────
+# ─── 4c. vault-sync and stamp-field work on real files ───────────────────────
 if [ -f "$LIBSH" ]; then
     problems=""
     TMPLIB=$(mktemp -d)
-    # stamp-updated обязан тронуть одну строку и не переформатировать соседние —
-    # ровно то, чем property:set портил данные (кавычки, инлайн-списки, 007 -> 7).
+    # stamp-field must touch one line and reformat no neighbours — exactly what
+    # property:set got wrong (quotes, inline lists, 007 -> 7).
     printf -- '---\ntags: [session, x]\nversion: "1.4.3"\nupdated: 2026-01-01\ncount: 007\n---\n\nbody\n' \
         > "$TMPLIB/a.md"
     bash "$LIBSH" stamp-field "$TMPLIB/a.md" updated 2026-08-03 >/dev/null 2>&1 ||
-        problems+="stamp-field упал на нормальном файле"$'\n'
-    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-field не проставил дату"$'\n'
-    grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-field развернул инлайн-список"$'\n'
-    grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-field снял кавычки"$'\n'
-    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field переписал 007"$'\n'
-    # Отсутствующий ключ добавляется, существующие не трогаются.
+        problems+="stamp-field failed on a normal file"$'\n'
+    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-field did not write the date"$'\n'
+    grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-field expanded an inline list"$'\n'
+    grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-field stripped quotes"$'\n'
+    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field rewrote 007"$'\n'
+    # A missing key is added; existing ones are left alone.
     bash "$LIBSH" stamp-field "$TMPLIB/a.md" brain-version '"v1.7.0"' >/dev/null 2>&1 ||
-        problems+="stamp-field не добавил отсутствующий ключ"$'\n'
-    grep -q '^brain-version: "v1.7.0"$' "$TMPLIB/a.md" || problems+="stamp-field не записал brain-version"$'\n'
-    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field испортил соседний ключ при добавлении"$'\n'
-    # Ключ с посторонними символами — отказ, иначе можно вписать что угодно в блок.
+        problems+="stamp-field did not add a missing key"$'\n'
+    grep -q '^brain-version: "v1.7.0"$' "$TMPLIB/a.md" || problems+="stamp-field did not write brain-version"$'\n'
+    grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field damaged a neighbouring key while adding"$'\n'
+    # A key with stray characters must be refused, or anything could be written into the block.
     bash "$LIBSH" stamp-field "$TMPLIB/a.md" 'weird: key' x >/dev/null 2>&1 &&
-        problems+="stamp-field принял ключ с посторонними символами"$'\n'
-    # Файла без frontmatter трогать нельзя.
+        problems+="stamp-field accepted a key with stray characters"$'\n'
+    # A file without frontmatter must not be touched.
     printf -- '# no frontmatter\n' > "$TMPLIB/b.md"
     bash "$LIBSH" stamp-field "$TMPLIB/b.md" updated 2026-08-03 >/dev/null 2>&1 &&
-        problems+="stamp-field принял файл без frontmatter"$'\n'
-    # version обязана что-то печатать всегда: нет файла VERSION -> "unknown", не пусто.
+        problems+="stamp-field accepted a file without frontmatter"$'\n'
+    # version must always print something: no VERSION file -> "unknown", never empty.
     [ -n "$(bash "$LIBSH" version 2>/dev/null)" ] ||
-        problems+="version не печатает ничего (должна хотя бы unknown)"$'\n'
+        problems+="version prints nothing (it must at least say unknown)"$'\n'
 
-    # archive: перенос Done в архив. Проверяем ровно то, ради чего он писался —
-    # что ничего не теряется и не дублируется, и что чужие секции не тронуты.
-    printf -- '## In progress\n- [x] закрытый подпункт живой задачи\n- [ ] сама задача\n\n## Done\n- [x] 2026-06-01 — старая\n      её вторая строка\n- ✅ 2026-07-01 — галочкой\n- [x] 2026-12-01 — новая\n- [x] без даты\n\n## Backlog\n- [ ] хвост\n' > "$TMPLIB/tb.md"
-    printf -- '# Архив\n' > "$TMPLIB/ar.md"
-    # dry-run обязан ничего не писать
+    # archive: moving Done into the archive note. This tests exactly what it was written
+    # for — nothing lost, nothing duplicated, no other section touched.
+    printf -- '## In progress\n- [x] closed sub-item of a live task\n- [ ] the task itself\n\n## Done\n- [x] 2026-06-01 — old one\n      its second line\n- ✅ 2026-07-01 — tick marker\n- [x] 2026-12-01 — recent\n- [x] no date here\n\n## Backlog\n- [ ] tail\n' > "$TMPLIB/tb.md"
+    printf -- '# Archive\n' > "$TMPLIB/ar.md"
+    # a dry run must write nothing
     bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 || true
     [ "$(grep -c . "$TMPLIB/ar.md")" -eq 1 ] ||
-        problems+="archive: dry-run записал в архив"$'\n'
+        problems+="archive: the dry run wrote into the archive"$'\n'
     bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before 2026-08-01 --apply >/dev/null 2>&1 ||
-        problems+="archive: упал на нормальном входе"$'\n'
-    grep -q '2026-06-01' "$TMPLIB/ar.md" || problems+="archive: не перенёс старую запись"$'\n'
-    grep -q 'её вторая строка' "$TMPLIB/ar.md" || problems+="archive: потерял продолжение записи"$'\n'
-    grep -q '2026-07-01' "$TMPLIB/ar.md" || problems+="archive: не знает маркер ✅"$'\n'
-    grep -q '2026-12-01' "$TMPLIB/tb.md" || problems+="archive: унёс свежую запись"$'\n'
-    grep -q 'без даты' "$TMPLIB/tb.md" || problems+="archive: унёс запись без даты"$'\n'
-    grep -q 'закрытый подпункт' "$TMPLIB/tb.md" || problems+="archive: тронул секцию In progress"$'\n'
-    grep -q 'хвост' "$TMPLIB/tb.md" || problems+="archive: потерял секцию после Done"$'\n'
-    grep -q '2026-06-01' "$TMPLIB/tb.md" && problems+="archive: продублировал запись (осталась в таскборде)"$'\n'
-    # Кривая дата и отсутствие файла — отказ, а не «ничего не нашёл».
-    bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before вчера >/dev/null 2>&1 &&
-        problems+="archive: принял неверный формат даты"$'\n'
+        problems+="archive: failed on valid input"$'\n'
+    grep -q '2026-06-01' "$TMPLIB/ar.md" || problems+="archive: did not move the old entry"$'\n'
+    grep -q 'its second line' "$TMPLIB/ar.md" || problems+="archive: lost the continuation of an entry"$'\n'
+    grep -q '2026-07-01' "$TMPLIB/ar.md" || problems+="archive: does not know the ✅ marker"$'\n'
+    grep -q '2026-12-01' "$TMPLIB/tb.md" || problems+="archive: moved a recent entry"$'\n'
+    grep -q 'no date here' "$TMPLIB/tb.md" || problems+="archive: moved an undated entry"$'\n'
+    grep -q 'closed sub-item' "$TMPLIB/tb.md" || problems+="archive: touched the In progress section"$'\n'
+    grep -q 'tail' "$TMPLIB/tb.md" || problems+="archive: lost the section after Done"$'\n'
+    grep -q '2026-06-01' "$TMPLIB/tb.md" && problems+="archive: duplicated an entry (it is still in the taskboard)"$'\n'
+    # A malformed date and a missing file must be refused, not read as "found nothing".
+    bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before yesterday >/dev/null 2>&1 &&
+        problems+="archive: accepted a malformed date"$'\n'
     bash "$LIBSH" archive "$TMPLIB/nope.md" "$TMPLIB/ar.md" --before 2026-08-01 >/dev/null 2>&1 &&
-        problems+="archive: принял несуществующий таскборд"$'\n'
-    # lint-diff: ключ сравнивается, деталь только показывается. Проверяем ровно это —
-    # иначе известная находка с изменившимся числом каждый раз считалась бы новой,
-    # а смысл механизма в том, чтобы отделять регрессию от припаркованного долга.
+        problems+="archive: accepted a taskboard that does not exist"$'\n'
+    # lint-diff: the key is compared, the detail is only displayed. That is exactly what
+    # is tested here — otherwise a known finding whose number moved would count as new
+    # every time, and the whole point is telling a regression from parked debt.
     printf 'prose-budget\tgoprofi: 154\nmap-stale\tcadrika\n' > "$TMPLIB/f1.txt"
     command cat "$TMPLIB/f1.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" --seal >/dev/null 2>&1 ||
-        problems+="lint-diff: упал на первом прогоне"$'\n'
-    [ -s "$TMPLIB/base.txt" ] || problems+="lint-diff: --seal не записал baseline"$'\n'
-    # деталь изменилась, ключ тот же -> находка НЕ новая
+        problems+="lint-diff: failed on the first run"$'\n'
+    [ -s "$TMPLIB/base.txt" ] || problems+="lint-diff: --seal did not write the baseline"$'\n'
+    # detail changed, key unchanged -> the finding is NOT new
     printf 'prose-budget\tgoprofi: 999\nmap-stale\tcadrika\n' > "$TMPLIB/f2.txt"
     out=$(command cat "$TMPLIB/f2.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" 2>&1)
     case "$out" in
-        *NEW*) problems+="lint-diff: изменившееся число сделало известную находку новой"$'\n' ;;
+        *NEW*) problems+="lint-diff: a changed number made a known finding new"$'\n' ;;
     esac
-    # новый ключ -> новая находка; исчезнувший -> GONE
+    # a new key -> a new finding; a vanished one -> GONE
     printf 'prose-budget\tgoprofi: 154\nzone-missing\tgoprofi\n' > "$TMPLIB/f3.txt"
     out=$(command cat "$TMPLIB/f3.txt" | bash "$LIBSH" lint-diff "$TMPLIB/base.txt" 2>&1)
     case "$out" in
         *"+ zone-missing"*) : ;;
-        *) problems+="lint-diff: не заметил новую находку"$'\n' ;;
+        *) problems+="lint-diff: missed a new finding"$'\n' ;;
     esac
     case "$out" in
         *"- map-stale"*) : ;;
-        *) problems+="lint-diff: не заметил исчезнувшую находку"$'\n' ;;
+        *) problems+="lint-diff: missed a vanished finding"$'\n' ;;
     esac
-    # без --seal baseline обязан остаться прежним
+    # without --seal the baseline must stay as it was
     grep -q 'zone-missing' "$TMPLIB/base.txt" &&
-        problems+="lint-diff: записал baseline без --seal"$'\n'
-    # шаг обязан быть в промпте, иначе код есть, а вызывать его некому
+        problems+="lint-diff: wrote the baseline without --seal"$'\n'
+    # the step must exist in the prompt, or the code is there with nobody to call it
     LINTMD="$SCRIPT_DIR/commands/brain-lint.md"
-    # Паттерн с двоеточием, а не голое «Step 12»: подстрока матчит и «Step 12z», из-за
-    # чего негативный тест на переименование шага проходил как зелёный (третий случай
-    # ловушки с подстрокой за сессию — см. также vault-sync-DISABLED).
+    # The pattern carries the colon rather than a bare "Step 12": a substring also matches
+    # "Step 12z", which is why the negative test for renaming the step passed green (the
+    # third substring trap of that session — see also vault-sync-DISABLED).
     grep -qiE '^## Step [0-9]+[a-z]?: Report the delta' "$LINTMD" ||
-        problems+="brain-lint.md: нет шага сверки с baseline"$'\n'
-    grep -qF 'lint-diff' "$LINTMD" || problems+="brain-lint.md: шаг дельты не вызывает lint-diff"$'\n'
+        problems+="brain-lint.md: no step comparing against the baseline"$'\n'
+    grep -qF 'lint-diff' "$LINTMD" || problems+="brain-lint.md: the delta step does not call lint-diff"$'\n'
     grep -qF 'lint-collect' "$LINTMD" ||
-        problems+="brain-lint.md: проверки не вызываются из lib (снова проза)"$'\n'
-    # Требование полноты переехало в код вместе с проверками: lint-collect обязан
-    # ронять на пустом входе, а промпт — не подменять его ручными грепами.
+        problems+="brain-lint.md: the checks are not called from lib (prose again)"$'\n'
+    # The completeness requirement moved into the code along with the checks: lint-collect
+    # must fail on empty input, and the prompt must not substitute hand-written greps.
     grep -qiE 'do not fall back to' "$LINTMD" ||
-        problems+="brain-lint.md: потерян запрет подменять lint-collect ручными грепами"$'\n'
+        problems+="brain-lint.md: lost the ban on replacing lint-collect with hand greps"$'\n'
     grep -qiE 'refusing to report a clean vault' "$LIBSH" ||
-        problems+="lint-collect не роняет на пустом входе"$'\n'
+        problems+="lint-collect does not fail on empty input"$'\n'
 
-    # Наличие обеих страховок — грепом.
+    # Both guards are present — checked by grep.
     grep -q 'refused — .*moved.*kept' "$LIBSH" ||
-        problems+="archive: снята сверка числа записей до/после"$'\n'
+        problems+="archive: the entry-count reconciliation was removed"$'\n'
     grep -q 'refused — line balance off' "$LIBSH" ||
-        problems+="archive: снята сверка числа строк"$'\n'
+        problems+="archive: the line-count reconciliation was removed"$'\n'
     grep -q 'done_sec && /\^\[\[:space:\]\]\*-' "$LIBSH" ||
-        problems+="archive: счёт записей идёт не по секции Done"$'\n'
-    # А работают ли они — проверяется ЗАПУСКОМ на намеренно сломанной копии.
-    # Иначе страховка непроверяема по построению: пока остальной код верен, её
-    # отключение не даёт наблюдаемого эффекта, и «она есть» подтверждается только
-    # тем, что строка кода на месте. Ломаем парсер так, чтобы одна запись пропала,
-    # и требуем: отказ (ненулевой код) И оба файла нетронуты.
-    # Разделитель sed — `#`: в тексте замены есть `||`, и с `|` sed падает, оставляя
-    # пустой файл. Пустая «сломанная копия» ничего не делает, выходит с 0 и читается
-    # как «страховка пропустила» — поймано на себе 2026-08-03. Отсюда три проверки
-    # ниже: копия непуста, отличается от оригинала и синтаксически валидна.
+        problems+="archive: entries are counted outside the Done section"$'\n'
+    # Whether they WORK is verified by RUNNING a deliberately broken copy. Otherwise a
+    # guard is unverifiable by construction: while the rest of the code is correct,
+    # disabling it produces no observable effect, and "it is there" rests on a line of
+    # code being present. Break the parser so one entry disappears, then demand both a
+    # refusal (non-zero) AND two untouched files.
+    # The sed delimiter is `#`: the replacement text contains `||`, and with `|` sed dies
+    # leaving an empty file. An empty "broken copy" does nothing, exits 0, and reads as
+    # "the guard let it through" — caught the hard way 2026-08-03. Hence the three
+    # assertions below: the copy is non-empty, differs from the original, and parses.
     sed 's#print > (w "/" dest)#if (!(dest == "moved" \&\& n["moved"] == 1)) print > (w "/" dest)#' \
         "$LIBSH" > "$TMPLIB/broken.sh" 2>/dev/null
     if [ ! -s "$TMPLIB/broken.sh" ] ||
        cmp -s "$TMPLIB/broken.sh" "$LIBSH" ||
        ! bash -n "$TMPLIB/broken.sh" 2>/dev/null; then
-        problems+="archive: не удалось собрать сломанную копию — страховка не проверена"$'\n'
+        problems+="archive: could not build the broken copy — the guard went untested"$'\n'
     fi
-    printf -- '## Done\n- [x] 2026-01-01 — первая\n- [x] 2026-02-01 — вторая\n- [x] 2026-12-01 — свежая\n' > "$TMPLIB/tb2.md"
-    printf -- '# Архив\n' > "$TMPLIB/ar2.md"
+    printf -- '## Done\n- [x] 2026-01-01 — first\n- [x] 2026-02-01 — second\n- [x] 2026-12-01 — recent\n' > "$TMPLIB/tb2.md"
+    printf -- '# Archive\n' > "$TMPLIB/ar2.md"
     tb2_sum=$(command cksum < "$TMPLIB/tb2.md"); ar2_sum=$(command cksum < "$TMPLIB/ar2.md")
     if bash "$TMPLIB/broken.sh" archive "$TMPLIB/tb2.md" "$TMPLIB/ar2.md" \
             --before 2026-08-01 --apply >/dev/null 2>&1; then
-        problems+="archive: сломанный парсер ТЕРЯЕТ запись, а страховка пропустила это"$'\n'
+        problems+="archive: the broken parser LOSES an entry and the guard let it through"$'\n'
     fi
     [ "$(command cksum < "$TMPLIB/tb2.md")" = "$tb2_sum" ] ||
-        problems+="archive: при отказе таскборд всё равно изменён"$'\n'
+        problems+="archive: the taskboard changed despite the refusal"$'\n'
     [ "$(command cksum < "$TMPLIB/ar2.md")" = "$ar2_sum" ] ||
-        problems+="archive: при отказе архив всё равно изменён"$'\n'
-    # vault-sync: локальный vault без remote — штатный сетап, обязан пропустить с 0.
+        problems+="archive: the archive changed despite the refusal"$'\n'
+    # vault-sync: a local vault with no remote is a supported setup and must skip with 0.
     mkdir -p "$TMPLIB/v" && git -C "$TMPLIB/v" init -q 2>/dev/null
     bash "$LIBSH" vault-sync "$TMPLIB/v" >/dev/null 2>&1 ||
-        problems+="vault-sync не пропустил vault без remote"$'\n'
-    # Не-репозиторий — тоже пропуск, а не отказ.
+        problems+="vault-sync did not skip a vault without a remote"$'\n'
+    # A non-repository is also a skip, not a refusal.
     mkdir -p "$TMPLIB/plain"
     bash "$LIBSH" vault-sync "$TMPLIB/plain" >/dev/null 2>&1 ||
-        problems+="vault-sync не пропустил не-git vault"$'\n'
-    # Несуществующий путь — отказ, иначе «синхронизировано» означало бы «ничего не делал».
+        problems+="vault-sync did not skip a non-git vault"$'\n'
+    # A non-existent path must be refused, or "synced" would mean "did nothing".
     bash "$LIBSH" vault-sync "$TMPLIB/nope" >/dev/null 2>&1 &&
-        problems+="vault-sync принял несуществующий путь"$'\n'
+        problems+="vault-sync accepted a path that does not exist"$'\n'
     rm -rf "$TMPLIB"
     if [ -n "$problems" ]; then
-        fail "lib/brain.sh: vault-sync/stamp-field ведут себя неверно" "$problems"
+        fail "lib/brain.sh: vault-sync/stamp-field misbehave" "$problems"
     else
-        pass "lib/brain.sh: stamp-field щадит соседние поля, vault-sync различает исходы"
+        pass "lib/brain.sh: stamp-field spares neighbouring fields, vault-sync tells its outcomes apart"
     fi
 fi
 
-# ─── 4e. lint-collect отрабатывает на фикстурном vault ───────────────────────
-# Проверяется ЗАПУСКОМ на ваулте, где каждый класс находки представлен ровно
-# одним экземпляром — как 4b/4c проверяют guard и archive. Греп по форме здесь
-# бесполезен вдвойне: до переезда в lib/ эти проверки жили прозой, каждая сессия
-# писала их заново, и замер 2026-08-04 показал 11 ложных находок из 11 у одной
-# такой реализации. Фикстура фиксирует и то, что находкой БЫТЬ НЕ ДОЛЖНО.
+# ─── 4e. lint-collect works on a fixture vault ───────────────────────────────
+# Verified by RUNNING it on a vault where every class of finding is present exactly once,
+# the same way 4b/4c verify the guard and archive. Grepping for shape would be doubly
+# useless here: before these checks moved into lib/ they lived as prose, every session
+# rewrote them, and a measurement on 2026-08-04 found 11 false positives out of 11 in one
+# such implementation. The fixture also pins down what must NOT be a finding.
 if [ -f "$LIBSH" ]; then
     problems=""
     LCV=$(mktemp -d)
     mkdir -p "$LCV/proj/wiki" "$LCV/proj/sessions" "$LCV/other/wiki" "$LCV/00-system"
 
-    # Реестр знает оба проекта — плюс один, которого нет на диске.
+    # The registry knows both projects — plus one that is not on disk.
     printf -- '# Index\n- [[proj/_PROJECT|proj]]\n- [[other/_PROJECT|other]]\n- [[ghost/_PROJECT|ghost]]\n' \
         > "$LCV/00-system/index.md"
 
-    # proj: проза за бюджетом, For future Claude за бюджетом, updated протух.
+    # proj: prose over budget, For future Claude over budget, updated gone stale.
     {
         printf -- '---\nproject: proj\nupdated: 2020-01-01\n---\n\n## Current state\n'
-        i=0; while [ $i -lt 55 ]; do echo "строка состояния $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 55 ]; do echo "state line $i"; i=$((i + 1)); done
         printf -- '\n## For future Claude\n'
-        i=0; while [ $i -lt 25 ]; do echo "константа $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 25 ]; do echo "constant $i"; i=$((i + 1)); done
     } > "$LCV/proj/_PROJECT.md"
 
-    # Таскборд: за всеми тремя порогами, оба маркера закрытия.
+    # Taskboard: past all three thresholds, both closure markers.
     {
         printf -- '## In progress\n'
-        i=0; while [ $i -lt 320 ]; do echo "- [ ] задача $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 320 ]; do echo "- [ ] task $i"; i=$((i + 1)); done
         printf -- '\n## Done\n'
-        i=0; while [ $i -lt 12 ]; do echo "- [x] 2026-01-01 — сделано $i"; i=$((i + 1)); done
-        i=0; while [ $i -lt 12 ]; do echo "- ✅ 2026-01-02 — сделано ✅ $i"; i=$((i + 1)); done
-        i=0; while [ $i -lt 300 ]; do echo "хвост $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 12 ]; do echo "- [x] 2026-01-01 — done $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 12 ]; do echo "- ✅ 2026-01-02 — done ✅ $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 300 ]; do echo "tail $i"; i=$((i + 1)); done
     } > "$LCV/proj/taskboard.md"
 
-    # Карта старше последней сессии.
+    # The map is older than the last session.
     printf -- '---\nupdated: 2026-01-01\n---\n# map\n' > "$LCV/proj/architecture-map.md"
-    # Три сессии: у двух есть zone, у третьей нет -> key-uniformity.
+    # Three sessions: two carry zone, the third does not -> key-uniformity.
     printf -- '---\ndate: 2026-06-01\nzone: root\n---\nx\n'  > "$LCV/proj/sessions/2026-06-01_1000_session.md"
     printf -- '---\ndate: 2026-06-02\nzone: back\n---\nx\n'  > "$LCV/proj/sessions/2026-06-02_1000_session.md"
     printf -- '---\ndate: 2026-08-01\n---\nx\n'              > "$LCV/proj/sessions/2026-08-01_1000_session.md"
 
-    # Заметки: одна без обратной ссылки, одна без соседней, одна вообще без ссылок.
-    printf -- '---\ndate: 2026-06-01\n---\nтело [[note-sibling]]\n'        > "$LCV/proj/wiki/note-backless.md"
-    printf -- '---\ndate: 2026-06-01\n---\nтело [[../_PROJECT|_PROJECT]]\n' > "$LCV/proj/wiki/note-sibling.md"
-    printf -- '---\ndate: 2026-06-01\n---\nни одной ссылки\n'              > "$LCV/proj/wiki/note-alone.md"
+    # Notes: one without a backlink, one without a sibling, one with no links at all.
+    printf -- '---\ndate: 2026-06-01\n---\nbody [[note-sibling]]\n'         > "$LCV/proj/wiki/note-backless.md"
+    printf -- '---\ndate: 2026-06-01\n---\nbody [[../_PROJECT|_PROJECT]]\n' > "$LCV/proj/wiki/note-sibling.md"
+    printf -- '---\ndate: 2026-06-01\n---\nno links at all\n'              > "$LCV/proj/wiki/note-alone.md"
 
-    # Черновик старше 14 дней.
-    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\nчерновик\n' > "$LCV/proj/wiki/draft-old.md"
+    # A draft older than 14 days.
+    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\ndraft body\n' > "$LCV/proj/wiki/draft-old.md"
 
-    # Decision-заметки: off-schema status, битая ссылка, legacy-форма — и ДВА
-    # случая, которые находкой быть не должны: `supersedes: ~` (YAML null) и
-    # цитата legacy-формы внутри fenced-блока.
+    # Decision notes: off-schema status, a broken reference, the legacy form — plus TWO
+    # cases that must NOT be findings: `supersedes: ~` (YAML null) and a quotation of the
+    # legacy form inside a fenced block.
     printf -- '---\nstatus: partially-superseded-by x\ndate: 2026-06-01\n---\n[[../_PROJECT|_PROJECT]]\n' \
         > "$LCV/proj/wiki/decision-offschema.md"
     printf -- '---\nstatus: accepted\nsuperseded-by: decision-nowhere\n---\n[[../_PROJECT|_PROJECT]]\n' \
@@ -462,14 +462,14 @@ if [ -f "$LIBSH" ]; then
     printf -- '---\nstatus: accepted\nsupersedes: ~\n---\n[[../_PROJECT|_PROJECT]]\n```\nstatus: superseded-by: decision-x.md\n```\n' \
         > "$LCV/proj/wiki/decision-clean.md"
 
-    # Незакрытый frontmatter.
-    printf -- '---\ndate: 2026-06-01\nтело без закрывающей черты\n' > "$LCV/proj/wiki/broken-fm.md"
+    # An unterminated frontmatter block.
+    printf -- '---\ndate: 2026-06-01\nbody with no closing rule\n' > "$LCV/proj/wiki/broken-fm.md"
 
-    # Ключ, который шаблон печатает ПУСТЫМ почти везде, — не конвенция. Замерено
-    # 2026-08-04: `supersedes:` пуст в 29 заметках cadrika из 32, и порог, считавший
-    # присутствие ключа, объявлял нарушителями те три, где пустой строки нет.
-    # Здесь: `supersedes:` пуст у трёх из четырёх, отсутствует у одной. Находкой
-    # это быть не должно; если порог снова начнёт считать присутствие — станет.
+    # A key a template emits EMPTY almost everywhere is not a convention. Measured
+    # 2026-08-04: `supersedes:` is empty in 29 of cadrika's 32 notes, and a threshold
+    # counting the key's presence declared the three lacking the empty line to be the
+    # violators. Here: `supersedes:` is empty in three of four and absent in one. That
+    # must not be a finding; if the threshold ever counts presence again, it will be.
     i=1; while [ $i -le 3 ]; do
         printf -- '---\nstatus: accepted\ndate: 2026-06-0%s\nsupersedes:\n---\n[[../_PROJECT|_PROJECT]] [[decision-empty-1]]\n' \
             "$i" > "$LCV/other/wiki/decision-empty-$i.md"
@@ -478,45 +478,46 @@ if [ -f "$LIBSH" ]; then
     printf -- '---\nstatus: accepted\ndate: 2026-06-04\n---\n[[../_PROJECT|_PROJECT]] [[decision-empty-1]]\n' \
         > "$LCV/other/wiki/decision-nosupersedes.md"
 
-    # other: не в реестре нет — он есть; зато даёт неуникальное имя note-alone,
-    # из-за чего голая [[note-alone]] в его заметке становится неоднозначной.
-    printf -- '---\nproject: other\nupdated: 2026-08-01\n---\n## Current state\nкоротко\n' \
+    # other: it IS in the registry; what it contributes is a duplicate basename
+    # note-alone, which makes the bare [[note-alone]] in its note ambiguous.
+    printf -- '---\nproject: other\nupdated: 2026-08-01\n---\n## Current state\nbrief\n' \
         > "$LCV/other/_PROJECT.md"
-    printf -- '---\ndate: 2026-06-01\n---\nссылка [[note-alone]] и [[../_PROJECT|_PROJECT]]\n' \
+    printf -- '---\ndate: 2026-06-01\n---\nlink [[note-alone]] and [[../_PROJECT|_PROJECT]]\n' \
         > "$LCV/other/wiki/note-alone.md"
-    # Цитата той же голой ссылки в бэктиках — находкой быть НЕ должна. Плюс
-    # непарный бэктик выше по файлу: без сброса состояния на пустой строке он
-    # переворачивал чтение всего остатка (замерено на живом connections.md).
-    printf -- '---\ndate: 2026-06-01\n---\nабзац с непарным бэктиком `вот\n\nцитата `[[note-alone]]` в бэктиках [[../_PROJECT|_PROJECT]]\n' \
+    # A quotation of that same bare link in backticks must NOT be a finding. Plus an
+    # unpaired backtick earlier in the file: without resetting the state on a blank line
+    # it inverted the reading of everything after it (measured on the live connections.md).
+    printf -- '---\ndate: 2026-06-01\n---\nparagraph with an unpaired backtick `here\n\nquoted `[[note-alone]]` in backticks [[../_PROJECT|_PROJECT]]\n' \
         > "$LCV/other/wiki/note-quotes.md"
 
-    # Проект, которого нет в реестре.
+    # A project the registry does not know.
     mkdir -p "$LCV/unreg"
-    printf -- '---\nproject: unreg\nupdated: 2026-08-01\n---\n## Current state\nкоротко\n' \
+    printf -- '---\nproject: unreg\nupdated: 2026-08-01\n---\n## Current state\nbrief\n' \
         > "$LCV/unreg/_PROJECT.md"
 
-    # Проект, ВЛОЖЕННЫЙ в другой проект. Именно этот класс инвентарь и терял:
-    # замерено 2026-08-04, `nf-content/MWR-Dima` — свой _PROJECT.md, свой taskboard,
-    # своя wiki, запись в реестре — был невидим для всех проектных проверок, потому
-    # что перечень проектов строился по верхнему уровню. Файловые свипы его видели
-    # всегда, отчего расхождение читалось как регрессия, а не как дыра в охвате.
+    # A project NESTED inside another project. This is the class the inventory kept
+    # losing: measured 2026-08-04, `nf-content/MWR-Dima` — its own _PROJECT.md, its own
+    # taskboard, its own wiki, an entry in the registry — was invisible to every
+    # per-project check, because the project list was built from the top level. The file
+    # sweeps always saw it, so the discrepancy read as a regression rather than a gap in
+    # coverage.
     mkdir -p "$LCV/other/nested"
-    printf -- '---\nproject: nested\nupdated: 2020-01-01\n---\n## Current state\nкоротко\n' \
+    printf -- '---\nproject: nested\nupdated: 2020-01-01\n---\n## Current state\nbrief\n' \
         > "$LCV/other/nested/_PROJECT.md"
 
-    # Файл под .gitignore обязан быть найден: свип ходит по файловой системе, а не
-    # по индексу git. Оболочка сессии на Mac подменяет grep на ugrep с
-    # --ignore-files, и он такой файл пропускает молча — здесь этого быть не должно.
+    # A file under .gitignore must still be found: the sweep walks the filesystem, not
+    # the git index. The session shell on macOS replaces grep with ugrep --ignore-files,
+    # which skips such a file silently — that must not happen here.
     printf -- 'ignored/\n' > "$LCV/.gitignore"
     mkdir -p "$LCV/ignored"
-    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\nскрытый черновик\n' > "$LCV/ignored/hidden-draft.md"
+    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\nhidden draft\n' > "$LCV/ignored/hidden-draft.md"
 
     out="$LCV/out.txt"
     if bash "$LIBSH" lint-collect "$LCV" > "$out" 2>"$LCV/err.txt"; then :; else
-        problems+="lint-collect упал на фикстуре: $(head -1 "$LCV/err.txt")"$'\n'
+        problems+="lint-collect failed on the fixture: $(head -1 "$LCV/err.txt")"$'\n'
     fi
-    want() { grep -q "^$1	" "$out" || problems+="не нашёл класс: $1"$'\n'; }
-    nope() { grep -q "^$1	" "$out" && problems+="ложная находка: $1"$'\n'; }
+    want() { grep -q "^$1	" "$out" || problems+="class not found: $1"$'\n'; }
+    nope() { grep -q "^$1	" "$out" && problems+="false finding: $1"$'\n'; }
 
     want 'prose-budget:proj'
     want 'ffc-budget:proj'
@@ -538,117 +539,117 @@ if [ -f "$LIBSH" ]; then
     want 'ambiguous-link:other/wiki/note-alone.md'
     want 'project-unregistered:unreg'
     want 'registry-stale:ghost'
-    # Вложенный проект обязан попасть в проектные проверки, а не только в файловые.
+    # The nested project must reach the per-project checks, not only the file sweeps.
     want 'stale-project:other/nested'
     want 'project-unregistered:other/nested'
-    # Чего быть не должно.
+    # What must not appear.
     nope 'decision-ref:proj/wiki/decision-clean.md'
     nope 'decision-legacy:proj/wiki/decision-clean.md'
     nope 'ambiguous-link:other/wiki/note-quotes.md'
     nope 'stale-project:other'
     nope 'key-uniformity:other/decisions'
-    # Счётчик Done обязан видеть оба маркера: 12 + 12 = 24 > 20, по одному не сработал бы.
+    # The Done counter must see both markers: 12 + 12 = 24 > 20; either alone would miss.
     grep -q '^taskboard-done:proj	24 ' "$out" ||
-        problems+="счётчик Done не сложил [x] и ✅ (ожидалось 24)"$'\n'
-    # Контракт вывода: ключи уникальны, иначе lint-diff откажется работать.
+        problems+="the Done counter did not add [x] and ✅ together (expected 24)"$'\n'
+    # Output contract: keys are unique, or lint-diff refuses to run.
     d=$(cut -f1 "$out" | sort | uniq -d)
-    [ -z "$d" ] || problems+="ключи не уникальны: $(printf '%s' "$d" | tr '\n' ' ')"$'\n'
-    # Каждая строка обязана быть key<TAB>detail.
-    grep -qv "	" "$out" && problems+="есть строки без табуляции — контракт вывода нарушен"$'\n'
+    [ -z "$d" ] || problems+="keys are not unique: $(printf '%s' "$d" | tr '\n' ' ')"$'\n'
+    # Every line must be key<TAB>detail.
+    grep -qv "	" "$out" && problems+="lines without a tab — the output contract is broken"$'\n'
 
-    # Пустой вход обязан ронять, а не печатать зелёное. Это уже дважды стоило
-    # двух недель слепых ворот (mapfile, except ImportError).
+    # Empty input must fail, never print a green. That has twice cost two weeks of a
+    # blind release gate (mapfile, except ImportError).
     mkdir -p "$LCV/nothing"
     bash "$LIBSH" lint-collect "$LCV/nothing" >/dev/null 2>&1 &&
-        problems+="lint-collect напечатал зелёное на пустом каталоге"$'\n'
+        problems+="lint-collect printed a green for an empty directory"$'\n'
     mkdir -p "$LCV/nomd" && printf -- '# x\n' > "$LCV/nomd/a.md"
     bash "$LIBSH" lint-collect "$LCV/nomd" >/dev/null 2>&1 &&
-        problems+="lint-collect не потребовал ни одного _PROJECT.md"$'\n'
+        problems+="lint-collect did not require a single _PROJECT.md"$'\n'
     bash "$LIBSH" lint-collect "$LCV/nope" >/dev/null 2>&1 &&
-        problems+="lint-collect принял несуществующий путь"$'\n'
+        problems+="lint-collect accepted a path that does not exist"$'\n'
 
     rm -rf "$LCV"
     if [ -n "$problems" ]; then
-        fail "lint-collect неверен на фикстуре" "$problems"
+        fail "lint-collect is wrong on the fixture" "$problems"
     else
-        pass "lint-collect прогнан на фикстуре: 20 классов находок, 4 не-находки, пустой вход роняет"
+        pass "lint-collect exercised on a fixture: 20 finding classes, 4 non-findings, empty input fails"
     fi
 fi
 
-# ─── 4d. Версия не хардкодится в шаблонах ────────────────────────────────────
-# `brain-version:` был мёртвым полем: литерал в шаблоне brain-init, который надо было
-# править руками при каждом релизе — и не правили. Замерено 2026-08-03: 8 проектов
-# несут "1.3", два "1.5.0", ни один 1.6.0, и ни одна команда поле не читала.
-# Теперь версия берётся из установленного VERSION, а /brain-save её штампует.
+# ─── 4d. The version is never hardcoded in a template ────────────────────────
+# `brain-version:` was a dead field: a literal in the brain-init template that had to be
+# edited by hand at every release — and was not. Measured 2026-08-03: 8 projects carry
+# "1.3", two carry "1.5.0", none carry 1.6.0, and no command read the field at all.
+# The version now comes from the installed VERSION, and /brain-save stamps it.
 missing=""
 if grep -qE '^brain-version:[[:space:]]*"[0-9]' "$SCRIPT_DIR/commands/brain-init.md"; then
-    missing+="brain-init.md: brain-version захардкожен литералом — при релизе разойдётся молча"$'\n'
+    missing+="brain-init.md: brain-version hardcoded as a literal — it will drift silently at release"$'\n'
 fi
 grep -q 'BRAIN_VERSION' "$SCRIPT_DIR/commands/brain-init.md" ||
-    missing+="brain-init.md: в шаблоне нет подстановки версии"$'\n'
+    missing+="brain-init.md: the template does not substitute the version"$'\n'
 grep -qE 'brain\.sh" version|brain\.sh version' "$SCRIPT_DIR/commands/brain-init.md" ||
-    missing+="brain-init.md: не сказано, откуда брать версию (вызов brain.sh version)"$'\n'
+    missing+="brain-init.md: does not say where the version comes from (call brain.sh version)"$'\n'
 grep -q 'stamp-field .*brain-version' "$SCRIPT_DIR/commands/brain-save.md" ||
-    missing+="brain-save.md: brain-version не штампуется — поле снова станет мёртвым"$'\n'
+    missing+="brain-save.md: brain-version is not stamped — the field goes dead again"$'\n'
 for s in install.sh update.sh; do
     grep -q 'lib/VERSION' "$SCRIPT_DIR/$s" ||
-        missing+="$s: не пишет lib/VERSION — установленная система не знает своей версии"$'\n'
-    # Штамп обязан различать чистое дерево и грязное. Обычный порядок работы —
-    # правка → update.sh (обкатать) → коммит, поэтому без --dirty VERSION фиксирует
-    # describe ДО коммита и отстаёт молча: замерено 2026-08-03, _PROJECT.md получил
-    # -10-g34f5287 при фактически установленных -12-g9a657fe.
+        missing+="$s: does not write lib/VERSION — the installed system will not know its version"$'\n'
+    # The stamp must tell a clean tree from a dirty one. The normal order of work is
+    # edit -> update.sh (try it) -> commit, so without --dirty VERSION records `describe`
+    # from BEFORE the commit and lags silently: measured 2026-08-03, _PROJECT.md received
+    # -10-g34f5287 while -12-g9a657fe was actually installed.
     grep -qE 'describe[^|]*--dirty' "$SCRIPT_DIR/$s" ||
-        missing+="$s: describe без --dirty — штамп версии отстаёт при правке до коммита"$'\n'
+        missing+="$s: describe without --dirty — the version stamp lags when editing before a commit"$'\n'
 done
 if [ -n "$missing" ]; then
-    fail "версия системы не отслеживается (мёртвое поле brain-version)" "$missing"
+    fail "the system version is not tracked (brain-version is a dead field)" "$missing"
 else
-    pass "версия берётся из установленного VERSION и штампуется при сохранении"
+    pass "the version comes from the installed VERSION and is stamped on save"
 fi
 
-# ─── 5. Legacy-форма supersession ────────────────────────────────────────────
-# `status: superseded-by: x` — двойное двоеточие, невалидный YAML: Obsidian не читает
-# frontmatter такой заметки целиком и она выпадает из всех property-запросов.
-# Читаем список без `mapfile`: он появился в bash 4.0, а на macOS /bin/bash — 3.2.
-# До 2026-08-02 здесь стоял mapfile, и на Mac проверки 5-6 не выполнялись ВООБЩЕ:
-# массив оставался unbound, grep получал пустой вход, обе печатали ✓. Ворота релиза
-# сами были ложно-зелёными на одной из двух рабочих машин.
+# ─── 5. The legacy supersession form ─────────────────────────────────────────
+# `status: superseded-by: x` — a double colon, invalid YAML: Obsidian cannot read that
+# note's frontmatter at all and it drops out of every property query.
+# The list is read without `mapfile`: that arrived in bash 4.0, and macOS ships
+# /bin/bash 3.2. Until 2026-08-02 mapfile stood here, and on the Mac checks 5-6 did not
+# run AT ALL: the array stayed unbound, grep received empty input, and both printed ✓.
+# The release gate was itself falsely green on one of the two working machines.
 ALL_MD=()
 while IFS= read -r _f; do ALL_MD+=("$_f"); done < <(find "$SCRIPT_DIR" -name '*.md' -not -path '*/.git/*')
 if [ "${#ALL_MD[@]}" -eq 0 ]; then
-    fail "не найдено ни одного .md — проверки 5-6 не отработали (пустой вход, не чистый репозиторий)"
+    fail "no .md found — checks 5-6 did not run (empty input, not a clean repository)"
 fi
 hits=$(strip_inline_code "${ALL_MD[@]}" | grep "status:[[:space:]]*superseded-by:" || true)
 if [ -n "$hits" ]; then
-    fail "legacy-форма supersession в одну строку (невалидный YAML)" "$hits"
+    fail "one-line legacy supersession form (invalid YAML)" "$hits"
 else
-    pass "supersession везде двумя полями (status + superseded-by)"
+    pass "supersession is two fields everywhere (status + superseded-by)"
 fi
 
-# ─── 6. Голые wikilinks на неуникальные имена ────────────────────────────────
-# Класс багов, повторившийся трижды (2026-07-14/15): _PROJECT.md, architecture-map.md,
-# и задублированные между проектами wiki-заметки. Obsidian резолвит голую ссылку в
-# первое совпадение по кратчайшему пути — молча в чужой проект.
+# ─── 6. Bare wikilinks to non-unique names ───────────────────────────────────
+# A class of bug that recurred three times (2026-07-14/15): _PROJECT.md,
+# architecture-map.md, and wiki notes duplicated across projects. Obsidian resolves a
+# bare link to the first shortest-path match — silently, into another project.
 NONUNIQUE="_PROJECT|architecture-map|taskboard|index|connections"
 hits=$(strip_inline_code "${ALL_MD[@]}" | grep -E "\[\[($NONUNIQUE)(\|[^]]*)?\]\]" || true)
 if [ -n "$hits" ]; then
-    fail "голый [[wikilink]] на имя, неуникальное в vault (нужен явный путь)" "$hits"
+    fail "bare [[wikilink]] to a name that is not unique in the vault (needs an explicit path)" "$hits"
 else
-    pass "неуникальные имена всегда адресуются явным путём"
+    pass "non-unique names are always addressed by an explicit path"
 fi
 
-# ─── 7. Валидность YAML во frontmatter ───────────────────────────────────────
-# Проверка обязана падать, когда выполнить её нечем или не на чем. До 2026-08-03
-# отсутствие python3 пропускало её молча и целиком, а отсутствующий PyYAML давал
-# `sys.exit(0)` — на macOS, где модуль не установлен, она печатала ✓, не разобрав
-# ни одного блока. Ровно тот же класс, что `mapfile` в проверках 5-6, и найден он
-# был в ту же неделю, одной функцией ниже. Зелёное обязано означать «выполнено и
-# чисто», никогда «не выполнено». Ср. проверку 14 и правило пустого входа.
-# Кандидаты интерпретатора по порядку: явный $PYTHON, репозиторный .venv,
-# системный python3. Берётся первый, у которого PyYAML реально импортируется —
-# «python3 нашёлся» и «проверку есть чем выполнить» это разные факты, и раньше
-# скрипт путал их в пользу зелёного. .venv лежит в .gitignore и заводится один
-# раз: python3 -m venv .venv && .venv/bin/pip install pyyaml
+# ─── 7. Frontmatter YAML validity ────────────────────────────────────────────
+# A check must fail when there is nothing to run it with, or nothing to run it on. Until
+# 2026-08-03 a missing python3 skipped it silently and entirely, and a missing PyYAML hit
+# `sys.exit(0)` — on macOS, where the module is not installed, it printed ✓ having parsed
+# not a single block. Exactly the same class as `mapfile` in checks 5-6, and found the
+# same week, one function below it. Green must mean "ran and is clean", never "did not
+# run". Compare check 14 and the empty-input rule.
+# Interpreter candidates in order: an explicit $PYTHON, the repo's .venv, the system
+# python3. The first one that can actually import PyYAML wins — "python3 exists" and
+# "the check can be run" are different facts, and the script used to confuse them in
+# favour of green. .venv is in .gitignore and is created once:
+# python3 -m venv .venv && .venv/bin/pip install pyyaml
 PYBIN=""
 for cand in "${PYTHON:-}" "$SCRIPT_DIR/.venv/bin/python" python3; do
     [ -n "$cand" ] || continue
@@ -658,8 +659,8 @@ for cand in "${PYTHON:-}" "$SCRIPT_DIR/.venv/bin/python" python3; do
     break
 done
 if [ -z "$PYBIN" ]; then
-    fail "нет интерпретатора с PyYAML — проверка YAML не выполнена" \
-         "завести: python3 -m venv .venv && .venv/bin/pip install pyyaml"
+    fail "no interpreter with PyYAML — the YAML check did not run" \
+         "create one: python3 -m venv .venv && .venv/bin/pip install pyyaml"
 else
     out=$("$PYBIN" - "$SCRIPT_DIR" 2>/dev/null <<'PY'
 import sys, pathlib
@@ -686,32 +687,32 @@ PY
     parsed=$(echo "$out" | sed -n 's/^PARSED //p')
     bad=$(echo "$out" | grep -v '^PARSED ')
     if [ -n "$bad" ]; then
-        fail "невалидный YAML во frontmatter" "$bad"
+        fail "invalid YAML in frontmatter" "$bad"
     elif [ -z "$parsed" ] || [ "$parsed" -eq 0 ]; then
-        fail "проверка YAML не нашла ни одного frontmatter-блока — вход пуст, а не чист"
+        fail "the YAML check found no frontmatter block at all — empty input, not a clean repo"
     else
-        pass "frontmatter во всех .md парсится ($parsed блоков)"
+        pass "frontmatter parses in every .md ($parsed blocks)"
     fi
 fi
 
-# ─── 8. Распространяемый zip не отстал от исходников ─────────────────────────
-# Найдено 2026-07-22: brain-onboard.zip не пересобирался с 27.06 и вёз внешним
-# пользователям v1.3 — вместе с формой `status: superseded-by: x`, которую v1.5.0
-# объявил невалидным YAML. Артефакт собирается вручную, поэтому расходится молча.
+# ─── 8. The distributed zip has not fallen behind its source ─────────────────
+# Found 2026-07-22: brain-onboard.zip had not been rebuilt since 06-27 and was shipping
+# v1.3 to outside users — along with the `status: superseded-by: x` form that v1.5.0
+# declared invalid YAML. The artefact is built by hand, so it drifts silently.
 ZIP="$SCRIPT_DIR/chat-skills/brain-onboarding/brain-onboard.zip"
 ZIP_SRC="$SCRIPT_DIR/chat-skills/brain-onboarding/SKILL.md"
 if [ -f "$ZIP" ] && [ -f "$ZIP_SRC" ] && command -v unzip >/dev/null 2>&1; then
     if diff -q <(unzip -p "$ZIP" 'brain-onboarding/SKILL.md' 2>/dev/null) "$ZIP_SRC" >/dev/null 2>&1; then
-        pass "brain-onboard.zip совпадает с исходным SKILL.md"
+        pass "brain-onboard.zip matches its source SKILL.md"
     else
-        fail "brain-onboard.zip разошёлся с chat-skills/brain-onboarding/SKILL.md — пересобрать"
+        fail "brain-onboard.zip has drifted from chat-skills/brain-onboarding/SKILL.md — rebuild it"
     fi
 fi
 
-# ─── 9. Conventional Commits с даты принятия правила ─────────────────────────
-# Adopted 2026-07-23. История до этой даты не переписывается задним числом —
-# тот же принцип, что и у semver выше. release: — свой тип этого репо для
-# коммитов-тегов (см. `release: adopt semver, tag v1.4.0`).
+# ─── 9. Conventional Commits since the rule was adopted ──────────────────────
+# Adopted 2026-07-23. History before that date is not rewritten retroactively — the same
+# principle as semver above. `release:` is this repo's own type for tag commits (see
+# `release: adopt semver, tag v1.4.0`).
 CC_CUTOFF="2026-07-23"
 CC_TYPES='feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release'
 hits=""
