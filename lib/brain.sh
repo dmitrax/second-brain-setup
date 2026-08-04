@@ -444,7 +444,30 @@ sweep_closed() {
         # below would fail on a two-line value. Caught by check 26 on a dateless fixture.
         n_dated=$(grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
         n_undated=$((n_moved - ${n_dated:-0}))
-        [ "$n_undated" -gt 0 ] && echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
+        if [ "$n_undated" -gt 0 ]; then
+            echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
+            # Где эта дата была: у пункта её часто нет, потому что она стояла в
+            # ЗАГОЛОВКЕ секции — а заголовок не переносится. То есть перенос не просто
+            # оставляет пункт недатированным, он отрывает его от единственной даты,
+            # которая у него была. Сказать это надо ДО потери, а не следующим линтом.
+            # Замерено 2026-08-04 на собственном таскборде: 33 из 35 записей в Done
+            # оказались без даты, и archive смог увезти 2.
+            dated_h=$(awk '
+                /^## / { inprog = ($0 ~ /In progress|В работе/); h = ""; next }
+                !inprog { next }
+                /^### / { h = $0; next }
+                h != "" && /^-[[:space:]]*(\[x\]|✅)/ && $0 !~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ {
+                    if (h ~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|[0-9][0-9]\.[0-9][0-9]/) seen[h] = 1
+                }
+                END { for (k in seen) print k }
+            ' "$tb")
+            if [ -n "$dated_h" ]; then
+                echo "sweep-closed: дата этих пунктов стоит в заголовке, а заголовок не переносится —"
+                printf '%s\n' "$dated_h" | sed 's/^/sweep-closed:   /'
+                echo "sweep-closed:   перенеся их, вы оторвёте пункты от единственной их даты."
+                echo "sweep-closed:   Проставьте дату в самих пунктах ДО переноса, иначе archive их уже не увезёт"
+            fi
+        fi
 
         # A heading is not moved — only items are — so a heading whose own text is a
         # closure claim can end up standing over the open items that stayed. The file
@@ -855,7 +878,13 @@ lint_collect() {
             dn=$(_budget_done "$tb")
             tot=$(_budget_size "$tb")
             prog=$(_budget_prog "$tb")
-            [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s закрытых записей в Done\n' "$P" "$dn"
+            # Деталь называет ДЕЙСТВУЮЩУЮ часть: archive двигает только датированное,
+            # и совет «архивировать» бесполезен, когда даты нет ни у одной записи.
+            dnd=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+                       d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ &&
+                       /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
+                       END { print n + 0 }' "$tb")
+            [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s закрытых записей в Done, с датой %s — archive увезёт только их\n' "$P" "$dn" "$dnd"
             [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s строк\n' "$P" "$prog"
             [ "$tot" -gt "$BUDGET_SIZE" ] && printf 'taskboard-size:%s\t%s строк, In progress %s\n' "$P" "$tot" "$prog"
         fi
