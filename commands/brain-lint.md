@@ -374,21 +374,34 @@ A project may require keys this package knows nothing about — `goprofi-voronka
 enforces such a local convention, so it erodes silently: the `/brain-save` template shows
 its own keys and reads as exhaustive at the moment of writing.
 
-The set of frontmatter keys must be uniform inside a project. A key carried by most
-earlier entries but absent from a newer one is a finding:
+The set of frontmatter keys must be uniform inside a project. A key **carrying a value**
+in most earlier entries, but absent or empty in a newer one, is a finding:
 
 ```bash
-cd "$VAULT/$PROJECT/sessions" 2>/dev/null || exit 0
-keys() { awk '/^---$/ {c++; next} c==1 && /^[A-Za-z_-]+:/ {sub(/:.*/,""); print}' "$1" | sort -u; }
-n=$(ls -1 *.md 2>/dev/null | wc -l)
+DIR="$VAULT/$PROJECT/sessions"; PAT='*.md'          # decisions: wiki + 'decision-*.md'
+[ -d "$DIR" ] || exit 0
+# A key counts only when it carries a VALUE. A key present everywhere and empty
+# everywhere is a template artefact, not a convention.
+keys() {
+  awk '/^---$/ { c++; next }
+       c == 1 && /^[A-Za-z_-]+:/ {
+         k = $0; sub(/:.*/, "", k)
+         v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
+         gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+         if (v != "" && v != "[]" && v != "\"\"") print k
+       }' "$1" | sort -u
+}
+FILES=$(find "$DIR" -maxdepth 1 -name "$PAT" | sort)   # not ls: it may be a shell
+n=$(printf '%s\n' "$FILES" | grep -c .)                # function (eza) — see below
 [ "$n" -lt 3 ] && exit 0          # too few entries to call anything a convention
 conv=$(mktemp)                    # not $TMPDIR — unset on most Linux setups
-for f in *.md; do keys "$f"; done | sort | uniq -c |
-  awk -v n="$n" '$1 > n * 0.6 {print $2}' > "$conv"
-for f in *.md; do
+printf '%s\n' "$FILES" | while read -r f; do keys "$f"; done | sort | uniq -c |
+  awk -v n="$n" '$1 > n * 0.6 { print $2 }' > "$conv"
+printf '%s\n' "$FILES" | while read -r f; do
   have=$(keys "$f")
   while read -r k; do
-    printf '%s\n' "$have" | grep -qxF "$k" || echo "$f: missing '$k'"
+    [ -n "$k" ] || continue
+    printf '%s\n' "$have" | grep -qxF "$k" || echo "${f##*/}: no value for '$k'"
   done < "$conv"
 done
 rm -f "$conv"
@@ -407,6 +420,22 @@ one-off experimental key never becomes a rule. Measured 2026-08-03: `goprofi-vor
 had 4 logs of 55 and 2 decision notes of 100 missing `zone:`, the most recent two on
 2026-08-01 — the same day, twice. Every other project came back uniform on
 `date/project/tags`.
+
+**Presence is not the test — a value is.** The first version counted a key whatever it
+held, so `supersedes:`, which the decision-note template emits empty and almost nobody
+fills, ranked as a convention and the notes lacking that empty line were reported as
+violations. Measured 2026-08-04: `supersedes:` is empty or absent in 29 of 32 `cadrika`
+notes, 95 of 100 in `goprofi-voronka`, 33 of 34 here — so the finding was pure noise, and
+it sat in the shared baseline where a green line beside it reads as verified. Counting
+only keys that carry a value drops all four `cadrika` findings and keeps every real
+`zone:` one. A false finding costs more than a missed one: it trains the reader to skim
+the list.
+
+Counting the entries with `ls` was a second defect, of the family described in `CLAUDE.md`
+under "a command name does not guarantee the tool": on the working Mac that name resolves
+to a shell function wrapping `eza`, so the count came from whatever the wrapper chose to
+print rather than from the directory. `find` takes no such gamble, and it is why the
+listing above builds `$FILES` before counting anything.
 
 ## Step 11: Architecture map freshness (code / mixed projects only)
 
