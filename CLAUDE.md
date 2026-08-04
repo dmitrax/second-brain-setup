@@ -174,14 +174,28 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   Measured 2026-08-03, both failures silently green: `[ "$a" \< "$b" ]` fails in zsh with
   `condition expected` (a map-freshness step printed "ok" for every project, including one
   that was behind), and `for p in $LIST` does not word-split in zsh (the whole list was
-  processed as a single string). Checked by preflight 18 for five classes: `\<`/`\>` in
+  processed as a single string). Checked by preflight 18 for six classes: `\<`/`\>` in
   `[ ]`, unquoted word-splitting, `${var:N:M}`, arrays (0-indexed in bash, 1-indexed in
-  zsh), and bash-only builtins.
+  zsh), bash-only builtins, and the unmatched glob.
+  **The sixth is the one `2>/dev/null` cannot cover.** An unmatched glob is a fatal error
+  in zsh — the command does not run at all — and a literal argument in bash; neither is
+  an empty list, and the shell prints the error *before* any redirection applies to the
+  command, so silencing stderr does not silence it and the pipeline still exits 0.
+  Measured 2026-08-04 in `/brain-save` Step 0c: `ls -1 ".../sessions/"*.md` on a project
+  with no logs — the first save of a new project, which is exactly what that step exists
+  for — produced nothing, twice over. The fix is `find <dir> -name "<pattern>"` with the
+  pattern quoted, so `find` expands it and the shell never sees a glob. Note the check has
+  to walk the line character by character: a quoted glob is the *fix*, so a grep for `*`
+  would go red on the correct form.
 - The sibling class, and the one a shebang does **not** fix: a command name does not
   guarantee the tool. Measured 2026-08-03 on the working Mac — `date` and `xargs`
-  resolve to GNU builds from Homebrew's `gnubin`, while `ls` and `grep` are shell
-  functions injected by the harness; one name, three sources, none of them knowable
-  from inside a prompt. `#!/bin/bash` fixes the *shell*, not `PATH`, so `lib/brain.sh`
+  resolve to GNU builds from Homebrew's `gnubin`, while `grep` is a shell function
+  injected by the harness (it calls a bundled `ugrep` with `--ignore-files`, so it
+  honours `.gitignore`) and `ls` is the user's own function from `~/.zshrc`
+  (`ls() { eza --icons=auto "${@:-.}" }`); one name, three sources, none of them knowable
+  from inside a prompt. The distinction between the last two is not cosmetic: it says who
+  can change it and where, and it means there is nothing to fix on the machine — the code
+  is what must change, or it "works" here and breaks for everyone who installs the package. `#!/bin/bash` fixes the *shell*, not `PATH`, so `lib/brain.sh`
   receives exactly the same binaries — which is why the boundary drawn for the zsh
   class above does not help here. Use flags that mean the same thing in GNU and BSD,
   or write both forms with a `||` fallback (`date -d "$1" +%s 2>/dev/null || date -j
@@ -189,21 +203,27 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   runs, the output is empty, the check goes green — `date -j` does not exist on that
   machine at all, and two `/brain-lint` steps reported zero findings instead of an
   error, caught only by diffing against a baseline that still carried them. Checked by
-  preflight 20 for `date`, `stat`, `sed -i`, `readlink -f`, `grep -P`.
-- The installed system must be able to state its own version: `install.sh`/`update.sh`
-  write `lib/VERSION`, `brain.sh version` reads it, `/brain-init` stamps the real value
-  instead of a literal, and `/brain-save` re-stamps `brain-version:` on every save. A
-  version that is written once at project creation and then read by nobody is not a
-  record, it is decoration — measured 2026-08-03: 8 projects claimed `1.3`, two `1.5.0`,
-  none the released 1.6.0, and the literal in the template had to be hand-edited at every
-  release, which of course did not happen. Checked by preflight 4d.
-- A count over vault files states which markers it counts, and counts all of them.
-  Projects write closed tasks as both `- [x]` and `- ✅`; a counter that knows one reports
-  zero for a project using the other — `cadrika` had 16 closed items invisible to the
-  threshold, which would not have fired at 100. And a threshold must measure the part that
-  hurts: counting only Done passed `goprofi-voronka` as healthy at 2131 lines with 1091 in
-  `## In progress`. Same distortion already fixed once for `_PROJECT.md`, where total size
-  was replaced by a prose budget. Checked by preflight 17.
+  preflight 20 for `date`, `stat`, `sed -i`, `readlink -f`, `grep -P`, and for `ls`
+  called in a prompt block at all. `ls` was named in that check's own rationale from the
+  start while its pattern list contained only flags — a rule and its check drifting apart
+  inside one function, which is why the list is now written out here.
+- **A step being present is not the same as the step running, and only the second is
+  worth a green.** The pattern the previous two rules describe has a third form that no
+  syntax check sees: a prompt block referencing a variable nothing ever assigns. Measured
+  2026-08-04 — `/brain-save` Step 0c grepped `"$PROJECT_CLAUDE_MD"`, a name occurring
+  exactly once in the whole package, in that very line. `grep` got an empty filename, its
+  error went to `2>/dev/null`, and the half of the step that mattered most for a *new*
+  project never ran once since it was written. Preflight 16 saw none of it, because it
+  asserts the step exists and sits above the templates — presence, not executability, and
+  a green on the first reads as a green on the second. So: a variable used in a prompt
+  code block must be introduced in that same file, either by an assignment in a block or
+  by prose (`→ that is $PROJECT` is a legitimate way — prompt blocks are executed by a
+  session, not only by a shell). Introduced nowhere is not a style, it is a typo. Checked
+  by preflight 24. Corollary for writing checks at all: when a step moves into `lib/`,
+  the checks that were watching it go red — redirect them at the new code and keep the
+  property they asserted, never weaken them to match. One such redirect in this session
+  passed on a first attempt that only grepped for the section pattern's *presence* in the
+  counter body; the negative test caught that the pattern can sit there unused.
 - Do not add personal data to any file in this repo (vault is separate and private)
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version

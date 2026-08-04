@@ -38,6 +38,13 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  local-conventions <vault> <project> [claude-md]
+                               print the frontmatter KEYS this project uses beyond
+                               the template (from its latest session log and decision
+                               note) and any rule its CLAUDE.md states. Keys only —
+                               values are a judgement per entry. Fails when it could
+                               read none of the three, so silence cannot pass for
+                               "this project has no local conventions".
   lint-collect <vault> [--project P]
                                run every mechanical vault check and print each
                                finding as `key<TAB>detail` on stdout. Fails, never
@@ -343,6 +350,101 @@ stamp_field() {
     fi
     mv "$tmp" "$file"
     grep -m1 "^$key:" "$file"
+}
+
+# ── local-conventions ────────────────────────────────────────────────────────
+# Which frontmatter keys THIS project requires beyond the package's template.
+#
+# Why it is code now: it was a fenced block in /brain-save Step 0c and both of its
+# halves were broken in ways nothing could report. The CLAUDE.md half grepped
+# "$PROJECT_CLAUDE_MD" — a variable nothing in this package ever assigns, so grep
+# received an empty filename, its error went to /dev/null, and the half that mattered
+# most for a *new* project never ran at all. The session-log half globbed
+# `<sessions>/`*.md in the session's shell: in zsh an unmatched glob aborts the
+# command before any redirection applies, so on a project with no logs yet — exactly
+# the case the step exists for — it printed a shell error and no result, exit 0.
+#
+# Both are the shape this project keeps meeting: the step is present, a check that it
+# is present goes green, and it runs on nothing. So this one distinguishes "looked and
+# found nothing" from "could not look" in its own output, and fails outright when it
+# could read neither source — silence from a step that never ran is indistinguishable
+# from a project that has no local conventions, and only one of those is safe to act on.
+#
+# It reports KEYS only, never values. The session that surfaced this wrote a log
+# tagged `zone: root` (it crossed both zones) and, minutes later, a decision note
+# tagged `zone: backend` (it was about delivery). A copied value is silently wrong,
+# which is worse than an absent field.
+_fm_keys() {
+    awk '/^---[[:space:]]*$/ { c++; if (c == 2) exit; next }
+         c == 1 && /^[A-Za-z_-]+:/ { k = $0; sub(/:.*/, "", k); print k }' "$1"
+}
+
+local_conventions() {
+    vault="${1:-}"; project="${2:-}"; cmd_md="${3:-./CLAUDE.md}"
+    [ -n "$vault" ] && [ -n "$project" ] || {
+        echo "local-conventions: need <vault> <project> [claude-md]" >&2; return 1; }
+    pdir="$vault/$project"
+    [ -d "$pdir" ] || { echo "local-conventions: no such project: $pdir" >&2; return 1; }
+
+    looked=0
+    for kind in sessions decisions; do
+        case "$kind" in
+            sessions)  dir="$pdir/sessions"; pat='*_session.md';  label='session-log' ;;
+            decisions) dir="$pdir/wiki";     pat='decision-*.md'; label='decision-note' ;;
+        esac
+        # find, never a glob: unmatched, a glob is a fatal error in zsh and a literal
+        # argument in bash, and neither of those is an empty list.
+        latest=""
+        [ -d "$dir" ] && latest=$(find "$dir" -maxdepth 1 -type f -name "$pat" | sort | tail -1)
+        if [ -z "$latest" ]; then
+            printf '%s\tnone yet — nothing of this kind written in this project\n' "$label"
+            continue
+        fi
+        keys=$(_fm_keys "$latest" | sort -u | tr '\n' ' ')
+        keys=${keys% }
+        if [ -z "$keys" ]; then
+            printf '%s\tNOT READ — %s has no frontmatter block\n' "$label" "$(basename "$latest")"
+            continue
+        fi
+        looked=$((looked + 1))
+        printf '%s\t%s (from %s)\n' "$label" "$keys" "$(basename "$latest")"
+    done
+
+    if [ -f "$cmd_md" ]; then
+        looked=$((looked + 1))
+        # Two passes, and the wider one is reported as a count rather than dropped.
+        # A rule that requires a key almost always names it with a colon, so the
+        # narrow pass carries the signal — but "almost always" is not a licence to
+        # cap silently: a rule phrased without a key would vanish, and a step that
+        # quietly sees less than it claims is the defect this whole file exists for.
+        # Never grep for a specific key here: `zone:` was hardcoded in the prompt
+        # version, which put one project's convention inside a package shipped to
+        # everyone, and would still miss any key not named in advance.
+        wide=$(grep -nE '(frontmatter|required|обязательн|must include|требует|должн)' "$cmd_md")
+        hits=$(printf '%s\n' "$wide" | grep -E '[A-Za-z_-]+:' | head -10)
+        n_wide=$(printf '%s\n' "$wide" | grep -c .)
+        n_hits=$(printf '%s\n' "$hits" | grep -c .)
+        if [ -n "$hits" ]; then
+            printf '%s\n' "$hits" | while IFS= read -r line; do
+                printf 'claude-md\t%s\n' "$line"
+            done
+        else
+            printf 'claude-md\tno rule naming a frontmatter key in %s\n' "$cmd_md"
+        fi
+        if [ "$n_wide" -gt "$n_hits" ]; then
+            printf 'claude-md\t+%s more line(s) mention frontmatter but name no key — grep %s if a rule looks missing\n' \
+                   "$((n_wide - n_hits))" "$cmd_md"
+        fi
+    else
+        printf 'claude-md\tNOT READ — no file at %s\n' "$cmd_md"
+    fi
+
+    if [ "$looked" -eq 0 ]; then
+        echo "local-conventions: read nothing at all — no session log, no decision note," >&2
+        echo "  and no $cmd_md. An empty result here would be indistinguishable from" >&2
+        echo "  'this project has no local conventions'. Fix the path and re-run." >&2
+        return 1
+    fi
 }
 
 # ── lint-collect ─────────────────────────────────────────────────────────────
@@ -678,6 +780,7 @@ case "${1:-}" in
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
     lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
+    local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""

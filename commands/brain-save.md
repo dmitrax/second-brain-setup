@@ -137,19 +137,38 @@ package knows nothing about — `goprofi-voronka` requires `zone:` on session lo
 decision notes, because that repo is a monorepo split into zones.
 
 ```bash
-# keys used by the most recent session log of this project
-ls -1 "$VAULT/$PROJECT/sessions/"*.md 2>/dev/null | tail -1 | xargs -r awk '
-  /^---$/ {n++; next} n==1 && /^[a-zA-Z_-]+:/ {print}'
-grep -nE 'frontmatter|zone:|обязательн|required' "$PROJECT_CLAUDE_MD" 2>/dev/null | head
+bash "$BRAIN" local-conventions "$VAULT" "$PROJECT" "$PWD/CLAUDE.md"
 ```
 
-Take the **keys** from what you find; derive each **value** for the entry you are
-writing. Never copy a value across — in the session that surfaced this, the session log
-needed `zone: root` (it crossed both zones) while the decision note written minutes
-later needed `zone: backend` (it was about delivery). Copying the key with its old value
-would have been silently wrong, which is worse than omitting it.
+It reads three sources — this project's latest session log, its latest decision note,
+and its `CLAUDE.md` — and prints `source<TAB>detail`. Read the output literally:
 
-If nothing turns up, the templates below are complete as written.
+- keys listed for `session-log` / `decision-note` beyond `tags date project` (logs) or
+  `status date supersedes` (decision notes) are this project's local convention;
+- a `claude-md` line quoting a rule is the authority — it may require a key no existing
+  entry carries yet;
+- `none yet` means the project genuinely has none of that kind (a first session), while
+  **`NOT READ` means the source could not be opened** — that is not the same fact, and
+  the command exits non-zero when *every* source came back that way rather than letting
+  you read silence as "no local conventions".
+
+Take the **keys**; derive each **value** for the entry you are writing. Never copy a
+value across — in the session that surfaced this, the session log needed `zone: root`
+(it crossed both zones) while the decision note written minutes later needed
+`zone: backend` (it was about delivery). Copying the key with its old value would have
+been silently wrong, which is worse than omitting it.
+
+If the command runs clean and reports no extra keys, the templates below are complete
+as written.
+
+Why this is a call and not a code block here: it was one, and both of its halves were
+broken in ways nothing reported. The `CLAUDE.md` half referenced a variable this package
+never assigns, so it grepped an empty filename and printed nothing, always. The
+session-log half used a glob, and in the session's shell — zsh on macOS — an unmatched glob
+aborts the command before `2>/dev/null` can apply, so on a project with no logs yet the
+whole step produced a shell error and no result, exit 0. Both were invisible to
+`preflight` 16, which checked that this step exists and sits above the templates, not
+that it runs.
 
 ## Step 1: Create session log
 
