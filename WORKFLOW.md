@@ -6,7 +6,7 @@
 ## Быстрый старт (если уже установлено)
 
 ```bash
-cd ~/Projects/[проект] && claude
+cd ~/Workspace/projects/[проект] && claude
 # → Claude сам загрузит контекст из vault
 # → Работай как обычно
 # → В конце: /brain-save → git push
@@ -40,12 +40,16 @@ bash install.sh
 Что создаётся автоматически:
 ```
 ~/.claude/skills/second-brain/SKILL.md   ← пассивный скилл
+~/.claude/skills/second-brain/lib/       ← brain.sh (код, который зовут команды) + VERSION
 ~/.claude/commands/brain-*.md            ← 5 slash-команд
 ~/Workspace/second-brain-vault/
     00-system/  (index, connections)
     00-shared/  (SOUL.md, CRITICAL_FACTS.md — шаблоны)
     .gitignore
 ```
+
+После любой правки пакета — `bash update.sh`, иначе изменения не применятся:
+`~/.claude/` держит **копии**, а не ссылки на репозиторий.
 
 ### Шаг 3. Заполни профиль через guided setup
 
@@ -91,8 +95,8 @@ Vault: ~/Workspace/second-brain-vault/
 ### Шаг 4. Создай первый проект
 
 ```bash
-mkdir -p ~/Projects/dotfiles
-cd ~/Projects/dotfiles
+mkdir -p ~/Workspace/projects/dotfiles
+cd ~/Workspace/projects/dotfiles
 claude
 ```
 
@@ -108,8 +112,8 @@ Claude задаст 6 вопросов → создаст всё автомат�
 ## Часть 2: Добавление нового проекта (каждый раз)
 
 ```bash
-mkdir -p ~/Projects/tg-bot
-cd ~/Projects/tg-bot
+mkdir -p ~/Workspace/projects/tg-bot
+cd ~/Workspace/projects/tg-bot
 claude
 > /brain-init tg-bot
 ```
@@ -124,7 +128,7 @@ claude
 
 Claude создаёт:
 - `~/Workspace/second-brain-vault/tg-bot/` — весь vault проекта
-- `~/Projects/tg-bot/CLAUDE.md` — конфиг (+ в .gitignore если публичное)
+- `~/Workspace/projects/tg-bot/CLAUDE.md` — конфиг (+ в .gitignore если публичное)
 
 ---
 
@@ -136,7 +140,7 @@ Claude создаёт:
 ### Шаг 1. Стандартный init
 
 ```bash
-cd ~/Projects/dotfiles   # существующий проект
+cd ~/Workspace/projects/dotfiles   # существующий проект
 claude
 > /brain-init dotfiles
 ```
@@ -153,15 +157,15 @@ claude
 VAULT=~/Workspace/second-brain-vault/dotfiles/raw
 
 # README и документация
-cp ~/Projects/dotfiles/README.md "$VAULT/"
-cp ~/Projects/dotfiles/docs/* "$VAULT/" 2>/dev/null
+cp ~/Workspace/projects/dotfiles/README.md "$VAULT/"
+cp ~/Workspace/projects/dotfiles/docs/* "$VAULT/" 2>/dev/null
 
 # Конфиги (для dotfiles — это и есть продукт)
 cp ~/.config/hypr/hyprland.conf "$VAULT/hyprland.conf"
 cp ~/.config/waybar/config.jsonc "$VAULT/waybar-config.jsonc"
 
 # Любые заметки или TODO если были
-cp ~/Projects/dotfiles/NOTES.md "$VAULT/" 2>/dev/null
+cp ~/Workspace/projects/dotfiles/NOTES.md "$VAULT/" 2>/dev/null
 ```
 
 **Что класть в raw/:**
@@ -199,7 +203,7 @@ Claude пройдёт по всем файлам и создаст началь�
 После ingest сырых файлов — попроси Claude проанализировать сам проект:
 
 ```
-> Проанализируй проект в ~/Projects/dotfiles/ и дополни wiki:
+> Проанализируй проект в ~/Workspace/projects/dotfiles/ и дополни wiki:
 > 1. Какие архитектурные решения уже приняты (и почему — если понятно из кода)
 > 2. Что точно работает и как
 > 3. Что выглядит как незакрытый долг или временное решение
@@ -270,10 +274,15 @@ nano ~/Workspace/projects/[проект]/CLAUDE.md
 ### Начало сессии
 
 ```bash
-cd ~/Projects/dotfiles
-git pull  # синхронизировать vault с другими устройствами
+cd ~/Workspace/projects/dotfiles
 claude
 ```
+
+Vault подтягивать вручную не нужно: с v1.7.0 протокол старта сессии сам зовёт
+`vault-sync` **до** чтения любого файла. Это не мелочь удобства — на устаревшем чекауте
+`_PROJECT.md` и `taskboard.md` на месте, читаются и выглядят актуальными, поэтому сессия
+без синхронизации молча работает с состоянием «на момент прошлого визита на эту машину»
+и может назвать открытой задачу, которую вчера закрыли с другой машины.
 
 Claude читает автоматически:
 - `CRITICAL_FACTS.md` — кто ты
@@ -325,8 +334,11 @@ Claude прочитает файл, обновит wiki, добавит [[wikili
 **Зафиксировать решение:**
 ```
 > Мы решили использовать pipewire вместо pulseaudio — запиши решение
-→ Claude создаст заметку в wiki/decisions/ с обоснованием
+→ Claude создаст decision-заметку в wiki/ с обоснованием
 ```
+Decision-заметки лежат плоско в `wiki/` (папки `wiki/decisions/` нет с v1.2) и
+называются утверждением: `decision-<что решили>-because-<почему>.md`. Они неизменяемы —
+изменившееся решение оформляется новой заметкой, которая замещает старую.
 
 ---
 
@@ -386,16 +398,26 @@ raw/
 Раз в неделю (например в пятницу):
 
 ```bash
-cd ~/Projects/dotfiles
+cd ~/Workspace/projects/dotfiles
 claude
 > /brain-lint
 ```
 
 Claude проверяет:
 - Orphan-заметки (0 входящих ссылок) — предлагает где добавить [[ссылки]]
+- Голые `[[ссылки]]` на имена, которые перестали быть уникальными в vault
+- Ссылки внутри заметок: обратная на `_PROJECT` есть? соседняя — если родственная есть
 - Противоречия между заметками
 - Устаревшие заметки (status: draft > 14 дней)
+- Размер прозы `_PROJECT.md` и здоровье таскборда
+- Однородность ключей frontmatter внутри проекта
 - Кросс-проектные связи → обновляет `connections.md`
+
+С v1.7.0 отчёт показывает **дельту** к прошлому прогону, а не весь список заново:
+сначала NEW (регрессия этой сессии — с этим и работать), потом GONE (что-то починено,
+подтверди что намеренно), потом счёт известного долга, который не надо разбирать
+каждый раз. База лежит в самом vault (`00-system/lint-baseline.txt`), поэтому линт на
+одной машине информирует следующий линт на другой.
 
 После lint — открой **Obsidian Graph View** (`Ctrl+G`):
 
@@ -445,7 +467,7 @@ bash install.sh
 # install.sh НЕ перезапишет существующие файлы vault
 
 # 3. Клонировать нужные код-проекты
-git clone [URL dotfiles] ~/Projects/dotfiles
+git clone [URL dotfiles] ~/Workspace/projects/dotfiles
 # CLAUDE.md уже там (если приватное репо)
 # или создать через /brain-init если публичное
 ```
@@ -453,14 +475,21 @@ git clone [URL dotfiles] ~/Projects/dotfiles
 ### Ежедневная синхронизация
 
 ```bash
-# Начало сессии
-cd ~/Workspace/second-brain-vault && git pull
-cd ~/Projects/dotfiles && claude
+# Начало сессии — pull делать не нужно, команды синхронизируют vault сами
+cd ~/Workspace/projects/dotfiles && claude
 
 # Конец сессии (после /brain-save)
 cd ~/Workspace/second-brain-vault
-git add . && git commit -m "$(date +%Y-%m-%d)" && git push
+git add -A && git commit -m "$(date +%Y-%m-%d)" && git push
 ```
+
+**Vault клонируется целиком.** Не применяй к нему `git sparse-checkout`, даже если часть
+проектов относится только к одной машине: проверки, которые меряют весь vault (уникальность
+имён заметок, общая база находок линта), на частичном чекауте меряют подмножество и
+рапортуют зелёное — «файла нет» и «файл не выложен» изнутри проверки неразличимы. Экономия
+при этом мнимая: объекты всё равно приезжают с клоном. Если чужие проекты мешают в графе —
+Obsidian → Settings → Files & Links → Excluded files: влияет на поиск и граф, но не ломает
+резолвинг ссылок.
 
 ---
 
@@ -507,7 +536,7 @@ SORT date DESC
 **Естественные команды (без слэша):**
 ```
 "что мы знаем про [тема]"   → Claude ищет в wiki
-"запиши решение: [решение]" → Claude создаёт заметку в decisions/
+"запиши решение: [решение]" → Claude создаёт decision-заметку в wiki/
 "добавь в базу: [текст]"    → Claude создаёт wiki-заметку
 ```
 
@@ -519,7 +548,7 @@ SORT date DESC
 Установка  bash install.sh
            claude → /brain-setup    ← один раз
 
-Пн–Пт      cd ~/Projects/[проект] && claude
+Пн–Пт      cd ~/Workspace/projects/[проект] && claude
            работаешь
            /brain-save
            git push
@@ -551,3 +580,12 @@ SORT date DESC
 
 **Vault разрастается — будет ли Claude читать всё подряд?**
 Нет. Claude читает только то что нужно для конкретной задачи. `index.md` помогает навигировать не открывая лишнего.
+
+**Как понять, какая версия системы стоит на этой машине?**
+```bash
+bash ~/.claude/skills/second-brain/lib/brain.sh version
+```
+Это же значение `/brain-save` штампует в `brain-version:` каждого `_PROJECT.md` — то есть
+поле показывает версию, на которой машина **работает**, а не ту, на которой проект завели.
+Если на двух машинах значения разошлись — где-то забыли `update.sh` после `git pull`.
+Суффикс `-dirty` означает, что `update.sh` гоняли до коммита.

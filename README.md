@@ -84,6 +84,8 @@ mkdir ~/Workspace/projects/dotfiles && cd ~/Workspace/projects/dotfiles && claud
 ~/.claude/                        Claude Code global config
     skills/second-brain/
         SKILL.md                  ← passive skill, auto-loaded
+        lib/brain.sh              ← deterministic code the prompts call
+        lib/VERSION               ← what version is installed
     commands/
         brain-*.md                ← slash commands
 
@@ -126,12 +128,17 @@ For non-Claude agents: rename `CLAUDE.md` → `AGENTS.md`.
 
 ## Versioning
 
-`v1.x` — additive changes only (new commands, new fields).
-`v2.0` — breaking changes, shipped with a migration script.
+Semver since v1.4.0 (`MAJOR.MINOR.PATCH`): `PATCH` — bug fixes with no new behaviour,
+`MINOR` — backward-compatible features and rules (commands, checks, templates), `MAJOR` —
+breaking changes shipped with a migration script. Tags `v1.0`–`v1.3` predate it, under a
+coarser "v1.x = additive only" scheme, and are not retro-fitted.
 
 ```bash
-# Update slash commands after pulling changes
+# Update the installed system after pulling changes
 bash update.sh
+
+# Which version is actually installed
+bash ~/.claude/skills/second-brain/lib/brain.sh version
 ```
 
 **Upgrading from v1.1 → v1.2:**
@@ -160,16 +167,65 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.6.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.7.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.6.0.md](ВТОРОЙ_МОЗГ_v1.6.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.7.0.md](ВТОРОЙ_МОЗГ_v1.7.0.md) — full architecture
 
 
 ## Changelog
+
+### v1.7.0 — 2026-08-04
+
+- **Executable code moved out of the prompts into `lib/brain.sh`.** The measurement behind
+  it: 575 lines of real bash (`install`/`update`/`preflight`) had produced no bug in the
+  project's history, against 288 lines of code blocks inside prompts that held **all four**
+  bugs of v1.4.3/v1.5.0 — code that looks like code but is never run, tested, or even
+  syntax-checked. The guard is now one copy everyone calls, plus `vault-sync`,
+  `stamp-field`, `version`, `archive` and `lint-diff`. `preflight` tests them by **running**
+  them, which is what the extraction was for.
+- **Every command syncs the vault before its first write — and reading syncs too.** Several
+  vault files are append-only registries edited by every session on every machine, so a
+  write on a stale checkout conflicts by construction. Reading needed it more: on a stale
+  checkout `_PROJECT.md` and `taskboard.md` are present, readable and look current, so a
+  session silently works from "as of my last visit to this machine". Unreachable remote
+  warns and proceeds; a conflict stops the write.
+- **The installed system knows its own version.** `install.sh`/`update.sh` write
+  `lib/VERSION`, `brain.sh version` reads it, `/brain-init` stamps the real value instead
+  of a hardcoded literal, and `/brain-save` re-stamps it on every save. Measured before the
+  fix: 8 projects claimed `1.3`, two claimed `1.5.0`, none the version actually released.
+- **Frontmatter templates declare themselves a minimum**, with a step that looks up the
+  project's local keys *before* the first write. A project may require keys this package
+  cannot know; an explicit template at hand beats a rule read two hundred messages ago.
+  The key carries over and is checkable, the value is a judgement made per entry.
+- **`/brain-lint` gained five steps.** Step 0c declares an incomplete checkout and refuses
+  to seal a baseline from one. Step 4b sweeps the whole vault for bare `[[links]]` to
+  non-unique names — a correct link goes bad on its own the moment another project reuses
+  the basename, which is why this runs every time and not just for new projects. Step 4c
+  measures links per note. Step 10b checks frontmatter key uniformity within a project.
+  Step 12 reports the **delta** against the previous run: NEW first, then GONE, then the
+  count of parked debt nobody needs to re-litigate.
+- **The "minimum 2 wikilinks" rule is gone**, replaced by one that a template can satisfy:
+  the `[[../_PROJECT|_PROJECT]]` backlink always, plus a sibling link when a genuinely
+  related note exists. The old floor was unsatisfiable for a note that is first on its
+  topic — it demanded either a permanent violation or an invented link.
+- **Prompt code blocks must be portable**, because the session's shell is zsh on macOS,
+  and a command name does not guarantee the tool it resolves to (`#!/bin/bash` fixes the
+  shell, not `PATH`). Both classes failed silently green before the rule.
+- **The vault is checked out whole on every machine.** `sparse-checkout` leaves tracked
+  paths out of the working tree, and from inside any check "absent" and "not checked out"
+  are the same observation — measured: 93 unresolved links of which 91 were phantoms, and
+  three shared-baseline findings going GONE with nobody having fixed them.
+- **`preflight.sh` grew 23 → 37 checks.** Each encodes a live incident; several are
+  negative-tested by deliberately breaking a copy and requiring the check to go red.
+
+**Upgrading from v1.6.0 → v1.7.0:** run `update.sh` — it now also installs `lib/`. Nothing
+breaks: existing notes and formats are untouched. If your vault uses `sparse-checkout`, the
+lint will say so and decline to seal its baseline rather than reporting a partial vault as
+whole.
 
 ### v1.6.0 — 2026-08-03
 
