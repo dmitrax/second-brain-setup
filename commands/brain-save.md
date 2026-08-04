@@ -412,9 +412,11 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
 - `For future Claude` → drop what has aged into a fact no longer surprising; it stays
   findable by grep in `wiki/`.
 - taskboard Done → `brain.sh archive`, never retype entries by hand.
-- taskboard `In progress` / total → these two are the ones `archive` cannot fix, because
-  the weight is in open work and in `Backlog`. Say so plainly and leave it as a task
-  rather than trimming live content.
+- taskboard `In progress` / total → `brain.sh sweep-closed <taskboard>` (dry-run by
+  default) moves closed top-level items with their bodies into Done; a closed *sub-item*
+  stays, because its text explains the open parent above it. Then `archive` what landed
+  in Done. Whatever remains over budget after that is genuinely open work or `Backlog` —
+  say so plainly and leave it as a task rather than trimming live content.
 
 **Never finish the save silently on exit 2.** The budgets used to be measured only by
 `/brain-lint`, hours or days later, by whoever happened to run it — so an overrun was

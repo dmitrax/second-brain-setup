@@ -38,6 +38,13 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  sweep-closed <taskboard> [--apply]
+                               move closed top-level items, with their bodies, from
+                               the In progress section into Done — the section the
+                               threshold keeps firing on and `archive` never touched.
+                               A closed sub-item never moves alone: its text explains
+                               the open parent above it. Dry-run unless --apply, and
+                               the result must be a permutation of the input.
   prose-budget <_PROJECT.md> [taskboard.md]
                                measure what /brain-lint measures, at the moment of
                                writing instead of a day later: the three prose sections
@@ -355,6 +362,115 @@ stamp_field() {
     fi
     mv "$tmp" "$file"
     grep -m1 "^$key:" "$file"
+}
+
+# ── sweep-closed ─────────────────────────────────────────────────────────────
+# `archive` moves Done into the archive note. That is the wrong end of the file:
+# the threshold that keeps firing is `## In progress`, and the tool never looked
+# there. Same distortion already fixed twice — the Done counter that read the whole
+# file, and the `_PROJECT.md` budget that summed prose with link lists. Measure and
+# move the part that hurts.
+#
+# What hurts, measured 2026-08-04 across seven projects: not sections. Zero `###`
+# sections under In progress are closed outright — the first version of this was
+# going to move whole sections and would have moved nothing anywhere. The weight is
+# in single sections mixing both states: `goprofi-voronka` carries one of 1073 lines
+# holding 42 closed items and 40 open ones, titled ЗАКРЫТО. So the unit is the item:
+# closed top-level items with their bodies move to Done, open ones stay.
+# Effect at the time of writing: 346 -> 218 lines here (under the 300 threshold),
+# 1074 -> 701 in goprofi — not enough there alone, and said rather than rounded up.
+#
+# Why the threshold matters at all: an In progress section a session cannot hold in
+# context gets appended to blind. Measured 2026-07-31 in goprofi — a task was entered
+# twice because the first copy sat below the chunk that had been read.
+#
+# A closed SUB-item never moves on its own. Its text usually explains the open parent
+# it sits under, and that is the same reason `archive` must never touch Backlog.
+#
+# The safety property is stronger than archive's and simpler to state: the result is a
+# permutation of the input. Same number of lines, same multiset of lines, nothing
+# written that was not there — including no generated heading for the moved block.
+sweep_closed() {
+    tb="${1:-}"; apply="${2:-}"
+    [ -f "$tb" ] || { echo "sweep-closed: no taskboard at '${tb:-}'" >&2; return 1; }
+    grep -qE '^## (Done|Завершено)' "$tb" || {
+        echo "sweep-closed: no Done section in $tb — nowhere to move to" >&2; return 1; }
+    grep -qE '^## .*(In progress|В работе)' "$tb" || {
+        echo "sweep-closed: no In progress section in $tb — nothing to sweep" >&2; return 1; }
+
+    work="${TMPDIR:-/tmp}/brain-sweep.$$"
+    mkdir -p "$work" || return 1
+    awk -v w="$work" '
+        BEGIN { part = "pre"; state = "" }
+        function flush() { state = "" }
+        /^## / {
+            flush()
+            if ($0 ~ /In progress|В работе/) { print > (w "/pre"); part = "keep"; next }
+            if (part == "keep") part = "post_head"
+            if (part == "post_head" && $0 ~ /^## (Done|Завершено)/) {
+                print > (w "/post_head"); part = "post_tail"; next
+            }
+        }
+        part != "keep" { print > (w "/" part); next }
+        # inside In progress: classify top-level items only (column 0)
+        /^- \[x\]|^- ✅/ { state = "moved"; n_moved++; print > (w "/moved"); next }
+        /^- \[ \]/       { state = "keep";  n_kept++;  print > (w "/keep");  next }
+        /^### /          { flush(); print > (w "/keep"); next }
+        { print > (w "/" (state == "moved" ? "moved" : "keep")) }
+        END { print n_moved + 0 > (w "/n_moved"); print n_kept + 0 > (w "/n_kept") }
+    ' "$tb" || { rm -rf "$work"; return 1; }
+
+    for f in pre keep moved post_head post_tail; do [ -f "$work/$f" ] || : > "$work/$f"; done
+    n_moved=$(cat "$work/n_moved" 2>/dev/null || echo 0)
+    n_kept=$(cat "$work/n_kept" 2>/dev/null || echo 0)
+    moved_lines=$(grep -c '' "$work/moved" 2>/dev/null || echo 0)
+
+    if [ ! -s "$work/post_head" ]; then
+        echo "sweep-closed: refused — Done heading not found while splitting" >&2
+        rm -rf "$work"; return 1
+    fi
+    echo "sweep-closed: $n_moved закрытых пунктов ($moved_lines строк) -> Done, $n_kept открытых остаются"
+    # Say what this move does NOT solve. `archive` never moves an undated entry — that
+    # is deliberate, it cannot place what it cannot date — and In progress items were
+    # historically written without one. So a sweep can put the taskboard's Done count
+    # over its own threshold with entries no later step can take away, and without this
+    # line the next run would report that as new debt of unknown origin. Measured here
+    # 2026-08-04: of 30 swept items 24 carried no date, Done went 11 -> 41, and
+    # `archive --before` could take only 6.
+    if [ "$n_moved" -gt 0 ]; then
+        # No `|| echo 0` here: grep -c always prints a count and exits 1 when that
+        # count is zero, so the fallback would append a second line and the arithmetic
+        # below would fail on a two-line value. Caught by check 26 on a dateless fixture.
+        n_dated=$(grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
+        n_undated=$((n_moved - ${n_dated:-0}))
+        [ "$n_undated" -gt 0 ] && echo "sweep-closed: из них без даты $n_undated — archive их не увезёт, они останутся в Done"
+    fi
+    if [ "$n_moved" -eq 0 ]; then rm -rf "$work"; return 0; fi
+    if [ "$apply" != "--apply" ]; then
+        echo "sweep-closed: dry-run, ничего не записано (нужен --apply)"
+        rm -rf "$work"; return 0
+    fi
+
+    cat "$work/pre" "$work/keep" "$work/post_head" "$work/moved" "$work/post_tail" > "$work/new" ||
+        { rm -rf "$work"; return 1; }
+
+    # Permutation check, both halves. Line count alone would miss a swap; the sorted
+    # multiset alone would miss a duplicate paired with a loss of the same size.
+    if [ "$(grep -c '' "$work/new")" -ne "$(grep -c '' "$tb")" ]; then
+        echo "sweep-closed: refused — число строк изменилось ($(grep -c '' "$tb") -> $(grep -c '' "$work/new"))" >&2
+        rm -rf "$work"; return 1
+    fi
+    sort "$tb" > "$work/a.sorted"; sort "$work/new" > "$work/b.sorted"
+    if ! cmp -s "$work/a.sorted" "$work/b.sorted"; then
+        echo "sweep-closed: refused — множество строк изменилось, это не перестановка" >&2
+        diff "$work/a.sorted" "$work/b.sorted" | head -6 >&2
+        rm -rf "$work"; return 1
+    fi
+
+    cp "$tb" "$work/tb.bak"
+    mv "$work/new" "$tb" || { rm -rf "$work"; return 1; }
+    echo "sweep-closed: перенесено $n_moved пунктов ($moved_lines строк) в Done"
+    rm -rf "$work"
 }
 
 # ── budgets ──────────────────────────────────────────────────────────────────
@@ -862,6 +978,7 @@ case "${1:-}" in
     lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
+    sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""

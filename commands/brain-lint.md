@@ -94,7 +94,8 @@ What the keys mean and what each is worth:
 |---|---|
 | `prose-budget:<project>` | `_PROJECT.md` prose over ~60 lines. Look for paragraphs restating a wiki note that already exists — collapse to one line + `[[wikilink]]`. Never fold link-list sections into this: they grow legitimately with a project's decision count. |
 | `ffc-budget:<project>` | `## For future Claude` over ~20 lines. Same fix; this section has no template default anywhere, so it drifts furthest unnoticed. |
-| `taskboard-done/-inprogress/-size:<project>` | Archive with `brain.sh archive`, do not retype entries by hand. |
+| `taskboard-done:<project>` | `brain.sh archive` — moves dated Done entries into the archive note. Never retype entries by hand. |
+| `taskboard-inprogress/-size:<project>` | `brain.sh sweep-closed` first: it moves closed top-level items out of In progress into Done, which is where the weight usually is. Then `archive` on what landed there. If it still exceeds, the rest is genuinely open work — say so and leave it as a task rather than trimming live content. |
 | `stale-project:<project>` | Ask: still active, on pause, or close? |
 | `stale-draft:<path>` | `status: draft` over 14 days → promote to stable or delete. |
 | `map-stale:<project>` | Architecture map older than the last session that touched code. |

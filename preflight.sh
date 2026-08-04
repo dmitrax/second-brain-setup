@@ -1289,6 +1289,59 @@ else
     fi
 fi
 
+# ─── 26. Переносчик смотрит туда же, куда смотрит счётчик ───────────────────
+# `archive` двигал только Done, а порог, который срабатывает, — это `In progress`.
+# Тот же перекос уже чинили дважды: у счётчика Done (грепал весь файл) и у бюджета
+# `_PROJECT.md` (складывал прозу со списками ссылок). Правило одно — мерить и двигать
+# ту часть, которая мешает.
+# Первая версия sweep-closed собиралась двигать закрытые ЦЕЛИКОМ секции. Замер по семи
+# проектам 2026-08-04: таких секций ноль, во всех. Вес — в секциях, смешивающих оба
+# состояния (в goprofi одна на 1073 строки: 42 закрытых пункта и 40 открытых). Отсюда
+# единица переноса — пункт, а не секция; проверка ниже фиксирует именно это поведение.
+sc_fx=$(mktemp -d)
+{
+  echo "# t"; echo; echo "## In progress"; echo
+  echo "- [ ] открытый"
+  echo "  - [x] подпункт закрыт, но объясняет родителя"
+  echo "- [x] закрытый верхнего уровня"
+  echo "      тело"
+  echo; echo "## Done"; echo; echo "- [x] 2026-07-01 старое"
+} > "$sc_fx/tb.md"
+cp "$sc_fx/tb.md" "$sc_fx/orig.md"
+missing=""
+BL="$SCRIPT_DIR/lib/brain.sh"
+# dry-run обязан не писать
+bash "$BL" sweep-closed "$sc_fx/tb.md" >/dev/null 2>&1
+cmp -s "$sc_fx/tb.md" "$sc_fx/orig.md" || missing+="dry-run изменил файл"$'\n'
+bash "$BL" sweep-closed "$sc_fx/tb.md" --apply >/dev/null 2>&1 ||
+    missing+="sweep-closed отказал на корректной фикстуре"$'\n'
+prog=$(awk '/^## /{ p = ($0 ~ /In progress/) } p' "$sc_fx/tb.md")
+printf '%s\n' "$prog" | grep -qF 'подпункт закрыт' ||
+    missing+="закрытый ПОДПУНКТ уехал от своего открытого родителя"$'\n'
+printf '%s\n' "$prog" | grep -qF '[x] закрытый верхнего уровня' &&
+    missing+="закрытый пункт верхнего уровня остался в In progress"$'\n'
+sort "$sc_fx/orig.md" > "$sc_fx/a"; sort "$sc_fx/tb.md" > "$sc_fx/b"
+cmp -s "$sc_fx/a" "$sc_fx/b" || missing+="результат не является перестановкой входа"$'\n'
+# Страховка проверяется ЗАПУСКОМ сломанной копии, а не грепом её наличия.
+sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /тело/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
+if cmp -s "$sc_fx/broken.sh" "$BL" || [ ! -s "$sc_fx/broken.sh" ] || ! bash -n "$sc_fx/broken.sh" 2>/dev/null; then
+    missing+="МЕТА: поломка не применилась — тест проверял бы свою опечатку"$'\n'
+else
+    cp "$sc_fx/orig.md" "$sc_fx/tb2.md"
+    bash "$sc_fx/broken.sh" sweep-closed "$sc_fx/tb2.md" --apply >/dev/null 2>&1 &&
+        missing+="потеря строки не остановила запись"$'\n'
+    cmp -s "$sc_fx/tb2.md" "$sc_fx/orig.md" ||
+        missing+="страховка отказала, но файл всё равно изменён"$'\n'
+fi
+rm -rf "$sc_fx"
+grep -qF 'sweep-closed' "$SCRIPT_DIR/commands/brain-lint.md" ||
+    missing+="/brain-lint не называет sweep-closed для находки taskboard-inprogress"$'\n'
+if [ -n "$missing" ]; then
+    fail "sweep-closed двигает не то или двигает без страховки" "$missing"
+else
+    pass "sweep-closed двигает пункты (не секции), бережёт подпункты, отказ не портит файл"
+fi
+
 # ─── 24. Переменная в блоке промпта обязана быть где-то введена ─────────────
 # Найдено 2026-08-04 свипом по всем промптам: /brain-save Step 0c грепал
 # "$PROJECT_CLAUDE_MD" — имя, которое во всём пакете встречается ровно один раз, в
