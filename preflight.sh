@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# preflight.sh — release gate. Запускать ПЕРЕД тем как ставить тег.
+# preflight.sh — the release gate. Run it BEFORE tagging.
 #
-# Проверяет репозиторий на нарушения собственных правил из CLAUDE.md Block 2.
-# Каждое правило здесь появилось после живого инцидента — список не умозрительный.
-# Три из четырёх багов релизов v1.4.3/v1.5.0 ловились однострочным grep, которого
-# не существовало; этот скрипт и есть тот grep.
+# It checks the repository against its own rules from CLAUDE.md Block 2. Every rule
+# here was added after a live incident — none of this list is speculative. Three of the
+# four bugs in the v1.4.3/v1.5.0 releases would have been caught by a one-line grep that
+# did not exist; this script is that grep.
 #
-# Использование:
-#   bash preflight.sh          # все проверки
-#   bash preflight.sh --fast   # без установки в temp $HOME (быстрая проверка при правках)
+# Usage:
+#   bash preflight.sh          # every check
+#   bash preflight.sh --fast   # skip the install into a temp $HOME (quick loop while editing)
 
 set -uo pipefail
 
@@ -25,9 +25,9 @@ NC='\033[0m'
 FAILED=0
 PASSED=0
 
-# Цели проверки. Намеренно НЕ включает preflight.sh: скрипт содержит запрещённые
-# паттерны как строки поиска и заматчил бы сам себя — ровно тот же класс ошибки,
-# что `pgrep -f`, из-за которого guard находил собственный процесс (v1.3 → 2026-07-11).
+# Scan targets. preflight.sh is deliberately NOT among them: it holds the forbidden
+# patterns as search strings and would match itself — the same class of mistake as
+# `pgrep -f`, which made the guard find its own process (v1.3 -> 2026-07-11).
 TARGETS=("$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/brain-*.md)
 
 pass() { PASSED=$((PASSED + 1)); echo -e "  ${GREEN}✓${NC} $1"; }
@@ -38,20 +38,20 @@ fail() {
     return 0
 }
 
-# code_blocks <file> — печатает только содержимое ``` fenced-блоков.
-# Проза не сканируется намеренно: файлы описывают запрещённые вызовы словами
-# ("Do not use obsidian property:set here"), и грубый grep по всему файлу
-# сделал бы документирование запрета его же нарушением.
+# code_blocks <file> — prints the contents of ``` fenced blocks only.
+# Prose is skipped on purpose: the files describe forbidden calls in words ("Do not use
+# obsidian property:set here"), and a blunt grep over the whole file would make
+# documenting a prohibition a violation of it.
 code_blocks() {
     awk '/^[[:space:]]*```/ { inblock = !inblock; next } inblock { print }' "$1"
 }
 
-# unquoted_globs <file> — печатает строки shell-блоков, где `*` не закавычена.
-# Блоки, объявленные markdown/yaml, пропускаются намеренно: это шаблоны заметок, а не
-# команды, и звёздочка в них — разметка.
-# Почему посимвольно, а не грепом: закавыченный glob (`find -name "*.md"`) — это и есть
-# требуемое исправление, а не нарушение; отличить его от голого можно только пройдя
-# строку с учётом состояния кавычек. Греп по `*` краснел бы на собственной починке.
+# unquoted_globs <file> — prints lines of shell blocks where `*` is not quoted.
+# Blocks declared markdown/yaml are skipped on purpose: those are note templates, not
+# commands, and an asterisk there is markup.
+# Why character by character rather than by grep: a quoted glob (`find -name "*.md"`) is
+# the required FIX, not the violation, and telling it from a bare one needs the quote
+# state carried along the line. A grep for `*` would go red on its own remedy.
 unquoted_globs() {
     awk '
         BEGIN { SQ = sprintf("%c", 39) }
@@ -85,18 +85,18 @@ unquoted_globs() {
     ' "$1"
 }
 
-# strip_inline_code <file...> — печатает файлы с вырезанными `inline-code` спанами,
-# в формате grep -n (файл:строка:текст). Нужно там, где паттерн ищется по всему файлу,
-# включая шаблоны: проза документирует запреты, цитируя их в backticks
-# ("never `status: superseded-by: x`"), и без этого документация запрета сама
-# считалась бы его нарушением. Fenced-блоки backticks внутри не содержат, поэтому
-# реальные шаблоны остаются видимыми.
+# strip_inline_code <file...> — prints the files with `inline-code` spans removed, in
+# grep -n form (file:line:text). Needed wherever a pattern is searched across a whole
+# file, templates included: the prose documents prohibitions by quoting them in backticks
+# ("never `status: superseded-by: x`"), and without this the documentation of a rule
+# would count as breaking it. Fenced blocks contain no backticks, so the real templates
+# stay visible.
 strip_inline_code() {
     for f in "$@"; do
         [ -f "$f" ] || continue
         awk -v F="$f" '
-            # Fenced-блоки оставляем как есть: реальные шаблоны живут именно в них,
-            # а состояние inline-спана внутри блока не отслеживаем.
+            # Fenced blocks are left as they are: the real templates live there, and the
+            # inline-span state is not tracked inside a block.
             /^[[:space:]]*```/ { infence = !infence; print F ":" NR ":"; next }
             infence            { print F ":" NR ":" $0; next }
             {
@@ -109,128 +109,132 @@ strip_inline_code() {
                 }
                 print F ":" NR ":" out
             }
-            # incode намеренно НЕ сбрасывается на границе строки: markdown допускает
-            # перенос inline-спана, и именно такие спаны давали ложные срабатывания.
+            # incode is deliberately NOT reset at a line boundary: markdown allows an
+            # inline span to wrap, and those spans were the source of false positives.
         ' "$f"
     done
 }
 
-echo -e "${BLUE}━━━ preflight: проверка перед релизом ━━━${NC}"
+echo -e "${BLUE}━━━ preflight: pre-release check ━━━${NC}"
 echo ""
-echo -e "${BLUE}[1/3] Собственные запреты (CLAUDE.md Block 2)${NC}"
+echo -e "${BLUE}[1/3] Our own prohibitions (CLAUDE.md Block 2)${NC}"
 
-# ─── 1. Адресация файлов в obsidian CLI ──────────────────────────────────────
-# Инцидент 2026-07-22: /brain-save проставил updated: в _PROJECT.md чужого проекта.
-# `file=` резолвится по имени как голый wikilink, берёт первое совпадение, exit 0.
+# ─── 1. How the obsidian CLI addresses files ─────────────────────────────────
+# Incident 2026-07-22: /brain-save stamped updated: into another project's _PROJECT.md.
+# `file=` resolves by name like a bare wikilink, takes the first match, exits 0.
 hits=""
 for f in "${TARGETS[@]}"; do
     h=$(code_blocks "$f" | grep -n "obsidian .*[^a-z_]file=" || true)
     [ -n "$h" ] && hits+="$(basename "$f"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
-    fail "obsidian CLI адресуется через file= (должно быть path=)" "$hits"
+    fail "obsidian CLI addressed by file= (must be path=)" "$hits"
 else
-    pass "obsidian CLI: адресация только через path="
+    pass "obsidian CLI: addressed by path= only"
 fi
 
 # ─── 2. property:set ─────────────────────────────────────────────────────────
-# Замерено 2026-07-22: пересобирает весь frontmatter — снимает кавычки, разворачивает
-# инлайн-списки, 007 → 7. Потеря данных без предупреждения, exit 0.
+# Measured 2026-07-22: it re-serialises the whole frontmatter — strips quotes, expands
+# inline lists, turns 007 into 7. Data loss without a warning, exit 0.
 hits=""
 for f in "${TARGETS[@]}"; do
     h=$(code_blocks "$f" | grep -n "obsidian property:set" || true)
     [ -n "$h" ] && hits+="$(basename "$f"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
-    fail "вызов obsidian property:set в исполняемом блоке (запрещён — пересобирает frontmatter)" "$hits"
+    fail "obsidian property:set called in an executable block (forbidden — it rewrites the frontmatter)" "$hits"
 else
-    pass "property:set не вызывается ни в одном code-блоке"
+    pass "property:set is not called in any code block"
 fi
 
 # ─── 3. pgrep -f ─────────────────────────────────────────────────────────────
-# Инцидент 2026-07-11: guard самозамыкался на собственном shell-процессе.
+# Incident 2026-07-11: the guard matched its own shell process.
 hits=""
 for f in "${TARGETS[@]}"; do
     h=$(code_blocks "$f" | grep -n "pgrep -f" || true)
     [ -n "$h" ] && hits+="$(basename "$f"): $h"$'\n'
 done
 if [ -n "$hits" ]; then
-    fail "pgrep -f для проверки запущенного GUI (самозамыкается на своём же процессе)" "$hits"
+    fail "pgrep -f used to detect a running GUI (it matches its own process)" "$hits"
 else
-    pass "pgrep -f не используется"
+    pass "pgrep -f is not used"
 fi
 
-# ─── 4. Guard вызывается из lib/, а не переписывается инлайн ─────────────────
-# До v1.7.0 guard существовал как fenced-блок в brain-lint.md, а SKILL.md и brain-init.md
-# ссылались на него как на библиотечную функцию, которой в их контексте нет — то есть
-# /brain-init предписывал мутирующий `obsidian move` под защитой, которой у него не было.
-# Теперь это одна копия кода. Инлайн-определение снова разойдётся с оригиналом, поэтому
-# запрещено; форма guard'а здесь больше не грепается — она проверяется ЗАПУСКОМ ниже.
+# ─── 4. The guard is called from lib/, never rewritten inline ────────────────
+# Before v1.7.0 the guard existed as a fenced block in brain-lint.md while SKILL.md and
+# brain-init.md referred to it as a library function that does not exist in their
+# context — so /brain-init prescribed a mutating `obsidian move` under a protection it
+# did not have. There is one copy of the code now. An inline definition would drift from
+# the original again, so it is forbidden; the guard's SHAPE is no longer grepped here —
+# it is verified by RUNNING it below.
 for f in "${TARGETS[@]}"; do
     name=$(basename "$f")
     if grep -qE "_obsidian_available\(\)[[:space:]]*\{" "$f"; then
-        fail "$name: определяет _obsidian_available() инлайн" \
-             "с v1.7.0 guard живёт в lib/brain.sh; инлайн-копия разойдётся с оригиналом"
+        fail "$name: defines _obsidian_available() inline" \
+             "since v1.7.0 the guard lives in lib/brain.sh; an inline copy will drift"
         continue
     fi
-    # Реальные вызовы считаем только в code-блоках: отличить прозаическое ПРЕДПИСАНИЕ
-    # вызова от прозаического ЗАПРЕТА ("Do not use obsidian property:set") грепом нельзя.
+    # Real calls are counted inside code blocks only: a grep cannot tell prose that
+    # PRESCRIBES a call from prose that FORBIDS one ("Do not use obsidian property:set").
     calls=$(code_blocks "$f" | grep -cE "^[[:space:]]*(if |\[|.*\$\()?[[:space:]]*obsidian " || true)
     mentions=$(grep -c "obsidian-available" "$f" || true)
     [ "$calls" -eq 0 ] && [ "$mentions" -eq 0 ] && continue
 
     if [ "$mentions" -eq 0 ]; then
-        fail "$name вызывает obsidian в code-блоке, не вызвав guard из lib/brain.sh"
+        fail "$name calls obsidian in a code block without calling the guard from lib/brain.sh"
     else
-        pass "$name: guard вызывается из lib/brain.sh"
+        pass "$name: the guard is called from lib/brain.sh"
     fi
 done
 
-# ─── 4b. Guard РАБОТАЕТ — проверка запуском, а не грепом ─────────────────────
-# Ради этого guard и выносился в код: раньше проверить можно было только форму текста.
-# Три состояния, все обязаны отработать без запуска GUI и без зависания.
+# ─── 4b. The guard WORKS — verified by running it, not by grep ───────────────
+# This is why the guard was moved into code at all: before, only the shape of the text
+# could be checked. Three states, all of which must complete without starting the GUI
+# and without hanging.
 LIBSH="$SCRIPT_DIR/lib/brain.sh"
 if [ ! -f "$LIBSH" ]; then
-    fail "lib/brain.sh отсутствует — промпты ссылаются на несуществующий файл"
+    fail "lib/brain.sh is missing — the prompts refer to a file that does not exist"
 else
     problems=""
-    bash -n "$LIBSH" 2>/dev/null || problems+="синтаксическая ошибка в lib/brain.sh"$'\n'
-    # Любой вызов CLI обязан быть под timeout: запуском это не поймать (стенд отвечает
-    # мгновенно), а зависший `obsidian` вешает сессию целиком — та же причина, по
-    # которой guard вообще существует.
-    # Считаем только настоящие вызовы бинаря, не слово «obsidian» в тексте: строки с
-    # `obsidian vault …` вне комментария обязаны нести timeout. Первая редакция этой
-    # проверки грепала любое вхождение слова и краснела на собственном usage-тексте.
-    # Вывод в переменную, не конвейером в `grep -q`: под `pipefail` (строка 13)
-    # `grep -q*` выходит по первому подходящему, продюсер получает SIGPIPE, и статусом
-    # конвейера становится 141 — успешное совпадение читается как провал. Найдено
-    # 2026-08-04 свипом под новое правило; здесь это пока не стреляло только потому,
-    # что вызовов obsidian мало и продюсер успевает закончиться.
+    bash -n "$LIBSH" 2>/dev/null || problems+="syntax error in lib/brain.sh"$'\n'
+    # Every CLI call must be under timeout: running it cannot catch this (the test rig
+    # answers instantly), and a hung `obsidian` hangs the whole session — the same reason
+    # the guard exists at all.
+    # Only real invocations of the binary are counted, not the word "obsidian" in text:
+    # lines carrying `obsidian vault ...` outside a comment must have a timeout. The first
+    # version of this check grepped any occurrence of the word and went red on its own
+    # usage text.
+    # Output into a variable, not piped into `grep -q`: under `pipefail` (line 13) a
+    # `grep -q*` exits on the first qualifying line, the producer takes SIGPIPE, and the
+    # pipeline status becomes 141 — a successful match reads as a failure. Found
+    # 2026-08-04 by the sweep this rule demanded; here it had not fired yet only because
+    # there are few obsidian calls and the producer finishes first.
     ob_calls=$(grep -nE '(^|[^-a-z])obsidian +vault' "$LIBSH" | grep -v '^[0-9]*:[[:space:]]*#')
     if printf '%s\n' "$ob_calls" | grep -qv 'timeout [0-9]'; then
-        problems+="вызов obsidian без timeout в lib/brain.sh"$'\n'
+        problems+="an obsidian call without timeout in lib/brain.sh"$'\n'
     fi
-    # (1) Пустой аргумент — обязан отказать, а не сравнивать пустое с пустым.
+    # (1) An empty argument must be refused, not compared empty against empty.
     bash "$LIBSH" obsidian-available "" >/dev/null 2>&1 &&
-        problems+="guard принял пустой vault"$'\n'
-    # (2) Заведомо чужой vault: даже с открытым GUI имя не совпадёт. Именно этот случай
-    #     v1.5.0 и добавлял — exit code подтверждает лишь «открыт какой-то vault».
+        problems+="the guard accepted an empty vault"$'\n'
+    # (2) A deliberately foreign vault: even with the GUI open the name will not match.
+    #     This is the case v1.5.0 added — an exit code only confirms "some vault is open".
     bash "$LIBSH" obsidian-available "/nonexistent/other-vault" >/dev/null 2>&1 &&
-        problems+="guard подтвердил чужой vault"$'\n'
-    # (3) HOME без SingletonLock — GUI считается закрытым, CLI трогать нельзя.
+        problems+="the guard confirmed a foreign vault"$'\n'
+    # (3) A HOME without SingletonLock — the GUI counts as closed, the CLI must not be touched.
     FAKEHOME=$(mktemp -d)
     HOME="$FAKEHOME" bash "$LIBSH" obsidian-available "$HOME/Workspace/second-brain-vault" \
-        >/dev/null 2>&1 && problems+="guard сработал без SingletonLock"$'\n'
+        >/dev/null 2>&1 && problems+="the guard fired without a SingletonLock"$'\n'
     rm -rf "$FAKEHOME"
-    # (4) Неизвестная подкоманда обязана падать, а не молча ничего не делать.
+    # (4) An unknown subcommand must fail, not silently do nothing.
     bash "$LIBSH" definitely-not-a-command >/dev/null 2>&1 &&
-        problems+="lib/brain.sh принял неизвестную подкоманду"$'\n'
-    # (5) ПОЗИТИВНЫЙ случай, полностью герметичный: поддельный HOME с SingletonLock,
-    #     указывающим на НЕсуществующий target (именно так и делает Electron), плюс
-    #     поддельный `obsidian` в PATH. Guard обязан сказать «доступен».
-    #     Без этого случая проверка состоит из одних отказов и не отличит рабочий guard
-    #     от сломанного в другую сторону — подмена `-L` на `-e` прошла бы незамеченной,
-    #     хотя `-e` резолвит target и потому всегда ложен. Проверено негативным тестом.
+        problems+="lib/brain.sh accepted an unknown subcommand"$'\n'
+    # (5) The POSITIVE case, fully hermetic: a fake HOME with a SingletonLock pointing at
+    #     a NON-existent target (exactly what Electron does), plus a fake `obsidian` on
+    #     PATH. The guard must answer "available".
+    #     Without this case the check is made of refusals only and cannot tell a working
+    #     guard from one broken the other way — swapping `-L` for `-e` would pass
+    #     unnoticed, although `-e` resolves the target and is therefore always false.
+    #     Confirmed by a negative test.
     POSHOME=$(mktemp -d)
     mkdir -p "$POSHOME/.config/obsidian" "$POSHOME/bin" "$POSHOME/vaultdir/my-vault"
     ln -s "definitely-missing-$$" "$POSHOME/.config/obsidian/SingletonLock"
@@ -238,13 +242,13 @@ else
     chmod +x "$POSHOME/bin/obsidian"
     if ! HOME="$POSHOME" PATH="$POSHOME/bin:$PATH" \
          bash "$LIBSH" obsidian-available "$POSHOME/vaultdir/my-vault" >/dev/null 2>&1; then
-        problems+="guard не подтвердил доступность в заведомо рабочем состоянии (проверь -L против -e)"$'\n'
+        problems+="the guard denied availability in a known-good state (check -L against -e)"$'\n'
     fi
     rm -rf "$POSHOME"
     if [ -n "$problems" ]; then
-        fail "lib/brain.sh: guard ведёт себя неверно (проверено запуском)" "$problems"
+        fail "lib/brain.sh: the guard misbehaves (verified by running it)" "$problems"
     else
-        pass "lib/brain.sh: guard запущен — 3 отказа + рабочее состояние + timeout"
+        pass "lib/brain.sh: guard exercised — 3 refusals + a working state + timeout"
     fi
 fi
 
@@ -1349,9 +1353,19 @@ LANG_SINCE="2026-07-23"
 # the OLD file too, and that name is by definition no longer tracked. A token ending in
 # .md is a filename, not prose — ВТОРОЙ_МОЗГ_*.md is a legitimately Russian-named
 # user-facing document and a message must be able to name it.
-bad_msgs=$(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%h %s%n%b' 2>/dev/null |
-           sed -E 's@[^[:space:]]+\.md@@g' |
-           grep -E '[А-Яа-яЁё]' || true)
+# Per commit, not per line. Quoted spans are stripped for the same reason as in
+# comments — a commit explaining what was translated must be able to quote the Russian
+# it replaced — but a quote may WRAP, and a line-based sed then sees only half of it and
+# reports the commit as prose. Flatten the message first, strip, then test; report the
+# commit rather than the line, which is the more useful unit anyway.
+bad_msgs=""
+for c in $(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%H' 2>/dev/null); do
+    body=$(cd "$SCRIPT_DIR" && git log -1 --format='%s %b' "$c" | tr '\n' ' ' |
+           sed -E 's@[^[:space:]]+\.md@@g; s@"[^"]*"@@g; s@`[^`]*`@@g')
+    case "$body" in
+        *[А-Яа-яЁё]*) bad_msgs="$bad_msgs$(cd "$SCRIPT_DIR" && git log -1 --format='%h %s' "$c")"$'\n' ;;
+    esac
+done
 [ -n "$bad_msgs" ] && missing+="  сообщения коммитов с кириллицей:"$'\n'"$(printf '%s\n' "$bad_msgs" | sed 's/^/    /')"$'\n'
 # Правило существует в трёх местах и обязано называть обе вещи во всех трёх.
 for f in "$SCRIPT_DIR/CLAUDE.md" "$SCRIPT_DIR/chat-skills/brain-onboarding/SKILL.md"; do
