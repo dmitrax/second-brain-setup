@@ -312,6 +312,20 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+- **Section names are matched in BOTH languages at once, never switched between them.**
+  `(Done|Завершено)`, `(In progress|В работе)`, `(Current state|Статус)` — the code
+  reads a vault, and a real vault is mixed: measured 2026-08-04, `second-brain-setup`
+  uses `## Current state` while `_mac/mac-setup` and two `_arch` projects still use
+  `## Статус`, and one run has to see all of them. A language *setting* would be a
+  regression here, not a feature: it would make the tool blind to half of an existing
+  vault, and blind silently — "no findings" and "cannot see the section" are identical
+  from outside. New languages are added as further alternatives, never as a replacement.
+  The threat this guards against is us: a translation pass walks the file replacing
+  Russian, and these patterns are Russian. Checked by preflight 33, which asserts
+  *pairing* rather than a count — any code line matching a section name in a regex must
+  carry both halves — so it survives call sites being added or removed. Its companion
+  assertion looks at code only, because the file header quotes these very patterns to
+  explain why they stay, and a comment must never be able to satisfy a check about code.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

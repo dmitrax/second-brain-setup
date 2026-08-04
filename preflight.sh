@@ -1298,6 +1298,57 @@ else
     fi
 fi
 
+# ─── 33. Имена секций матчатся на ОБОИХ языках ──────────────────────────────
+# The tool does not switch languages, it matches both name sets at once:
+# (Done|Завершено), (In progress|В работе), (Current state|Статус). That is strictly
+# stronger than a language setting would be, because a real vault is MIXED — measured
+# 2026-08-04: second-brain-setup uses `## Current state` while _mac/mac-setup and two
+# _arch projects use `## Статус`, and both must be seen by the same run.
+# The danger this check exists for is us: the translation pass of 2026-08-04 walked the
+# whole file replacing Russian, and these patterns are Russian. Delete one alternative
+# and every check goes blind on Russian-language projects — silently, with a green
+# result, because "no findings" and "cannot see the section" look identical from outside.
+# The invariant is pairing, not a count: any line of CODE that matches a section name in
+# a regex must carry both languages. That survives adding or removing call sites, which
+# a pinned number would not.
+missing=""
+LB="$SCRIPT_DIR/lib/brain.sh"
+if [ ! -f "$LB" ]; then
+    fail "проверка 33: нет lib/brain.sh — вход пуст, а не чист"
+else
+    checked=0
+    while IFS='|' read -r en ru; do
+        # Code lines only (a comment may legitimately quote one side), and only lines
+        # where the term is used AS A PATTERN — a report label like "taskboard Done
+        # (entries)" is text, not a matcher.
+        orphans=$(grep -nE "$en" "$LB" |
+                  grep -vE '^[0-9]+:[[:space:]]*#' |
+                  grep -E '~ /|grep -qE|_lc_section' |
+                  grep -vF "$ru")
+        checked=$((checked + 1))
+        [ -n "$orphans" ] && missing+="  '$en' матчится без '$ru':"$'\n'"$(printf '%s\n' "$orphans" | cut -c1-90 | sed 's/^/    /')"$'\n'
+    done <<'PAIRS'
+Done|Завершено
+In progress|В работе
+Current state|Статус
+PAIRS
+    # And the reverse: the Russian side must actually be present somewhere, or the pairs
+    # above are vacuously satisfied by a file that lost both halves at once.
+    # Code lines only: the file header QUOTES these patterns to explain why they stay,
+    # and a comment must not be able to satisfy a check about the code. Found by the
+    # negative test, which removed ЗАКРЫТО from the matcher and stayed green.
+    lb_code=$(grep -vE '^[[:space:]]*#' "$LB")
+    for ru in Завершено 'В работе' Статус 'Последняя сессия' ЗАКРЫТО; do
+        printf '%s\n' "$lb_code" | grep -qF "$ru" ||
+            missing+="  паттерн '$ru' исчез из кода lib/brain.sh"$'\n'
+    done
+    if [ -n "$missing" ]; then
+        fail "имена секций матчатся не на обоих языках — русский ваулт станет невидим" "$missing"
+    else
+        pass "имена секций матчатся на обоих языках ($checked пар + 5 паттернов на месте)"
+    fi
+fi
+
 # ─── 32. Публичное — по-английски: коммиты и комментарии в коде ─────────────
 # Репо публичный. Сообщение коммита и комментарий в коде читает посторонний и
 # следующий сопровождающий — раньше всего остального. Правило про язык существовало,
@@ -1411,7 +1462,10 @@ for f in "$SCRIPT_DIR/preflight.sh" "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR/install.
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
     # Продюсер printf/echo/cat/sed завершается сам и SIGPIPE не получает — они не в счёт.
-    h=$(grep -nE '\| *grep -q' "$f" | grep -vE '^\s*[0-9]+:\s*#' |
+    # Quoted spans are stripped first: a check may legitimately SEARCH for the string
+    # "grep -q", and a pattern is data, not a pipeline. Caught by check 33's own line.
+    h=$(sed -E "s@'[^']*'@@g; s@\"[^\"]*\"@@g" "$f" | grep -nE '\| *grep -q' |
+        grep -vE '^\s*[0-9]+:\s*#' |
         grep -vE "(printf|echo|cat|sed|comm|sort|cut|head -[0-9]+) [^|]*\| *grep -q")
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
 done
