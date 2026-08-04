@@ -215,3 +215,8 @@ Recommendations:
 
 Run /brain-save to persist any wiki changes made during lint.
 ```
+The labels above are written in English here because this file is; **print them in the
+vault's working language** (`brain.sh vault-language`), and leave every identifier —
+finding keys, paths, section and command names — exactly as it is. See `SKILL.md`,
+"Language of everything you say to the user".
+

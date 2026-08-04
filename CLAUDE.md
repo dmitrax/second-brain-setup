@@ -326,6 +326,19 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   carry both halves — so it survives call sites being added or removed. Its companion
   assertion looks at code only, because the file header quotes these very patterns to
   explain why they stay, and a comment must never be able to satisfy a check about code.
+- **Two languages, two audiences, and the boundary between them is the identifier.**
+  What the repo PUBLISHES is English (rule above). What a command SAYS TO ITS USER is the
+  working language recorded once in the vault's `00-shared/CRITICAL_FACTS.md` and read by
+  `brain.sh vault-language` — the Result block, the explanation of a finding,
+  recommendations, questions. Until 2026-08-04 nothing stated this at all: the Result
+  blocks were hardcoded English while the surrounding prose followed whatever the session
+  happened to be speaking, so the answer was "by accident" and came out half and half.
+  **Identifiers are never translated**, and that exception carries the weight: a finding
+  key is what `lint-diff` compares, so a translated key reads as one finding appearing and
+  another vanishing in the same run — a fabricated delta on both sides at once. The same
+  holds for file and section names (searched literally), commands, flags and paths.
+  Checked by preflight 34, which requires both halves in `SKILL.md` and in every command
+  that prints a Result block.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

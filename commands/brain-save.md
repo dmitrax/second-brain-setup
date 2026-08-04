@@ -512,6 +512,11 @@ Taskboard:  updated
 
 Don't forget: git add -A && git commit -m "[DATE]" && git push
 ```
+The labels above are written in English here because this file is; **print them in the
+vault's working language** (`brain.sh vault-language`), and leave every identifier —
+finding keys, paths, section and command names — exactly as it is. See `SKILL.md`,
+"Language of everything you say to the user".
+
 
 The push should fast-forward, because Step 0 pulled before the session was written.
 If it is still rejected, another machine pushed *during* this session — run

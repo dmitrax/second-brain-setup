@@ -1308,6 +1308,40 @@ else
     fi
 fi
 
+# ─── 34. Reports are in the owner's language, identifiers are not ────────────
+# Until 2026-08-04 nothing said what language a command should ADDRESS THE USER in. The
+# Result blocks were hardcoded English while the surrounding prose followed whatever the
+# session happened to be speaking — so the answer was "by accident", and for a
+# Russian-speaking owner it came out half and half.
+# The setting already existed and was read by nobody for this purpose: the working
+# language in 00-shared/CRITICAL_FACTS.md, via `brain.sh vault-language`.
+# The half that is easy to get wrong is the exception. Identifiers must NOT be translated:
+# a finding key is what `lint-diff` compares, so a translated key reads as one finding
+# appearing and another vanishing in the same run — a fabricated delta on both sides.
+# Every command that prints a Result block must therefore say both halves.
+missing=""
+scanned=0
+grep -qF 'Language of everything you say to the user' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="  SKILL.md: нет общего правила о языке обращения"$'\n'
+grep -qF 'Identifiers are never translated' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="  SKILL.md: не сказано, что идентификаторы не переводятся"$'\n'
+for f in "$SCRIPT_DIR"/commands/*.md; do
+    [ -f "$f" ] || continue
+    grep -qE '^## Result' "$f" || continue      # у команды нет итогового блока — нечего проверять
+    scanned=$((scanned + 1))
+    grep -qF 'vault-language' "$f" ||
+        missing+="  $(basename "$f"): Result-блок есть, а язык вывода не определён"$'\n'
+    grep -qiE 'leave every identifier|identifiers?[^.]*exactly as' "$f" ||
+        missing+="  $(basename "$f"): не сказано, что идентификаторы остаются как есть"$'\n'
+done
+if [ "$scanned" -eq 0 ]; then
+    fail "проверка 34 не нашла ни одного Result-блока — вход пуст, а не чист"
+elif [ -n "$missing" ]; then
+    fail "язык итогового отчёта не определён (или переводятся идентификаторы)" "$missing"
+else
+    pass "отчёты печатаются на языке владельца ваулта, идентификаторы не переводятся ($scanned команд)"
+fi
+
 # ─── 33. Section names are matched in BOTH languages ─────────────────────────
 # The tool does not switch languages, it matches both name sets at once:
 # (Done|Завершено), (In progress|В работе), (Current state|Статус). That is strictly

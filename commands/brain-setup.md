@@ -79,3 +79,8 @@ If "fix" → ask which file and what to change, then redo.
 
 Next: create your first project with /brain-init [project-name]
 ```
+The labels above are written in English here because this file is; **print them in the
+vault's working language** (`brain.sh vault-language`), and leave every identifier —
+finding keys, paths, section and command names — exactly as it is. See `SKILL.md`,
+"Language of everything you say to the user".
+

@@ -258,7 +258,26 @@ When user says any of the following → suggest updating CLAUDE.md Block 2:
 - something broke that should not repeat
 
 Response pattern: "This belongs in CLAUDE.md as a standing rule. Update it?" — phrased
-in the vault's working language (see `brain.sh vault-language`).
+in the vault's working language (see below).
+
+**Language of everything you say to the user.**
+The vault has an owner and the owner has a working language, recorded once in
+`00-shared/CRITICAL_FACTS.md` and read by `bash "$HOME/.claude/skills/second-brain/lib/brain.sh" vault-language "$VAULT"`.
+Everything addressed to that person is in that language: the Result block of every
+command, the explanation of a finding, recommendations, questions, warnings.
+
+**Identifiers are never translated**, and the boundary matters more than it looks:
+
+- finding keys (`prose-budget:goprofi-voronka`), because `lint-diff` compares them and a
+  translated key reads as a finding that appeared and one that vanished, in the same run;
+- file and section names (`_PROJECT.md`, `## Current state`), because they are searched
+  for literally;
+- command names, flags, exit codes, paths.
+
+So a report reads as prose in the owner's language with untranslated identifiers inside
+it — the same split as everywhere else in this package: the key is data, the sentence
+around it is language. The package's own files stay English regardless (see the language
+rule in `CLAUDE.md`): that is what the repo publishes, this is what one person reads.
 
 **What belongs where — one fact, one home.**
 Three memories are read at different moments, so a fact copied across them does not
