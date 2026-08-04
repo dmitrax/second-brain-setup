@@ -1331,6 +1331,7 @@ else
 Done|Завершено
 In progress|В работе
 Current state|Статус
+Last session|Последняя сессия
 PAIRS
     # And the reverse: the Russian side must actually be present somewhere, or the pairs
     # above are vacuously satisfied by a file that lost both halves at once.

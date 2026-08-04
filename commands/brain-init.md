@@ -61,7 +61,9 @@ filename `decision-<slug>-because-<reason>.md`.
 ## Step 3: Create _PROJECT.md
 
 Use the user's answers. Fill in all blocks.
-Note: `## For future Claude` section in English; content blocks in Russian.
+Note: `## For future Claude` is always English — it is read by Claude, not by a human.
+The other blocks follow the vault's working language; see "Which language the headings
+are written in" below before writing anything.
 
 `[BRAIN_VERSION]` is the **actual installed version**, never a literal typed here:
 
@@ -75,6 +77,39 @@ v1.6.0 would have been stamped with a version it never ran. Measured 2026-08-03:
 projects claim `1.3`, two claim `1.5.0`, none claim 1.6.0, and no command reads or
 updates the field. It is stamped by `/brain-save` from now on, which is what makes it
 mean something.
+
+### Which language the headings are written in
+
+Run this **before** writing the template:
+
+```bash
+bash "$HOME/.claude/skills/second-brain/lib/brain.sh" vault-language "$VAULT"
+```
+
+Exit **0** prints the vault owner's answer · **2** the key is there but unanswered ·
+**1** there is no profile file at all. On 1 or 2, say so in one line and use English.
+The value is raw and may name two languages for two purposes ("Russian in chat, English
+in code and commits") — that is a judgement to read, not a token to switch on.
+
+Then, and this is the part that is not free choice:
+
+- **Sections the tooling matches have a fixed vocabulary, two spellings each** —
+  `Current state` / `Статус`, `Последняя сессия`, `For future Claude`. Pick the spelling
+  that fits the vault's language and **never invent a third**: `## Текущее состояние`
+  would be invisible to `prose-budget` and to `/brain-lint`, and invisible silently,
+  because a section that is not found and a section that is empty look the same from
+  outside. See CLAUDE.md Block 2 on matching both languages at once.
+- **Every other heading is free prose** (`Что это` / `What this is`, `Цель` / `Goal`,
+  the stack and working-style sections) and follows the vault's language with no
+  constraint at all.
+- **Never rename a heading in an existing file** to match the current answer. Renaming
+  breaks nothing mechanically — both spellings are matched — but it rewrites history for
+  no gain, and `/brain-save` already forbids it.
+
+The template below is written with the English spellings. Measured 2026-08-04: the
+shipped template mixed them — `## Что это` sat next to `## Current state` in the same
+block — which is how the vault ended up with `## Статус` in three projects and
+`## Current state` in others.
 
 ```markdown
 ---
@@ -92,26 +127,27 @@ Full context here: what we are building, current status, how to work.
 
 # _PROJECT.md — [NAME]
 
-## Что это
-[ANSWER TO QUESTION 1]
+## What this is
+[ANSWER TO QUESTION 1 — in the vault's working language]
 
-## Цель
-[ANSWER TO QUESTION 2]
+## Goal
+[ANSWER TO QUESTION 2 — in the vault's working language]
 
 ## Current state
 [ANSWER TO QUESTION 3]
 
-## Стек / инструменты
+## Stack / tools
 [ANSWER TO QUESTION 5]
 
-## Стиль работы
+## Working style
 [ANSWER TO QUESTION 6 — preferences, not rules; rules go in CLAUDE.md]
 
-## Ключевые решения
+## Key decisions
 [Significant decisions live as immutable decision-*.md notes in wiki/.
 List active ones here as [[wikilinks]]. If none yet — write "No major decisions made yet."]
 
 ## Последняя сессия
+(matched section — keep this spelling or `Last session`, never a third one)
 [TODAY] — project initialized
 ```
 

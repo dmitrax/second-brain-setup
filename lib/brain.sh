@@ -58,6 +58,11 @@ usage: brain.sh <command> [args]
                                writing instead of a day later: the three prose sections
                                of _PROJECT.md and the three taskboard metrics.
                                exit 0 within budget · 2 over · 1 could not measure.
+  vault-language <vault>       print the working language recorded in the vault's
+                               CRITICAL_FACTS.md, accepting every spelling the key has
+                               had. Raw value, never normalised — a real answer may name
+                               two languages for two purposes.
+                               exit 0 answered · 1 no profile file · 2 key unanswered.
   local-conventions <vault> <project> [claude-md]
                                print the frontmatter KEYS this project uses beyond
                                the template (from its latest session log and decision
@@ -554,7 +559,7 @@ _lc_section() {
     awk -v pat="$2" '/^## /{ p = ($0 ~ pat); next } p && NF' "$1" | grep -c .
 }
 
-_budget_prose() { _lc_section "$1" '^## (Current state|Статус|Последняя сессия|For future Claude)'; }
+_budget_prose() { _lc_section "$1" '^## (Current state|Статус|Last session|Последняя сессия|For future Claude)'; }
 _budget_ffc()   { _lc_section "$1" '^## For future Claude'; }
 _budget_size()  { grep -c . "$1"; }
 # Both markers, always: projects write closed items as `- [x]` and as `- ✅`, and a
@@ -606,6 +611,41 @@ prose_budget() {
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
     return 0
+}
+
+# ── vault-language ───────────────────────────────────────────────────────────
+# What language this vault's owner works in, so templates write headings they can read.
+#
+# The key has been spelled four ways across the package's own history — `Language:`,
+# `Working language:`, `Язык работы:` — and the live vault carries a fourth variant with
+# both languages in one value ("Russian in chat, English in code and commits"). So this
+# does NOT normalise to a token: it prints the raw value and lets the session judge.
+# Deterministic extraction belongs here, the judgement belongs in the prompt — and a
+# value naming two languages for two purposes is exactly the judgement a token would
+# destroy.
+#
+# Distinguishes "no such file" from "no such key": the first means the profile was never
+# set up and the session should say so, the second means the owner never answered. Only
+# one of those is fixed by asking them.
+vault_language() {
+    vault="${1:-}"
+    [ -n "$vault" ] || { echo "vault-language: need <vault>" >&2; return 1; }
+    cf="$vault/00-shared/CRITICAL_FACTS.md"
+    if [ ! -f "$cf" ]; then
+        echo "vault-language: NOT READ — no $cf" >&2
+        return 1
+    fi
+    val=$(awk '
+        /^[[:space:]]*(Working language|Language|Язык работы)[[:space:]]*:/ {
+            sub(/^[^:]*:[[:space:]]*/, "")
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+            if ($0 != "" && $0 !~ /^\(/) { print; exit }
+        }' "$cf")
+    if [ -z "$val" ]; then
+        echo "vault-language: key present but unanswered (or absent) in $cf" >&2
+        return 2
+    fi
+    printf '%s\n' "$val"
 }
 
 # ── local-conventions ────────────────────────────────────────────────────────
@@ -1065,6 +1105,7 @@ case "${1:-}" in
     version)            brain_version ;;
     lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
+    vault-language)     shift; vault_language "${1:-}" ;;
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
     sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
