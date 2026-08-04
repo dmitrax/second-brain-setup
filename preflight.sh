@@ -289,10 +289,17 @@ if [ -f "$LIBSH" ]; then
     # Паттерн с двоеточием, а не голое «Step 12»: подстрока матчит и «Step 12z», из-за
     # чего негативный тест на переименование шага проходил как зелёный (третий случай
     # ловушки с подстрокой за сессию — см. также vault-sync-DISABLED).
-    grep -qE '^## Step 12:' "$LINTMD" || problems+="brain-lint.md: нет шага сверки с baseline (12)"$'\n'
-    grep -qF 'lint-diff' "$LINTMD" || problems+="brain-lint.md: шаг 12 не вызывает lint-diff"$'\n'
-    grep -qiE 'in full, every time|Do not narrow them' "$LINTMD" ||
-        problems+="brain-lint.md: потеряно требование гонять проверки полностью"$'\n'
+    grep -qiE '^## Step [0-9]+[a-z]?: Report the delta' "$LINTMD" ||
+        problems+="brain-lint.md: нет шага сверки с baseline"$'\n'
+    grep -qF 'lint-diff' "$LINTMD" || problems+="brain-lint.md: шаг дельты не вызывает lint-diff"$'\n'
+    grep -qF 'lint-collect' "$LINTMD" ||
+        problems+="brain-lint.md: проверки не вызываются из lib (снова проза)"$'\n'
+    # Требование полноты переехало в код вместе с проверками: lint-collect обязан
+    # ронять на пустом входе, а промпт — не подменять его ручными грепами.
+    grep -qiE 'do not fall back to' "$LINTMD" ||
+        problems+="brain-lint.md: потерян запрет подменять lint-collect ручными грепами"$'\n'
+    grep -qiE 'refusing to report a clean vault' "$LIBSH" ||
+        problems+="lint-collect не роняет на пустом входе"$'\n'
 
     # Наличие обеих страховок — грепом.
     grep -q 'refused — .*moved.*kept' "$LIBSH" ||
@@ -344,6 +351,179 @@ if [ -f "$LIBSH" ]; then
         fail "lib/brain.sh: vault-sync/stamp-field ведут себя неверно" "$problems"
     else
         pass "lib/brain.sh: stamp-field щадит соседние поля, vault-sync различает исходы"
+    fi
+fi
+
+# ─── 4e. lint-collect отрабатывает на фикстурном vault ───────────────────────
+# Проверяется ЗАПУСКОМ на ваулте, где каждый класс находки представлен ровно
+# одним экземпляром — как 4b/4c проверяют guard и archive. Греп по форме здесь
+# бесполезен вдвойне: до переезда в lib/ эти проверки жили прозой, каждая сессия
+# писала их заново, и замер 2026-08-04 показал 11 ложных находок из 11 у одной
+# такой реализации. Фикстура фиксирует и то, что находкой БЫТЬ НЕ ДОЛЖНО.
+if [ -f "$LIBSH" ]; then
+    problems=""
+    LCV=$(mktemp -d)
+    mkdir -p "$LCV/proj/wiki" "$LCV/proj/sessions" "$LCV/other/wiki" "$LCV/00-system"
+
+    # Реестр знает оба проекта — плюс один, которого нет на диске.
+    printf -- '# Index\n- [[proj/_PROJECT|proj]]\n- [[other/_PROJECT|other]]\n- [[ghost/_PROJECT|ghost]]\n' \
+        > "$LCV/00-system/index.md"
+
+    # proj: проза за бюджетом, For future Claude за бюджетом, updated протух.
+    {
+        printf -- '---\nproject: proj\nupdated: 2020-01-01\n---\n\n## Current state\n'
+        i=0; while [ $i -lt 55 ]; do echo "строка состояния $i"; i=$((i + 1)); done
+        printf -- '\n## For future Claude\n'
+        i=0; while [ $i -lt 25 ]; do echo "константа $i"; i=$((i + 1)); done
+    } > "$LCV/proj/_PROJECT.md"
+
+    # Таскборд: за всеми тремя порогами, оба маркера закрытия.
+    {
+        printf -- '## In progress\n'
+        i=0; while [ $i -lt 320 ]; do echo "- [ ] задача $i"; i=$((i + 1)); done
+        printf -- '\n## Done\n'
+        i=0; while [ $i -lt 12 ]; do echo "- [x] 2026-01-01 — сделано $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 12 ]; do echo "- ✅ 2026-01-02 — сделано ✅ $i"; i=$((i + 1)); done
+        i=0; while [ $i -lt 300 ]; do echo "хвост $i"; i=$((i + 1)); done
+    } > "$LCV/proj/taskboard.md"
+
+    # Карта старше последней сессии.
+    printf -- '---\nupdated: 2026-01-01\n---\n# map\n' > "$LCV/proj/architecture-map.md"
+    # Три сессии: у двух есть zone, у третьей нет -> key-uniformity.
+    printf -- '---\ndate: 2026-06-01\nzone: root\n---\nx\n'  > "$LCV/proj/sessions/2026-06-01_1000_session.md"
+    printf -- '---\ndate: 2026-06-02\nzone: back\n---\nx\n'  > "$LCV/proj/sessions/2026-06-02_1000_session.md"
+    printf -- '---\ndate: 2026-08-01\n---\nx\n'              > "$LCV/proj/sessions/2026-08-01_1000_session.md"
+
+    # Заметки: одна без обратной ссылки, одна без соседней, одна вообще без ссылок.
+    printf -- '---\ndate: 2026-06-01\n---\nтело [[note-sibling]]\n'        > "$LCV/proj/wiki/note-backless.md"
+    printf -- '---\ndate: 2026-06-01\n---\nтело [[../_PROJECT|_PROJECT]]\n' > "$LCV/proj/wiki/note-sibling.md"
+    printf -- '---\ndate: 2026-06-01\n---\nни одной ссылки\n'              > "$LCV/proj/wiki/note-alone.md"
+
+    # Черновик старше 14 дней.
+    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\nчерновик\n' > "$LCV/proj/wiki/draft-old.md"
+
+    # Decision-заметки: off-schema status, битая ссылка, legacy-форма — и ДВА
+    # случая, которые находкой быть не должны: `supersedes: ~` (YAML null) и
+    # цитата legacy-формы внутри fenced-блока.
+    printf -- '---\nstatus: partially-superseded-by x\ndate: 2026-06-01\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-offschema.md"
+    printf -- '---\nstatus: accepted\nsuperseded-by: decision-nowhere\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-brokenref.md"
+    printf -- '---\nstatus: superseded-by: decision-x.md\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-legacyform.md"
+    printf -- '---\nstatus: accepted\nsupersedes: ~\n---\n[[../_PROJECT|_PROJECT]]\n```\nstatus: superseded-by: decision-x.md\n```\n' \
+        > "$LCV/proj/wiki/decision-clean.md"
+
+    # Незакрытый frontmatter.
+    printf -- '---\ndate: 2026-06-01\nтело без закрывающей черты\n' > "$LCV/proj/wiki/broken-fm.md"
+
+    # Ключ, который шаблон печатает ПУСТЫМ почти везде, — не конвенция. Замерено
+    # 2026-08-04: `supersedes:` пуст в 29 заметках cadrika из 32, и порог, считавший
+    # присутствие ключа, объявлял нарушителями те три, где пустой строки нет.
+    # Здесь: `supersedes:` пуст у трёх из четырёх, отсутствует у одной. Находкой
+    # это быть не должно; если порог снова начнёт считать присутствие — станет.
+    i=1; while [ $i -le 3 ]; do
+        printf -- '---\nstatus: accepted\ndate: 2026-06-0%s\nsupersedes:\n---\n[[../_PROJECT|_PROJECT]] [[decision-empty-1]]\n' \
+            "$i" > "$LCV/other/wiki/decision-empty-$i.md"
+        i=$((i + 1))
+    done
+    printf -- '---\nstatus: accepted\ndate: 2026-06-04\n---\n[[../_PROJECT|_PROJECT]] [[decision-empty-1]]\n' \
+        > "$LCV/other/wiki/decision-nosupersedes.md"
+
+    # other: не в реестре нет — он есть; зато даёт неуникальное имя note-alone,
+    # из-за чего голая [[note-alone]] в его заметке становится неоднозначной.
+    printf -- '---\nproject: other\nupdated: 2026-08-01\n---\n## Current state\nкоротко\n' \
+        > "$LCV/other/_PROJECT.md"
+    printf -- '---\ndate: 2026-06-01\n---\nссылка [[note-alone]] и [[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/other/wiki/note-alone.md"
+    # Цитата той же голой ссылки в бэктиках — находкой быть НЕ должна. Плюс
+    # непарный бэктик выше по файлу: без сброса состояния на пустой строке он
+    # переворачивал чтение всего остатка (замерено на живом connections.md).
+    printf -- '---\ndate: 2026-06-01\n---\nабзац с непарным бэктиком `вот\n\nцитата `[[note-alone]]` в бэктиках [[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/other/wiki/note-quotes.md"
+
+    # Проект, которого нет в реестре.
+    mkdir -p "$LCV/unreg"
+    printf -- '---\nproject: unreg\nupdated: 2026-08-01\n---\n## Current state\nкоротко\n' \
+        > "$LCV/unreg/_PROJECT.md"
+
+    # Проект, ВЛОЖЕННЫЙ в другой проект. Именно этот класс инвентарь и терял:
+    # замерено 2026-08-04, `nf-content/MWR-Dima` — свой _PROJECT.md, свой taskboard,
+    # своя wiki, запись в реестре — был невидим для всех проектных проверок, потому
+    # что перечень проектов строился по верхнему уровню. Файловые свипы его видели
+    # всегда, отчего расхождение читалось как регрессия, а не как дыра в охвате.
+    mkdir -p "$LCV/other/nested"
+    printf -- '---\nproject: nested\nupdated: 2020-01-01\n---\n## Current state\nкоротко\n' \
+        > "$LCV/other/nested/_PROJECT.md"
+
+    # Файл под .gitignore обязан быть найден: свип ходит по файловой системе, а не
+    # по индексу git. Оболочка сессии на Mac подменяет grep на ugrep с
+    # --ignore-files, и он такой файл пропускает молча — здесь этого быть не должно.
+    printf -- 'ignored/\n' > "$LCV/.gitignore"
+    mkdir -p "$LCV/ignored"
+    printf -- '---\ndate: 2026-01-01\nstatus: draft\n---\nскрытый черновик\n' > "$LCV/ignored/hidden-draft.md"
+
+    out="$LCV/out.txt"
+    if bash "$LIBSH" lint-collect "$LCV" > "$out" 2>"$LCV/err.txt"; then :; else
+        problems+="lint-collect упал на фикстуре: $(head -1 "$LCV/err.txt")"$'\n'
+    fi
+    want() { grep -q "^$1	" "$out" || problems+="не нашёл класс: $1"$'\n'; }
+    nope() { grep -q "^$1	" "$out" && problems+="ложная находка: $1"$'\n'; }
+
+    want 'prose-budget:proj'
+    want 'ffc-budget:proj'
+    want 'stale-project:proj'
+    want 'taskboard-inprogress:proj'
+    want 'taskboard-size:proj'
+    want 'taskboard-done:proj'
+    want 'map-stale:proj'
+    want 'key-uniformity:proj/sessions'
+    want 'stale-draft:proj/wiki/draft-old'
+    want 'stale-draft:ignored/hidden-draft'
+    want 'wiki-no-backlink:proj'
+    want 'wiki-no-sibling:proj'
+    want 'wiki-no-links:proj'
+    want 'decision-schema:proj/wiki/decision-offschema.md'
+    want 'decision-ref:proj/wiki/decision-brokenref.md'
+    want 'decision-legacy:proj/wiki/decision-legacyform.md'
+    want 'frontmatter:proj/wiki/broken-fm.md'
+    want 'ambiguous-link:other/wiki/note-alone.md'
+    want 'project-unregistered:unreg'
+    want 'registry-stale:ghost'
+    # Вложенный проект обязан попасть в проектные проверки, а не только в файловые.
+    want 'stale-project:other/nested'
+    want 'project-unregistered:other/nested'
+    # Чего быть не должно.
+    nope 'decision-ref:proj/wiki/decision-clean.md'
+    nope 'decision-legacy:proj/wiki/decision-clean.md'
+    nope 'ambiguous-link:other/wiki/note-quotes.md'
+    nope 'stale-project:other'
+    nope 'key-uniformity:other/decisions'
+    # Счётчик Done обязан видеть оба маркера: 12 + 12 = 24 > 20, по одному не сработал бы.
+    grep -q '^taskboard-done:proj	24 ' "$out" ||
+        problems+="счётчик Done не сложил [x] и ✅ (ожидалось 24)"$'\n'
+    # Контракт вывода: ключи уникальны, иначе lint-diff откажется работать.
+    d=$(cut -f1 "$out" | sort | uniq -d)
+    [ -z "$d" ] || problems+="ключи не уникальны: $(printf '%s' "$d" | tr '\n' ' ')"$'\n'
+    # Каждая строка обязана быть key<TAB>detail.
+    grep -qv "	" "$out" && problems+="есть строки без табуляции — контракт вывода нарушен"$'\n'
+
+    # Пустой вход обязан ронять, а не печатать зелёное. Это уже дважды стоило
+    # двух недель слепых ворот (mapfile, except ImportError).
+    mkdir -p "$LCV/nothing"
+    bash "$LIBSH" lint-collect "$LCV/nothing" >/dev/null 2>&1 &&
+        problems+="lint-collect напечатал зелёное на пустом каталоге"$'\n'
+    mkdir -p "$LCV/nomd" && printf -- '# x\n' > "$LCV/nomd/a.md"
+    bash "$LIBSH" lint-collect "$LCV/nomd" >/dev/null 2>&1 &&
+        problems+="lint-collect не потребовал ни одного _PROJECT.md"$'\n'
+    bash "$LIBSH" lint-collect "$LCV/nope" >/dev/null 2>&1 &&
+        problems+="lint-collect принял несуществующий путь"$'\n'
+
+    rm -rf "$LCV"
+    if [ -n "$problems" ]; then
+        fail "lint-collect неверен на фикстуре" "$problems"
+    else
+        pass "lint-collect прогнан на фикстуре: 20 классов находок, 4 не-находки, пустой вход роняет"
     fi
 fi
 
@@ -691,11 +871,14 @@ fi
 missing=""
 LINT="$SCRIPT_DIR/commands/brain-lint.md"
 [ -s "$LINT" ] || fail "commands/brain-lint.md пуст или отсутствует — проверка 15 не отработала"
-grep -qF 'Step 4b' "$LINT" || missing+="brain-lint.md: нет шага 4b (свип неоднозначных ссылок)"$'\n'
-grep -qF 'uniq -d' "$LINT" || missing+="brain-lint.md: шаг 4b не ищет неуникальные basename (uniq -d)"$'\n'
-grep -qE 'grep -rn?F' "$LINT" || missing+="brain-lint.md: шаг 4b ищет без -F"$'\n'
-grep -qiE 'whole vault regardless of scope|vault-wide' "$LINT" ||
-    missing+="brain-lint.md: шаг 4b не объявлен vault-wide (в рамках проекта он слеп)"$'\n'
+LIB="$SCRIPT_DIR/lib/brain.sh"
+grep -qF 'ambiguous-link:' "$LIB" || missing+="lib: нет свипа неоднозначных ссылок"$'\n'
+grep -qF 'uniq -d' "$LIB" || missing+="lib: свип не ищет неуникальные basename (uniq -d)"$'\n'
+grep -qE 'grep -rn?F' "$LIB" || missing+="lib: свип ищет без -F"$'\n'
+grep -qiE 'whatever the scope|whole vault' "$LIB" ||
+    missing+="lib: свип не объявлен vault-wide (в рамках проекта он слеп)"$'\n'
+grep -qF 'ambiguous-link' "$LINT" ||
+    missing+="brain-lint.md: находка ambiguous-link не описана — сессия не знает, что с ней делать"$'\n'
 grep -qiE 'already exists in another project|not unique across the whole vault' "$SCRIPT_DIR/SKILL.md" ||
     missing+="SKILL.md: правило сужено до _PROJECT.md — потерян ретроактивный случай"$'\n'
 if [ -n "$missing" ]; then
@@ -732,8 +915,10 @@ grep -qiE 'Minimum frontmatter' "$BS" ||
 # Значение выводится под запись, ключ переносится — иначе копирование значения молча врёт.
 grep -qiE 'derive each .*value|value derived' "$BS" ||
     missing+="brain-save.md: потеряно правило «ключ переносится, значение выводится»"$'\n'
-grep -qF 'Step 10b' "$SCRIPT_DIR/commands/brain-lint.md" ||
-    missing+="brain-lint.md: нет проверки однородности ключей frontmatter (10b)"$'\n'
+grep -qF 'key-uniformity' "$SCRIPT_DIR/lib/brain.sh" ||
+    missing+="lib: нет проверки однородности ключей frontmatter"$'\n'
+grep -qF 'key-uniformity' "$SCRIPT_DIR/commands/brain-lint.md" ||
+    missing+="brain-lint.md: находка key-uniformity не описана"$'\n'
 if [ -n "$missing" ]; then
     fail "локальные конвенции frontmatter не защищены (шаблон читается как исчерпывающий)" "$missing"
 else
@@ -749,22 +934,22 @@ fi
 #     удержать в контексте, отчего задачи дописываются вслепую и дублируются.
 # Тот же перекос чинили у _PROJECT.md, заменив общий размер бюджетом прозы.
 missing=""
-BL="$SCRIPT_DIR/commands/brain-lint.md"
-grep -qF '✅' "$BL" || missing+="brain-lint.md: счётчик Done не знает маркер ✅"$'\n'
-grep -qF '[x]' "$BL" || missing+="brain-lint.md: счётчик Done не знает маркер [x]"$'\n'
+BL="$SCRIPT_DIR/lib/brain.sh"
+grep -qF '✅' "$BL" || missing+="lib: счётчик Done не знает маркер ✅"$'\n'
+grep -qF '[x]' "$BL" || missing+="lib: счётчик Done не знает маркер [x]"$'\n'
 # Ищем сам замер, а не слова «In progress» в прозе: первая редакция этой проверки
 # матчила описание находки и потому не заметила бы удаление кода.
 grep -qE '^[[:space:]]*prog=\$\(' "$BL" ||
-    missing+="brain-lint.md: нет замера размера секции In progress (переменная prog=)"$'\n'
+    missing+="lib: нет замера размера секции In progress (переменная prog=)"$'\n'
 # Счётчик Done обязан считать ВНУТРИ секции Done. Замерено 2026-08-03: по всему файлу
 # goprofi-voronka давал 83 против 19, dimarch 31 против 8, собственный таскборд 65
 # против 5 — закрытые подпункты открытых задач считались архивируемыми записями.
-grep -qE 'done_n=\$\(awk' "$BL" ||
-    missing+="brain-lint.md: счётчик Done считает по всему файлу, не по секции Done"$'\n'
+grep -qE 'dn=\$\(awk' "$BL" ||
+    missing+="lib: счётчик Done считает по всему файлу, не по секции Done"$'\n'
 grep -qE 'prog.*(-gt|exceeds).*[0-9]{2,}' "$BL" ||
-    missing+="brain-lint.md: у секции In progress нет порога"$'\n'
-grep -qiE 'Done alone is the wrong measure|не только Done' "$BL" ||
-    missing+="brain-lint.md: потеряно правило «мерить не только Done»"$'\n'
+    missing+="lib: у секции In progress нет порога"$'\n'
+grep -qF 'taskboard-inprogress:' "$BL" ||
+    missing+="lib: потеряна метрика In progress — снова мерится только Done"$'\n'
 if [ -n "$missing" ]; then
     fail "счётчик таскборда снова слеп (маркер или метрика)" "$missing"
 else
@@ -918,12 +1103,14 @@ else
         && missing+="SKILL.md всё ещё требует невыполнимый минимум в 2 ссылки"$'\n'
     grep -qF 'backlink is mandatory' "$SCRIPT_DIR/SKILL.md" \
         || missing+="SKILL.md не объявляет обратную ссылку обязательной"$'\n'
-    grep -qF 'Step 4c' "$SCRIPT_DIR/commands/brain-lint.md" \
-        || missing+="brain-lint: нет шага 4c (правило без машинной проверки)"$'\n'
-    grep -qF 'NO-LINKS' "$SCRIPT_DIR/commands/brain-lint.md" \
-        || missing+="brain-lint 4c не выделяет тупиковые заметки"$'\n'
-    grep -qF 'strip_code' "$SCRIPT_DIR/commands/brain-lint.md" \
-        || missing+="brain-lint 4c не снимает inline-code — литералы посчитаются ссылками"$'\n'
+    grep -qF 'wiki-no-backlink' "$SCRIPT_DIR/lib/brain.sh" \
+        || missing+="lib: правило без машинной проверки (нет wiki-no-backlink)"$'\n'
+    grep -qF 'wiki-no-links' "$SCRIPT_DIR/lib/brain.sh" \
+        || missing+="lib: не выделяются тупиковые заметки"$'\n'
+    grep -qF '_lc_strip' "$SCRIPT_DIR/lib/brain.sh" \
+        || missing+="lib: не снимается inline-code — литералы посчитаются ссылками"$'\n'
+    grep -qF 'wiki-no-sibling' "$SCRIPT_DIR/commands/brain-lint.md" \
+        || missing+="brain-lint.md: не сказано, что отсутствие соседней ссылки — не дефект"$'\n'
     if [ -n "$missing" ]; then
         fail "правило о ссылках невыполнимо или не измеряется" "$missing"
     else
@@ -940,18 +1127,18 @@ fi
 # Ложная находка дороже пропущенной: она приучает читателя пролистывать список.
 # Заодно: `ls` в старом коде — тот же класс, что `date -j` (на Маке это функция-обёртка
 # над eza), поэтому счёт файлов ушёл на find.
-lb="$SCRIPT_DIR/commands/brain-lint.md"
+lb="$SCRIPT_DIR/lib/brain.sh"
 if [ ! -f "$lb" ]; then
-    fail "проверка 23: commands/brain-lint.md отсутствует — вход пуст, а не чист"
+    fail "проверка 23: lib/brain.sh отсутствует — вход пуст, а не чист"
 else
     missing=""
-    grep -qF 'A key counts only when it carries a VALUE' "$lb" \
-        || missing+="Step 10b не требует непустого значения — пустой ключ шаблона станет конвенцией"$'\n'
+    grep -qF 'only when it carries a VALUE' "$lb" \
+        || missing+="10b не требует непустого значения — пустой ключ шаблона станет конвенцией"$'\n'
     # Паттерн собран из кусков: иначе проверка нашла бы саму себя, как это уже
     # сделала проверка 20 на прозе, где сломанная форма была процитирована буквально.
     LSCOUNT="ls"" -1 \*\.md"
     grep -qE "$LSCOUNT" "$lb" \
-        && missing+="Step 10b считает файлы через ls (на Маке это функция-обёртка)"$'\n'
+        && missing+="10b считает файлы через ls (на Маке это функция-обёртка)"$'\n'
     if [ -n "$missing" ]; then
         fail "Step 10b принимает за конвенцию артефакт шаблона" "$missing"
     else

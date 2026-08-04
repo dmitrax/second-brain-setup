@@ -38,6 +38,10 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  lint-collect <vault> [--project P]
+                               run every mechanical vault check and print each
+                               finding as `key<TAB>detail` on stdout. Fails, never
+                               prints a green, when its input is empty.
   lint-diff <baseline> [--seal]
                                read findings on stdin (one per line, `key<TAB>detail`),
                                print what is NEW and what is GONE against the baseline,
@@ -341,6 +345,332 @@ stamp_field() {
     grep -m1 "^$key:" "$file"
 }
 
+# ── lint-collect ─────────────────────────────────────────────────────────────
+# Every check /brain-lint used to describe in prose, as code that actually runs.
+#
+# Why it moved: the prompt's checks were re-implemented from scratch by each
+# session, so their false positives differed every run and could not be told from
+# findings without reading each one by hand. Measured 2026-08-04 on the soak run:
+# a from-scratch implementation of the decision-reference check produced 11
+# findings, all 11 false — 9 `supersedes: ~` (YAML null, not a note name), one
+# `corrected-by: ../sessions/...` (a relative path, the file is there), and one
+# quotation of the legacy form inside a fenced block of the note documenting that
+# very bug. Zero real. A step whose output cannot be compared between runs gives
+# `lint-diff` nothing to diff.
+#
+# Output contract: one finding per line, `key<TAB>detail`. The key is stable —
+# type plus object, never a changing number — and is what lint-diff compares.
+# Keys must be unique; lint-diff refuses a set that repeats one.
+#
+# NOT moved here, deliberately: the full YAML parse. It needs PyYAML, and this
+# package promises no external dependencies — `install.sh` ships SKILL.md,
+# commands/ and lib/ only. It stays in preflight.sh, where PyYAML is a dev-only
+# dependency of the release gate. What survives here is the structural subset
+# that needs no parser: an unterminated block, the legacy double-colon form, an
+# off-schema `status:`. Findings that leave with the parser: none today — the
+# vault has been at 0 invalid blocks since 2026-07-22.
+lint_collect() {
+    vault="${1:-}"; only=""
+    shift 2>/dev/null || true
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --project) shift; only="${1:-}" ;;
+            *) echo "lint-collect: unknown argument '$1'" >&2; return 1 ;;
+        esac
+        shift
+    done
+    if [ -z "$vault" ] || [ ! -d "$vault" ]; then
+        echo "lint-collect: no vault at '${vault:-}'" >&2
+        return 1
+    fi
+    cd "$vault" || return 1
+
+    # An empty input must fail the check, never print a green. "Found nothing" and
+    # "never looked" are different facts and only one of them deserves a pass —
+    # this cost two weeks of a blind release gate twice already.
+    ALL_MD=$(find . -name '*.md' -not -path './.git/*' | sort)
+    if [ -z "$ALL_MD" ]; then
+        echo "lint-collect: no markdown found under '$vault' — refusing to report a clean vault" >&2
+        return 1
+    fi
+
+    LC_TMP=$(mktemp -d) || return 1
+    mkdir -p "$LC_TMP/clean"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$LC_TMP'" EXIT
+
+    _lc_epoch() {  # portable: GNU date first, BSD date second. Neither -> empty.
+        date -d "$1" +%s 2>/dev/null || date -j -f %Y-%m-%d "$1" +%s 2>/dev/null || true
+    }
+    _lc_fm() {     # value of one frontmatter key, first block only
+        awk -v k="$2" '/^---$/ { c++; next }
+             c == 1 && index($0, k ":") == 1 {
+                 sub(/^[^:]*:[[:space:]]*/, ""); gsub(/"/, "")
+                 gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' "$1"
+    }
+    # Strip fenced blocks and inline code, keeping the line count intact so a hit's
+    # line number still addresses the same line after cleaning.
+    #
+    # Two things a `sed 's/`[^`]*`//g'` per line gets wrong, both measured on this
+    # vault: a fenced block removed with `next` shifts every later line number, and
+    # an inline span that *wraps* across a newline leaves its tail looking like
+    # prose — line 29 of the bare-wikilink decision note ends a span opened on line
+    # 28, so a per-line strip paired the wrong backticks and kept a quoted
+    # `[[_PROJECT]]` as if it were a live link. Carrying the in-code flag across
+    # lines is what fixes it; sed cannot, being line-oriented by construction.
+    _lc_strip() {
+        awk '
+            /^[[:space:]]*```/ { fence = !fence; print ""; next }
+            fence { print ""; next }
+            # An inline span cannot cross a blank line in markdown, so reset there.
+            # Without the reset a single unpaired backtick anywhere flips the reading
+            # of the whole rest of the file: measured on 00-system/connections.md,
+            # 831 inline backticks — an odd count — turned two quoted examples on
+            # lines 319 and 1413 into "live" links. Bounding the state to a paragraph
+            # keeps multi-line spans working and confines the damage to one paragraph.
+            !NF { incode = 0; print ""; next }
+            {
+                n = split($0, part, "`"); out = ""
+                for (i = 1; i <= n; i++) {
+                    if (!incode) out = out part[i]
+                    if (i < n) incode = !incode
+                }
+                print out
+            }' "$1"
+    }
+    _lc_clean() {  # cached cleaned copy of a file; prints its path
+        c="$LC_TMP/clean/$(printf '%s' "$1" | tr '/.' '__')"
+        [ -f "$c" ] || _lc_strip "$1" > "$c"
+        printf '%s\n' "$c"
+    }
+    _lc_section() { # non-blank lines of one '## ' section, heading excluded
+        awk -v pat="$2" '/^## /{ p = ($0 ~ pat); next } p && NF' "$1" | grep -c .
+    }
+
+    TODAY=$(date +%s)
+
+    # ── inventory ────────────────────────────────────────────────────────────
+    # The registry is the authority on what a project is, not the filesystem
+    # layout. Measured 2026-08-04: `find -maxdepth 2` sees 6 projects, the
+    # registry lists 11, and a hand-built list produced 10 — `nf-content/MWR-Dima`
+    # is nested inside another project, so every per-project check had silently
+    # skipped it while the file-level sweeps saw it all along. A baseline whose
+    # key set depends on how a session happened to enumerate projects reports the
+    # difference as a regression.
+    REG="00-system/index.md"
+    REG_P=""
+    [ -f "$REG" ] && REG_P=$(grep -oE '\[\[[^]|]*_PROJECT[^]]*\]\]' "$REG" |
+        sed 's/\[\[//; s/\]\]//; s/|.*//; s|/_PROJECT$||' | sort -u)
+    FS_P=$(find . -name '_PROJECT.md' -not -path './.git/*' |
+        sed 's|/_PROJECT.md$||; s|^\./||' | sort -u)
+    if [ -z "$FS_P" ]; then
+        echo "lint-collect: no _PROJECT.md anywhere — refusing to report a clean vault" >&2
+        return 1
+    fi
+    for p in $FS_P; do
+        printf '%s\n' "$REG_P" | grep -qxF "$p" || \
+            printf 'project-unregistered:%s\tесть в vault, нет в %s\n' "$p" "$REG"
+    done
+    for p in $REG_P; do
+        [ -f "$p/_PROJECT.md" ] || \
+            printf 'registry-stale:%s\tчислится в %s, файла нет\n' "$p" "$REG"
+    done
+    PROJECTS="$FS_P"
+    [ -n "$only" ] && PROJECTS="$only"
+
+    # ── per project ──────────────────────────────────────────────────────────
+    for P in $PROJECTS; do
+        f="$P/_PROJECT.md"
+        [ -f "$f" ] || { printf 'project-missing:%s\t_PROJECT.md отсутствует\n' "$P"; continue; }
+
+        prose=$(_lc_section "$f" '^## (Current state|Статус|Последняя сессия|For future Claude)')
+        ffc=$(_lc_section "$f" '^## For future Claude')
+        [ "$prose" -gt 60 ] && printf 'prose-budget:%s\t%s строк при бюджете ~60\n' "$P" "$prose"
+        [ "$ffc" -gt 20 ] && printf 'ffc-budget:%s\tFor future Claude %s строк\n' "$P" "$ffc"
+
+        upd=$(_lc_fm "$f" updated)
+        if [ -z "$upd" ]; then
+            printf 'missing-updated:%s\t_PROJECT.md без поля updated:\n' "$P"
+        else
+            us=$(_lc_epoch "$upd")
+            if [ -z "$us" ]; then
+                echo "lint-collect: cannot parse date '$upd' in $f (no working date(1))" >&2
+                return 1
+            fi
+            days=$(( (TODAY - us) / 86400 ))
+            [ "$days" -gt 14 ] && printf 'stale-project:%s\t%s дней без обновления _PROJECT.md\n' "$P" "$days"
+        fi
+
+        tb="$P/taskboard.md"
+        if [ -f "$tb" ]; then
+            # Both markers, always: projects use `- [x]` and `- ✅` interchangeably
+            # and a counter that knows one reports zero for a project using the other.
+            # Count inside Done only — a closed sub-item under an open task is not
+            # an archivable entry (65 file-wide against 5 in Done, measured).
+            dn=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+                      d && /^[[:space:]]*-[[:space:]]*(\[x\]|✅)/ { n++ }
+                      END { print n + 0 }' "$tb")
+            tot=$(grep -c . "$tb")
+            prog=$(awk '/^## /{ p = ($0 ~ /In progress|В работе/) } p' "$tb" | grep -c .)
+            [ "$dn" -gt 20 ] && printf 'taskboard-done:%s\t%s закрытых записей в Done\n' "$P" "$dn"
+            [ "$prog" -gt 300 ] && printf 'taskboard-inprogress:%s\t%s строк\n' "$P" "$prog"
+            [ "$tot" -gt 600 ] && printf 'taskboard-size:%s\t%s строк, In progress %s\n' "$P" "$tot" "$prog"
+        fi
+
+        am="$P/architecture-map.md"
+        if [ -f "$am" ]; then
+            mu=$(_lc_fm "$am" updated)
+            ls_=$(find "$P/sessions" -maxdepth 1 -name '*_session.md' 2>/dev/null |
+                  sed 's|.*/||' | cut -c1-10 | sort | tail -1)
+            if [ -n "$mu" ] && [ -n "$ls_" ]; then
+                a=$(_lc_epoch "$mu"); b=$(_lc_epoch "$ls_")
+                [ -n "$a" ] && [ -n "$b" ] && [ "$b" -gt "$a" ] && \
+                    printf 'map-stale:%s\tкарта %s против сессии %s\n' "$P" "$mu" "$ls_"
+            fi
+        fi
+
+        _lc_keys "$P/sessions" '*.md' "$P/sessions"
+        _lc_keys "$P/wiki" 'decision-*.md' "$P/decisions"
+    done
+
+    # ── stale drafts ─────────────────────────────────────────────────────────
+    printf '%s\n' "$ALL_MD" | grep -v '/raw/' | while read -r p; do
+        [ "$(_lc_fm "$p" status)" = "draft" ] || continue
+        d=$(_lc_fm "$p" date); [ -n "$d" ] || continue
+        ds=$(_lc_epoch "$d"); [ -n "$ds" ] || continue
+        days=$(( (TODAY - ds) / 86400 ))
+        [ "$days" -gt 14 ] && printf 'stale-draft:%s\t%s дней\n' "$(echo "${p#./}" | sed 's|\.md$||')" "$days"
+    done
+
+    # ── decision-note schema ─────────────────────────────────────────────────
+    # `~` is YAML null, not a filename; a value may be a relative path; and the
+    # legacy form is quoted inside the note that documents it. All three produced
+    # false positives on the 2026-08-04 soak run — the whole reason this is code.
+    find . -path '*/wiki/decision-*.md' -not -path './.git/*' | sort | while read -r p; do
+        st=$(_lc_fm "$p" status)
+        case "$st" in
+            accepted|superseded|deprecated) ;;
+            "") printf 'decision-schema:%s\tнет status:\n' "${p#./}" ;;
+            *)  printf 'decision-schema:%s\tstatus вне схемы: %s\n' "${p#./}" "$st" ;;
+        esac
+        # legacy one-line form, frontmatter only (a fenced quote of it is not one)
+        awk '/^---$/ { c++; next } c == 1 && /^status:[[:space:]]*superseded-by:/ { found = 1 }
+             END { exit !found }' "$p" && \
+            printf 'decision-legacy:%s\tодностроч. status: superseded-by: — невалидный YAML\n' "${p#./}"
+        for k in supersedes superseded-by corrected-by; do
+            v=$(_lc_fm "$p" "$k")
+            case "$v" in ""|"~"|"null"|"[]") continue ;; esac
+            v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/|.*//; s/\.md$//')
+            base=$(printf '%s' "$v" | sed 's|.*/||')
+            find . -name "$base.md" -not -path './.git/*' | grep -q . || \
+                printf 'decision-ref:%s\t%s → %s не существует\n' "${p#./}" "$k" "$v"
+        done
+    done
+
+    # ── frontmatter structure (no parser needed) ─────────────────────────────
+    printf '%s\n' "$ALL_MD" | while read -r p; do
+        head -1 "$p" | grep -qx -- '---' || continue
+        awk 'NR == 1 { next } /^---$/ { ok = 1; exit } END { exit ok }' "$p" && \
+            printf 'frontmatter:%s\tблок не закрыт\n' "${p#./}"
+    done
+
+    # ── ambiguous bare links ─────────────────────────────────────────────────
+    # A link breaks by the *existence of a duplicate name anywhere*, so this runs
+    # over the whole vault whatever the scope: a name unique when the link was
+    # written stops being unique the moment another project reuses the basename,
+    # and every already-correct link in the older project turns ambiguous with no
+    # edit to it. sessions/ and archive-* are history and are not rewritten.
+    printf '%s\n' "$ALL_MD" | sed 's|.*/||; s|\.md$||' | sort | uniq -d > "$LC_TMP/dup"
+    : > "$LC_TMP/amb"
+    while read -r name; do
+        [ -n "$name" ] || continue
+        grep -rnF --include='*.md' "[[$name]]" . 2>/dev/null |
+            grep -v '/sessions/' | grep -v '/archive-' |
+            while IFS= read -r hit; do
+                hf=${hit%%:*}; rest=${hit#*:}; ln=${rest%%:*}
+                # A quoted example inside a note that documents this very bug is not
+                # a link. Check the *line*, not the file: this vault explains the bug
+                # in prose, so a file almost always contains both forms — a file-wide
+                # test passes every hit in it. And never just drop lines containing a
+                # backtick: a real bare link and an unrelated backtick share a line
+                # often enough (confirmed live in goprofi-voronka/_PROJECT.md).
+                sed -n "${ln}p" "$(_lc_clean "$hf")" | grep -qF "[[$name]]" || continue
+                echo "${hf#./}" >> "$LC_TMP/amb"
+            done
+    done < "$LC_TMP/dup"
+    # One key per file, count in the detail: the key must be stable, and a per-hit
+    # key would repeat — lint-diff refuses a set with duplicate keys.
+    sort "$LC_TMP/amb" | uniq -c | while read -r n hf; do
+        printf 'ambiguous-link:%s\t%s голых ссылок\n' "$hf" "$n"
+    done
+
+    # ── links per wiki note ──────────────────────────────────────────────────
+    printf '%s\n' "$ALL_MD" | while read -r p; do cat "$(_lc_clean "$p")"; done |
+        grep -oE '\[\[[^]|]+' | sed 's/^\[\[//; s|.*/||' | sort | uniq -c > "$LC_TMP/inc"
+    : > "$LC_TMP/links"
+    printf '%s\n' "$ALL_MD" | grep '/wiki/' | while read -r p; do
+        base=$(basename "$p" .md)
+        case "$base" in archive-*) continue ;; esac
+        proj=$(printf '%s' "${p#./}" | sed 's|/wiki/.*||')
+        tg=$(grep -oE '\[\[[^]|]+' "$(_lc_clean "$p")" | sed 's/^\[\[//')
+        sib=$(printf '%s\n' "$tg" | grep -v '_PROJECT$' | grep -c .)
+        bl=$(printf '%s\n' "$tg" | grep -c '_PROJECT$')
+        if [ "$sib" -eq 0 ] && [ "$bl" -eq 0 ]; then echo "no-links	$proj" >> "$LC_TMP/links"
+        elif [ "$bl" -eq 0 ];                   then echo "no-backlink	$proj" >> "$LC_TMP/links"
+        elif [ "$sib" -eq 0 ];                  then echo "no-sibling	$proj" >> "$LC_TMP/links"
+        fi
+    done
+    # Counted per project, not per note: 29 one-line fixes are one debt, and a
+    # per-note key would rewrite the baseline on every note anyone touches.
+    sort "$LC_TMP/links" | uniq -c | while read -r n cls proj; do
+        case "$cls" in
+            no-links)    printf 'wiki-no-links:%s\t%s заметок\n' "$proj" "$n" ;;
+            no-backlink) printf 'wiki-no-backlink:%s\t%s заметок\n' "$proj" "$n" ;;
+            no-sibling)  printf 'wiki-no-sibling:%s\t%s заметок\n' "$proj" "$n" ;;
+        esac
+    done
+}
+
+# Frontmatter key uniformity within one project. A key counts as a convention
+# only when it carries a VALUE in most entries: a key emitted empty by a template
+# and filled by nobody is an artefact, not a rule — `supersedes:` is empty in 29
+# of 32 cadrika notes, and counting presence alone made the three that lack the
+# empty line look like violations. A false finding costs more than a missed one:
+# it teaches the reader to skim.
+_lc_keys() {
+    dir="$1"; pat="$2"; label="$3"
+    [ -d "$dir" ] || return 0
+    files=$(find "$dir" -maxdepth 1 -name "$pat" | sort)   # not ls: it may be a
+    n=$(printf '%s\n' "$files" | grep -c .)                # shell function (eza)
+    [ "$n" -lt 3 ] && return 0
+    kt=$(mktemp); ct=$(mktemp)
+    printf '%s\n' "$files" | while read -r f; do
+        awk '/^---$/ { c++; next }
+             c == 1 && /^[A-Za-z_-]+:/ {
+                 k = $0; sub(/:.*/, "", k)
+                 v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
+                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                 if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
+             }' "$f" | sort -u
+    done | sort | uniq -c | awk -v n="$n" '$1 > n * 0.6 { print $2 }' > "$ct"
+    printf '%s\n' "$files" | while read -r f; do
+        have=$(awk '/^---$/ { c++; next }
+                    c == 1 && /^[A-Za-z_-]+:/ {
+                        k = $0; sub(/:.*/, "", k)
+                        v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+                        if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
+                    }' "$f" | sort -u)
+        while read -r k; do
+            [ -n "$k" ] || continue
+            printf '%s\n' "$have" | grep -qxF "$k" || echo "$k"
+        done < "$ct"
+    done | sort | uniq -c | while read -r cnt k; do
+        printf 'key-uniformity:%s\t%s записей без %s (всего %s)\n' "$label" "$cnt" "$k" "$n"
+    done
+    rm -f "$kt" "$ct"
+}
+
 case "${1:-}" in
     obsidian-available) shift; obsidian_available "${1:-}" ;;
     vault-name)         timeout 2 obsidian vault info=name 2>/dev/null || true ;;
@@ -348,6 +678,7 @@ case "${1:-}" in
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
     lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
+    lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
                         shift 2 2>/dev/null
