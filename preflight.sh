@@ -1332,7 +1332,15 @@ done
 # Сообщения коммитов — с даты принятия правила. Раньше неё история не переписывается,
 # та же граница, что у проверки 9.
 LANG_SINCE="2026-07-23"
-bad_msgs=$(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%h %s' 2>/dev/null |
+# Subject AND body: the first version looked at `%s` alone and reported zero while two
+# commit bodies carried Cyrillic. A check that measures less than it claims is the very
+# defect this file exists to catch.
+# Filenames are stripped by SHAPE, not against the tracked list: a rename commit names
+# the OLD file too, and that name is by definition no longer tracked. A token ending in
+# .md is a filename, not prose — ВТОРОЙ_МОЗГ_*.md is a legitimately Russian-named
+# user-facing document and a message must be able to name it.
+bad_msgs=$(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%h %s%n%b' 2>/dev/null |
+           sed -E 's@[^[:space:]]+\.md@@g' |
            grep -E '[А-Яа-яЁё]' || true)
 [ -n "$bad_msgs" ] && missing+="  сообщения коммитов с кириллицей:"$'\n'"$(printf '%s\n' "$bad_msgs" | sed 's/^/    /')"$'\n'
 # Правило существует в трёх местах и обязано называть обе вещи во всех трёх.
