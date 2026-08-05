@@ -131,6 +131,18 @@ obsidian-available "$VAULT"`, because a zero exit from the CLI proves only that 
 vault is open and every path is relative to that one. They are used in `/brain-lint`
 Step 2; nothing else in this package touches the CLI at all.
 
+**A deferral is checked against its CONDITION, not the date beside it.**
+"Postponed until Sprint 3" is visible to the eye — a date passes and the line looks stale.
+"Postponed until X enters work" is visible to nothing: the condition arrives *in the world*
+while the line sits unchanged in the file, and no one compares the two. So when you meet a
+deferred item whose deferral names a condition, evaluate the condition; do not read the
+date next to it as the item's freshness. Measured 2026-08-03 in this vault: a note stayed
+parked after its condition had arrived, and two more documents outlived by a day the
+decision that cancelled them. And when you defer something yourself, write **what exactly
+must happen and where that will be visible** — a condition nobody can check is a deferral
+with no end. This is why `_PROJECT.md` and `taskboard.md` record conditions rather than
+dates for anything parked.
+
 **Save reminder.**
 After 10+ exchanges suggest: "Want to run /brain-save before continuing?"
 When user says "done", "bye", "thanks", "finished" — suggest /brain-save.
@@ -330,7 +342,7 @@ The boundary is therefore drawn by *who prints it*, which is checkable, rather t
 what kind of text it is, which needs a judgement on every string.
 
 **What belongs where — one fact, one home.**
-Three memories are read at different moments, so a fact copied across them does not
+These memories are read at different moments, so a fact copied across them does not
 become easier to find; the copies drift, and a stale copy is worse than no copy because
 it is trusted exactly as much as a fresh one.
 
@@ -339,6 +351,29 @@ it is trusted exactly as much as a fresh one.
 | project `CLAUDE.md` | every session, automatically, before the topic is known | facts that do **not** expire |
 | vault | on demand, via `_PROJECT.md` + grep | everything that changes |
 | auto-memory (`~/.claude/projects/*/memory/`) | on recall, by relevance | the user, not the project |
+| global `~/.claude/CLAUDE.md` | every session of **every** project | this machine and this person, never a project |
+
+**Nothing learned in a project is ever written to the global `CLAUDE.md`** — not a rule,
+not a lesson, not a measurement, however general it feels at the time. A lesson worth
+keeping goes to the vault if it is about this work, or into this package if it is about
+how the system itself should behave; both are versioned, reviewable and shared across
+machines. The global file has the widest reach of the four and the weakest guarantees, and
+the combination is what makes it the wrong home:
+
+- `~/.claude/` is **not a version-controlled directory** — no diff, no review, no rollback.
+  Measured 2026-08-05: answering "where did this paragraph come from" took grepping stored
+  session transcripts, because the file itself carries no history. Two edits two days apart
+  were indistinguishable, so the older one read as the newer one's doing.
+- **It does not travel between machines.** It is not in the vault and not in git, so a rule
+  written there for "all projects" exists on the one machine that wrote it, and no session
+  on the other machine can even tell it is missing.
+- **None of this package's checks reach it.** Every guard here is aimed at a project
+  `CLAUDE.md` or at the vault.
+
+So a paragraph placed there is unversioned, unsynced, unchecked and loaded everywhere — the
+one file where a mistake is both most expensive and least visible. What legitimately lives
+there is what is true of the machine and its owner regardless of any project: paths,
+working language, how to be addressed, global tool prohibitions.
 
 The test is expiry, not importance — **can this be false tomorrow?** Versions, statuses,
 what is pinned, what is committed, which phase is active: all change, all go to the vault.

@@ -870,6 +870,22 @@ missing=""
 grep -qi 'What belongs where' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no 'What belongs where' section"$'\n'
 grep -qi 'can this be false tomorrow' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no expiry test"$'\n'
 grep -qi 'expiry test' "$SCRIPT_DIR/commands/brain-save.md" || missing+="brain-save.md: Step 0a does not refer to the expiry test"$'\n'
+# The fourth home, added 2026-08-05. The criterion named three memories and was silent on
+# the global ~/.claude/CLAUDE.md, so a session in one project wrote a lesson from that
+# project into the file every project loads — and it sat there for two days before anyone
+# asked where it came from. That directory is not version-controlled, does not travel
+# between machines, and no check in this package reaches it: widest reach, weakest
+# guarantees. Silence in a criterion about homes reads as "no opinion", which is how the
+# one place with no guard at all became a plausible place to write.
+grep -qF '~/.claude/CLAUDE.md' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: the global CLAUDE.md is not named among the homes — the one with no guard"$'\n'
+grep -qi 'never written to the global\|is ever written to the global' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: nothing forbids writing a project lesson into the global CLAUDE.md"$'\n'
+# A deferral recorded as a condition expires in the world, not in the file: no date moves,
+# so nothing looks stale. The rule has to be stated where every session reads it, because
+# there is nothing mechanical to notice it.
+grep -qi 'against its CONDITION' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: a deferral is not stated to be checked by its condition"$'\n'
 if [ -n "$missing" ]; then
     fail "lost the criterion for what lives in CLAUDE.md and what lives in the vault" "$missing"
 else
