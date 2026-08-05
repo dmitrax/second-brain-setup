@@ -599,6 +599,24 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   the package states no external dependencies, and prescribing it would make ripgrep
   mandatory for everyone who installs. Documenting the broken form inside `SKILL.md` or
   `commands/*.md` is itself a violation; describe it in words. Checked by preflight 13.
+  **The same rule carries a third silent-empty mode, and it is not about the pattern but
+  about whether the command runs at all: every glob handed to a command is quoted,
+  `--include='*.md'` included.** The flags decide how a pattern is read; the quotes decide
+  whether the shell lets the command start. In zsh a glob matching no file is fatal, and
+  all three signals you would check are gone at once — the shell prints its complaint
+  before any redirection reaches the command, so `2>/dev/null` cannot hide it; through a
+  pipe the status is still 0; and stdout is empty, which is indistinguishable from a clean
+  vault. Measured 2026-08-04 in `goprofi-voronka`: a sweep verifying documents against disk
+  had its greps silently not run, and the step around them reported normally. Note where
+  this had to be fixed and why the existing checks were not enough: preflight 18 keeps the
+  form out of the package's own prompt blocks, but the failure happened in a search a
+  session typed by hand, which no check of ours can reach — so the defence is the rule in
+  `SKILL.md`, which every session loads, and preflight 13 asserts both its presence and its
+  **premise**, by running the two forms under `zsh`. The premise half needed a second
+  attempt worth recording: asserting "the unquoted form produces nothing" stayed green when
+  a file the bare glob matched was planted, because a glob that expands and then matches
+  nothing leaves stdout just as empty as a command the shell refused to start. Only stderr
+  separates them. Empty output is never by itself evidence that a command did not run.
   [[decision-vault-search-declares-literal-or-pattern-because-a-bare-grep-is-wrong-both-ways]]
 - Repo scripts run on `bash` 3.2 — macOS ships it as `/bin/bash` and it is one of the
   two working machines. No `mapfile`/`readarray`, no `declare -A`, no `${var^^}`: all

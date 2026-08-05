@@ -209,6 +209,22 @@ there is no `-F` to pass. Verify a surprising count before believing it: re-run 
 same search the other way and compare. Two answers that disagree by an order of
 magnitude mean the flag was wrong, not that the vault is empty.
 
+**Quote every glob, including the one inside a flag: `grep -rF --include='*.md' …`.**
+The two flags above decide how a pattern is *read*; this decides whether the search
+runs at all. Prompt code blocks are executed by the session's shell, which is zsh on
+macOS, and there a pattern matching no file is a fatal error — the command never
+starts. Three things follow, and each removes a signal you would otherwise trust:
+the shell prints its complaint *before* any redirection reaches the command, so
+`2>/dev/null` cannot hide it; through a pipe the exit code is still `0`; and the
+output is empty. A file-type filter written with the glob bare after the `=` therefore
+cancels the search instead of narrowing it, and the empty result reads as "the vault
+has nothing on this" — the same wrong conclusion as a missing `-F`/`-E`, reached
+without the vault ever being read. Measured 2026-08-04 in a live session: a sweep
+checking documents against disk had its greps silently not run, and the step around
+them reported normally. Where a filter is doing real work, prefer
+`find <dir> -name '<pattern>'`, which hands the pattern to `find` so the shell never
+expands it. Applies to every glob a command receives, not only to searches.
+
 
 
 [[wikilinks]] in note bodies build the Obsidian graph. Without them the graph is empty.

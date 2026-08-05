@@ -950,11 +950,48 @@ fi
 # even where the pattern is obviously harmless: "does this pattern contain a metacharacter"
 # needs judgement, "is the flag there" needs none.
 # The broken form must not be documented in these files — describe it in words, or without -r.
+#
+# The third silent-empty mode, added 2026-08-05 after a session in another project hit it:
+# the flags above decide how a pattern is READ, the quoting decides whether the command RUNS.
+# In zsh a glob matching no file is fatal — the command never starts, the shell's complaint
+# is printed before any redirection reaches the command (so `2>/dev/null` cannot hide it),
+# and through a pipe the status is still 0. An unquoted file-type filter therefore cancels
+# the search and returns nothing, which reads exactly like a clean vault. Check 18 keeps this
+# form out of the package's own prompt blocks; it cannot reach a search a session types by
+# hand, and that is where it was measured — so the only defence is the rule in SKILL.md,
+# which every session loads. Hence a check on the rule's presence and on its premise.
 missing=""
 grep -qi 'Searching the vault' "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: no section about searching the vault"$'\n'
 for flag in '`grep -rF`' '`grep -rE`'; do
     grep -qF "$flag" "$SCRIPT_DIR/SKILL.md" || missing+="SKILL.md: $flag is not prescribed"$'\n'
 done
+grep -qF -- "--include='*.md'" "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: the quoted-glob form is not prescribed (an unquoted one cancels the search)"$'\n'
+# Premise, not prose: assert the two outcomes on this machine rather than trusting the
+# paragraph. Absence of zsh fails instead of skipping — "the shell is missing" and "the rule
+# holds" are different facts, and only one is worth a green (same class as check 7's PyYAML).
+if ! command -v zsh >/dev/null 2>&1; then
+    missing+="zsh is absent — the premise of the quoting rule cannot be verified here"$'\n'
+else
+    zg=$(mktemp -d)
+    printf 'colima\n' > "$zg/a.md"
+    # Empty output is NOT the signal to assert on: a glob that expands and then matches no
+    # file leaves stdout just as empty as a command the shell refused to start. Measured
+    # here 2026-08-05 by planting a file the bare glob matches — the first draft of this
+    # check stayed green through it, which is the "presence is not equivalence" class again.
+    # What separates the two is stderr: a cancelled command leaves the shell's complaint
+    # there, a grep that merely found nothing leaves it empty. Piped, so the 0 that hides
+    # the failure downstream is exercised as well.
+    zu=$(cd "$zg" && zsh -c 'grep -rF --include=*.md colima . | cat' 2>"$zg/err")
+    zerr=$(cat "$zg/err")
+    # Quoted: must find the line. Guards against a green that only means grep is broken.
+    zq=$(cd "$zg" && zsh -c "grep -rF --include='*.md' colima . | cat" 2>/dev/null)
+    [ -n "$zu" ] && missing+="zsh ran an unquoted glob and it matched — the premise is gone"$'\n'
+    [ -z "$zerr" ] && missing+="zsh did not refuse the unquoted glob — the rule's premise no longer holds"$'\n'
+    printf '%s\n' "$zq" | grep -qF colima ||
+        missing+="the quoted form found nothing either — the test proves nothing"$'\n'
+    rm -rf "$zg"
+fi
 for f in "${TARGETS[@]}"; do
     h=$(grep -no 'grep -r[a-zA-Z]*' "$f" | grep -vE ':grep -r[a-zA-Z]*[EF]' || true)
     [ -n "$h" ] && missing+="$(basename "$f"): bare grep -r without -F/-E on lines $(echo "$h" | cut -d: -f1 | tr '\n' ' ')"$'\n'
