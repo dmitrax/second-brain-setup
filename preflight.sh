@@ -2302,6 +2302,84 @@ else
     pass "a bare date resolves to midnight and does not move — $mode ($scanned files)"
 fi
 
+# ─── 40. An existing project CLAUDE.md is audited, not only the template ─────
+# Checks 10 and 10b guard the template /brain-init writes, and Step 0a of /brain-save
+# states the rules in prose — both act at CREATION. A file that acquired a state section
+# afterwards was governed by nothing, and the file is loaded in full at every session
+# start. Measured 2026-08-05 across the live projects: 2 of 7 carried `## Current state`,
+# 3 carried a `Stack` inventory, and one state section claimed 30 tables against 45 on
+# disk — found by a person reading the file, not by a check.
+# Verified by RUNNING the subcommand, never by grepping its shape: the classes it must
+# separate (a heading LED by a date against a rule that merely cites one) were calibrated
+# against real files, and only a fixture can hold that boundary still.
+bs="$SCRIPT_DIR/commands/brain-save.md"
+lb="$SCRIPT_DIR/lib/brain.sh"
+missing=""
+if [ ! -f "$bs" ] || [ ! -f "$lb" ]; then
+    fail "check 40: no brain-save.md or lib/brain.sh — empty input, not a clean repo"
+else
+    grep -qF 'claude-md-audit' "$bs" || missing+="brain-save never audits the project CLAUDE.md"$'\n'
+    # Unconditional, or it inherits the defect it was written to fix: Step 0a is skippable,
+    # and a check that only runs when a session already had a reason to open the file adds
+    # nothing over the prose that is there.
+    grep -qE 'runs on every save|на каждом сохранении' "$bs" ||
+        missing+="the audit is not stated to run on every save — Step 0a is skippable"$'\n'
+    cm=$(mktemp -d)
+    run_audit() {  # <fixture-body> <expected-rc> <label>
+        printf '%s' "$1" > "$cm/CLAUDE.md"
+        bash "$lb" claude-md-audit "$cm/CLAUDE.md" >/dev/null 2>&1
+        [ "$?" -eq "$2" ] || missing+="$3"$'\n'
+    }
+    run_audit '# p
+
+## Rules
+- pnpm, never npm (adopted 2026-07-20)
+' 0 "a clean file does not exit 0"
+    run_audit '# p
+
+## Current state
+phase two
+' 2 "an English state section is not reported"
+    # Both spellings, always: a fleet is mixed, and a pattern knowing one language reports
+    # zero for a project using the other.
+    run_audit '# p
+
+## Статус
+фаза два
+' 2 "a Russian state section is not reported"
+    run_audit '# p
+
+### Stack and tools
+- bash
+' 2 "an inventory section is not reported"
+    run_audit '# p
+
+### 2026-07-25
+what happened
+' 2 "a heading led by a date is not reported"
+    # The calibrated boundary, and the reason the discriminator is three tokens rather
+    # than "any date in a heading": this exact heading is live in excalipoint.
+    run_audit '# p
+
+### Где что лежит (разделение введено 2026-07-25)
+- src/
+' 0 "a structural heading citing a date is reported (false positive)"
+    # Size is deliberately not a finding: this repo has removed the same distortion twice,
+    # from the _PROJECT.md threshold and from the taskboard one. Rules grow legitimately.
+    { echo '# p'; echo; echo '## Rules'
+      i=0; while [ $i -lt 400 ]; do echo "- rule $i"; i=$((i + 1)); done; } > "$cm/big"
+    run_audit "$(cat "$cm/big")" 0 "a long file of rules is reported — size must not be measured"
+    # NOT READ is an error, never a pass: "no file" and "no findings" are different facts.
+    bash "$lb" claude-md-audit "$cm/absent.md" >/dev/null 2>&1
+    [ "$?" -eq 1 ] || missing+="an unreadable file does not give exit 1"$'\n'
+    rm -rf "$cm"
+fi
+if [ -n "$missing" ]; then
+    fail "a project CLAUDE.md can hold state that nothing ever looks at" "$missing"
+else
+    pass "an existing CLAUDE.md is audited every save (7 outcomes, both languages, size ignored)"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then

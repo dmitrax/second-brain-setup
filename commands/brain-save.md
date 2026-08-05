@@ -54,7 +54,25 @@ Triggers (if any apply → update CLAUDE.md Block 2 first):
 - Workflow changed: new commands, new build/test/deploy steps
 
 If triggered: open CLAUDE.md in current directory → update Block 2 → then proceed.
-If nothing changed: skip this step.
+If nothing changed: skip the editing above. The audit below is **not** part of that —
+it runs on every save, whether or not anything in Block 2 changed.
+
+```bash
+bash "$BRAIN" claude-md-audit "$PWD/CLAUDE.md"
+```
+
+Exit 0 clean · 2 findings · **1 the file could not be read**, which is an error and not a
+pass. Report each finding in one line and offer to fix it; do not fix it silently — the
+file has no history in a public repo, where `/brain-init` puts it in `.gitignore`.
+
+Why this is a call and why it is unconditional. The rules it measures are old, and both
+places that enforced them enforce them at *creation*: preflight checks the template
+`/brain-init` writes, and the prose above only applies when a session already had a
+reason to open the file. So a file that acquired a state section afterwards kept it for
+as long as nobody happened to read it. Measured 2026-08-05 across the live projects: 2 of
+7 carried `## Current state`, 3 carried a `Stack` inventory, and one of those state
+sections claimed 30 tables against 45 on disk — found by a person reading the file, which
+is precisely the reader this file is supposed to be saving time for.
 
 **Whenever the file is open, check Block 2 does not restate the inventory.** A
 `Stack` / `Стек` section listing languages, frameworks or scripts is the third copy of

@@ -58,6 +58,11 @@ usage: brain.sh <command> [args]
                                writing instead of a day later: the three prose sections
                                of _PROJECT.md and the three taskboard metrics.
                                exit 0 within budget · 2 over · 1 could not measure.
+  claude-md-audit <CLAUDE.md>  report what a project CLAUDE.md holds that expires: a
+                               state section, a copy of the stack inventory, a heading
+                               led by a date. Size is deliberately not measured — rules
+                               grow legitimately. Takes the path, never guesses it.
+                               exit 0 clean · 2 findings · 1 could not read the file.
   vault-language <vault>       print the working language recorded in the vault's
                                CRITICAL_FACTS.md, accepting every spelling the key has
                                had. Raw value, never normalised — a real answer may name
@@ -803,6 +808,80 @@ prose_budget() {
     return 0
 }
 
+# ── claude-md-audit ──────────────────────────────────────────────────────────
+# claude-md-audit <CLAUDE.md>
+#   exit 0 clean · 2 findings · 1 could not read the file
+#
+# The rules this measures already existed and were already checked — but only against
+# the TEMPLATE `/brain-init` writes (preflight 10, 10b) and the prose of `/brain-save`
+# Step 0a. Nothing ever looked at a project CLAUDE.md that already exists, so a file that
+# acquired a state section after creation kept it indefinitely. Measured 2026-08-05
+# across the live projects: 2 of 7 carry `## Current state`, 3 carry a `Stack` inventory,
+# and one of the state sections had drifted to "30 tables" against 45 on disk — exactly
+# the failure the rule predicts, found by a human reading the file rather than by any
+# check. This is the same lesson as the prose budget: a rule enforced only at creation is
+# enforced once, and the file it governs is loaded in full at every session start.
+#
+# Why it takes the file as an argument instead of finding it: the vault records no path
+# to a project's code, and there is no honest way to derive one. Resolving by basename is
+# the "resolve by name" class this package has been burned by three times, and guessing a
+# root makes the answer depend on which machine runs it — on a machine where the repo is
+# not checked out, "absent" and "clean" become the same observation. `/brain-save` runs
+# inside the project and already hands `$PWD/CLAUDE.md` to `local-conventions`, so at the
+# one moment the check is worth running, the path is a fact rather than a guess.
+#
+# Deliberately NOT measured: file size. `dimarch` reached 1080 lines and that was the
+# visible symptom, but this project's own CLAUDE.md is 648 lines of rules that all belong
+# there. Summing legitimate rules with chronicle is the same distortion already removed
+# twice — from the `_PROJECT.md` threshold and from the taskboard one. Measure the part
+# that hurts: the sections that carry state, not the total.
+claude_md_audit() {
+    f="${1:-}"
+    [ -n "$f" ] || { echo "claude-md-audit: need <CLAUDE.md>" >&2; return 1; }
+    # NOT READ, never silence: "no file" and "no findings" are different facts, and only
+    # one of them is worth a zero exit.
+    [ -f "$f" ] || { echo "claude-md-audit: no such file: $f" >&2; return 1; }
+
+    found=0
+    # Both spellings, always — a live fleet is mixed, and a pattern that knows one
+    # language reports zero for a project using the other.
+    st=$(grep -nE '^#{2,4} +(Current state|Статус)' "$f")
+    if [ -n "$st" ]; then
+        found=1
+        printf 'state-section\t%s\n' "$(printf '%s' "$st" | head -1)"
+        echo "  state belongs in _PROJECT.md — this file is read in full before the topic is known"
+    fi
+    iv=$(grep -nE '^#{2,4} +(Stack|Стек)' "$f")
+    if [ -n "$iv" ]; then
+        found=1
+        printf 'inventory-section\t%s\n' "$(printf '%s' "$iv" | head -1)"
+        echo "  third copy of what _PROJECT.md and architecture-map.md own — move any"
+        echo "  constraint into the rules and delete the section, never update it"
+    fi
+    # A date is flagged only when it is the SUBJECT of the heading, which is what a
+    # chronicle entry looks like — `## 2026-07-25`, `### Session 2026-08-04`,
+    # `### ✅ ЗАКРЫТО 03.08`. A date further along is usually a rule stating when it was
+    # adopted, which belongs here: measured 2026-08-05, matching any date in a heading
+    # flagged `### Где что лежит (разделение введено 2026-07-25)`, a structural heading
+    # in excalipoint, while the three-token form left all 7 live files clean.
+    dh=$(awk '/^#{2,4} / {
+             t = $0; sub(/^#+[[:space:]]*/, "", t)
+             n = split(t, w, /[[:space:]]+/); lim = (n < 3) ? n : 3
+             for (i = 1; i <= lim; i++)
+                 if (w[i] ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}/ ||
+                     w[i] ~ /^[0-9]{2}\.[0-9]{2}(\.[0-9]{2,4})?$/) { print FNR ": " $0; next }
+         }' "$f")
+    if [ -n "$dh" ]; then
+        found=1
+        printf 'dated-heading\t%s heading(s) led by a date\n' "$(printf '%s\n' "$dh" | grep -c .)"
+        printf '%s\n' "$dh" | sed 's/^/  /'
+    fi
+
+    [ "$found" -eq 1 ] && return 2
+    echo "ok  CLAUDE.md carries no state section, no inventory copy and no dated chronicle"
+    return 0
+}
+
 # ── vault-language ───────────────────────────────────────────────────────────
 # What language this vault's owner works in, so templates write headings they can read.
 #
@@ -1325,6 +1404,7 @@ case "${1:-}" in
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
     vault-language)     shift; vault_language "${1:-}" ;;
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
+    claude-md-audit)    shift; claude_md_audit "${1:-}" ;;
     sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
