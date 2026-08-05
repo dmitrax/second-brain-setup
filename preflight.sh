@@ -123,6 +123,24 @@ unquoted_globs() {
                     if (prev ~ /[A-Za-z0-9_.\/"-]/ || nxt ~ /[A-Za-z0-9_.\/"]/) {
                         print FILENAME ":" FNR ": " $0; next
                     }
+                    # A bare `*` standing as a whole word: `for f in *`, `cat *`,
+                    # `-name *`, `--include=*`. Measured 2026-08-05, all four missed by
+                    # the neighbour test above, which needs a suffix or a path prefix.
+                    # This class fails only on an EMPTY directory -- a bare `*` matches
+                    # anything else -- and that is precisely the case this repo was
+                    # already burned by: the first save of a project with no session
+                    # logs. Rarer, not harmless: zsh cancels the WHOLE line, so a
+                    # trailing `echo` on it does not run either.
+                    # Two carve-outs, both measured against real false positives: a line
+                    # carrying `((` is arithmetic, where `*` multiplies; and a `*` that
+                    # opens the line is a markdown bullet, which matters because 63 of
+                    # the fenced blocks in this package declare no language and are read
+                    # as executable. A command can never start with a glob.
+                    if (line !~ /\(\(/ && substr(line, 1, i-1) ~ /[^[:space:]]/ &&
+                        (prev == "" || prev ~ /[[:space:]=]/) &&
+                        (nxt == "" || nxt ~ /[[:space:]]/)) {
+                        print FILENAME ":" FNR ": " $0; next
+                    }
                 } else if (c == q) { q = "" }
             }
         }
