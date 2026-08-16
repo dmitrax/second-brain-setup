@@ -2457,6 +2457,124 @@ else
     fi
 fi
 
+# ─── 42. The save states what it did, and a skipped step is visible in the output ──
+# Measured 2026-08-16 in goprofi-voronka, twice in one session: /brain-save ran eight of
+# its twelve steps and reported success. The four that vanished were the ones leaving no
+# visible trace (brain-version, local-conventions, the decision note, the architecture
+# map), and the user caught it by the save feeling quick. That is this package's headline
+# failure class occurring inside the package, so the report is checked by RUNNING it —
+# a template can be filled from the memory of an intention, a count cannot.
+# Four outcomes, and each one has been wrong at least once in development:
+#   complete save -> 0 · a step without a trace -> 2 and names it · no project -> 1
+#   a vault without git -> still runs, and invents no MISSING out of its own mode
+#     (it did: under mtime nothing is "new", so a freshly written log read as absent).
+missing=""
+sr_lib=$(mktemp -d)
+cp "$SCRIPT_DIR/lib/brain.sh" "$sr_lib/"
+printf 'v9.9.9\n' > "$sr_lib/VERSION"     # the version is read next to the script
+srb="$sr_lib/brain.sh"
+srv=$(mktemp -d)
+mkdir -p "$srv/proj/wiki" "$srv/proj/sessions" "$srv/00-system"
+printf -- '---\nproject: proj\ntype: mixed\nupdated: %s\nbrain-version: "v9.9.9"\n---\n## Current state\nx\n' \
+    "$PF_ANCIENT" > "$srv/proj/_PROJECT.md"
+printf -- '## In progress\n- [ ] a\n## Done\n' > "$srv/proj/taskboard.md"
+printf -- '---\nupdated: %s\n---\n# map\n' "$PF_ANCIENT" > "$srv/proj/architecture-map.md"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$srv/00-system/index.md"
+printf -- '# connections\n' > "$srv/00-system/connections.md"
+# Three earlier logs all carrying `zone:` — that makes it this project's convention, the
+# one Step 0c exists to carry forward and the one a template cannot know about.
+for d in 2020-01-01 2020-01-02 2020-01-03; do
+    printf -- '---\ndate: %s\nzone: root\n---\nbody\n' "$d" > "$srv/proj/sessions/${d}_1000_session.md"
+done
+git -C "$srv" init -q >/dev/null 2>&1
+git -C "$srv" add -A >/dev/null 2>&1
+git -C "$srv" -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
+if ! git -C "$srv" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "check 42 could not build a git fixture — the outcome would be untested, not clean"
+else
+    # (a) a complete save: every owed step leaves a trace
+    printf -- '---\ndate: %s\nzone: root\n---\nbody\n' "$PF_FRESH" > "$srv/proj/sessions/${PF_FRESH}_1200_session.md"
+    printf -- '---\ndate: %s\n---\n[[../_PROJECT|_PROJECT]]\n' "$PF_FRESH" > "$srv/proj/wiki/decision-x.md"
+    echo edit >> "$srv/proj/_PROJECT.md";        echo '- [ ] b' >> "$srv/proj/taskboard.md"
+    echo row  >> "$srv/proj/architecture-map.md"; echo '- e'    >> "$srv/00-system/index.md"
+    echo '- l' >> "$srv/00-system/connections.md"
+    sr_out=$(bash "$srb" save-report "$srv" proj 2>&1); sr_rc=$?
+    [ "$sr_rc" -eq 0 ] || missing+="a complete save does not exit 0 (got $sr_rc)"$'\n'
+    grep -q 'MISSING' <<<"$sr_out" && missing+="a complete save still reports a MISSING step"$'\n'
+    grep -q 'decision-x.md' <<<"$sr_out" || missing+="the decision note is not named in the report"$'\n'
+
+    # (b) the measured defect: version not re-stamped, local key dropped, map untouched
+    git -C "$srv" checkout -q . 2>/dev/null; git -C "$srv" clean -qfd 2>/dev/null
+    printf -- '---\ndate: %s\n---\nbody\n' "$PF_FRESH" > "$srv/proj/sessions/${PF_FRESH}_1200_session.md"
+    echo edit >> "$srv/proj/_PROJECT.md"
+    # sed to a temp file, never `sed -i`: the flag takes an argument on BSD and none on GNU.
+    sr_tmp=$(mktemp)
+    sed 's/brain-version: "v9.9.9"/brain-version: "1.3"/' "$srv/proj/_PROJECT.md" > "$sr_tmp"
+    mv "$sr_tmp" "$srv/proj/_PROJECT.md"
+    sr_out=$(bash "$srb" save-report "$srv" proj 2>&1); sr_rc=$?
+    [ "$sr_rc" -eq 2 ] || missing+="a save with an untraced step does not exit 2 (got $sr_rc)"$'\n'
+    grep -q 'MISSING  brain-version' <<<"$sr_out" ||
+        missing+="an unstamped brain-version is not reported MISSING"$'\n'
+    grep -q 'MISSING  local conventions' <<<"$sr_out" ||
+        missing+="a log dropping the project's own frontmatter key is not reported MISSING"$'\n'
+    grep -q 'ANSWER   architecture map' <<<"$sr_out" ||
+        missing+="an untouched map in a mixed project does not ask for an answer"$'\n'
+    # ANSWER must NOT set the exit code on its own: a warning that fires every run stops
+    # being read, and an ordinary save legitimately leaves conditional steps untouched.
+    git -C "$srv" checkout -q . 2>/dev/null; git -C "$srv" clean -qfd 2>/dev/null
+    printf -- '---\ndate: %s\nzone: root\n---\nbody\n' "$PF_FRESH" > "$srv/proj/sessions/${PF_FRESH}_1200_session.md"
+    echo edit >> "$srv/proj/_PROJECT.md"; echo row >> "$srv/proj/architecture-map.md"
+    echo '- [ ] b' >> "$srv/proj/taskboard.md"
+    bash "$srb" save-report "$srv" proj >/dev/null 2>&1
+    [ $? -eq 0 ] || missing+="ANSWER alone sets a non-zero exit — the report will be ignored"$'\n'
+
+    # (c) an unknown project is an error, never a clean report
+    bash "$srb" save-report "$srv" nope >/dev/null 2>&1
+    [ $? -eq 1 ] || missing+="an unknown project does not exit 1"$'\n'
+    bash "$srb" save-report "$srv" >/dev/null 2>&1
+    [ $? -eq 1 ] || missing+="a missing argument does not exit 1"$'\n'
+
+    # (d) a vault without git still runs, and its own mode invents no finding
+    srv2=$(mktemp -d)
+    cp -r "$srv/proj" "$srv/00-system" "$srv2/" 2>/dev/null
+    rm -rf "$srv2/.git"
+    sr_out=$(bash "$srb" save-report "$srv2" proj 2>&1)
+    grep -q 'mtime' <<<"$sr_out" || missing+="a vault without git does not say it fell back to mtime"$'\n'
+    grep -q 'MISSING  session log' <<<"$sr_out" &&
+        missing+="under mtime a freshly written log is reported missing — the mode invented it"$'\n'
+    rm -rf "$srv2"
+fi
+rm -rf "$srv" "$sr_lib"
+# The call has to sit where the prompt says: after the writes it measures, before the
+# commit that hides them. A step placed after the commit is not a weaker version of this,
+# it is inert — the working tree is clean by then and every step reads as skipped.
+sr_md="$SCRIPT_DIR/commands/brain-save.md"
+if [ ! -f "$sr_md" ]; then
+    missing+="no commands/brain-save.md — nothing to check the ordering in"$'\n'
+else
+    # The CALL, not the word. Two negative tests were needed to get this line right:
+    # grepping the file passes on the prose describing the step, and grepping the
+    # executable blocks still passes on the Result template, which is fenced without a
+    # language and therefore counts as code. So match the invocation form itself.
+    sr_call=$(exec_blocks "$sr_md" | grep -E '(\$BRAIN|brain\.sh)[^|]*save-report' | head -1 | cut -d: -f1)
+    sr_commit=$(grep -n 'git add -A' "$sr_md" | head -1 | cut -d: -f1)
+    sr_write=$(grep -n 'prose-budget' "$sr_md" | head -1 | cut -d: -f1)
+    if [ -z "$sr_call" ]; then
+        missing+="brain-save.md never calls save-report — the Result block is a template again"$'\n'
+    elif [ -z "$sr_commit" ] || [ -z "$sr_write" ]; then
+        missing+="brain-save.md lost its commit line or its prose-budget call — cannot check the order"$'\n'
+    elif [ "$sr_call" -lt "$sr_write" ] || [ "$sr_call" -gt "$sr_commit" ]; then
+        missing+="save-report is called out of order (line $sr_call; writes $sr_write, commit $sr_commit)"$'\n'
+    fi
+    grep -q 'step skipped' "$sr_md" ||
+        missing+="brain-save.md does not require a MISSING step to be named in the Result"$'\n'
+fi
+if [ -n "$missing" ]; then
+    fail "a skipped save step can still read as a successful save" "$missing"
+else
+    pass "save-report measures the save on disk (4 outcomes run, ordering and MISSING wording checked)"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then

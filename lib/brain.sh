@@ -75,6 +75,15 @@ usage: brain.sh <command> [args]
                                values are a judgement per entry. Fails when it could
                                read none of the three, so silence cannot pass for
                                "this project has no local conventions".
+  save-report <vault> <project>
+                               print what this save actually left on disk — session log,
+                               wiki notes, decision notes, version stamp, _PROJECT.md,
+                               taskboard, map, index, connections, local keys — measured
+                               against the vault's working tree, so a skipped step shows
+                               up as MISSING instead of as a filled-in template line.
+                               Run it AFTER the writes and BEFORE the commit.
+                               exit 0 every owed step left a trace · 2 one did not
+                               · 1 could not measure.
   lint-collect <vault> [--project P]
                                run every mechanical vault check and print each
                                finding as `key<TAB>detail` on stdout. Fails, never
@@ -1012,6 +1021,232 @@ local_conventions() {
     fi
 }
 
+# ── save-report ──────────────────────────────────────────────────────────────
+# What /brain-save actually did, measured on disk instead of recalled from intent.
+#
+# The defect this exists for, measured 2026-08-16 in goprofi-voronka, twice in one
+# session: a save ran EIGHT of its twelve steps and reported success. The four that
+# vanished were the ones that leave no visible trace — the version stamp, the local
+# conventions lookup, the decision note, the architecture map — and the miss was caught
+# by the user noticing the save felt quick, not by anything the command printed. That is
+# the package's own headline failure class ("a failure indistinguishable from success")
+# occurring inside the package: session saved, commit made, everything green.
+#
+# Why a template could not fix it: the old Result block listed the lines but asked for no
+# numbers, so it was filled from the memory of what the session meant to do. A count has
+# to be counted. So the shell reports the facts and the session explains them — the same
+# split as `archive` (the model picks the boundary, the shell moves the bytes).
+#
+# Three verdicts, and the middle one is the point:
+#   ok       the step left a trace on disk
+#   MISSING  a step that is owed unconditionally left none          -> exit 2
+#   ANSWER   a conditional step left none: legitimate, but the session must SAY why
+# ANSWER never sets the exit code. A warning that fires on every run stops being read —
+# this project has measured that twice (prose-budget's permanent OVER, the Done counter's
+# unreachable advice), and a save that ends in a red on the ordinary case would train
+# exactly the blindness the report is built to remove.
+#
+# The premise is stated, not assumed (preflight 19): the report says what it measured
+# against, because a clean working tree means "nothing written yet" before the commit and
+# "already committed" after it, and those are different facts about the same silence.
+_sr_line() {   # <verdict> <label> <detail>
+    printf '%-8s %-20s %s\n' "$1" "$2" "$3"
+}
+
+# Paths of one kind out of `git status --porcelain -uall` output.
+#   want=new  untracked or added · want=mod  tracked and modified · want=any  either
+# A rename is reported as `R  old -> new`; the new name is the one that exists.
+_sr_sel() {   # <want> <prefix> ; changes on stdin
+    awk -v want="$1" -v pfx="$2" '
+        length($0) < 4 { next }
+        { st = substr($0, 1, 2); p = substr($0, 4)
+          i = index(p, " -> "); if (i) p = substr(p, i + 4)
+          if (index(p, pfx) != 1) next
+          isnew = (st ~ /\?/ || st ~ /A/)
+          if (want == "new" && !isnew) next
+          if (want == "mod" &&  isnew) next
+          print p }'
+}
+
+_sr_count() { grep -c . <<<"$1"; }
+
+save_report() {
+    vault="${1:-}"; project="${2:-}"
+    [ -n "$vault" ] && [ -n "$project" ] || {
+        echo "save-report: need <vault> <project>" >&2; return 1; }
+    pdir="$vault/$project"
+    [ -d "$pdir" ] || { echo "save-report: no such project: $pdir" >&2; return 1; }
+
+    sr_missing=0; sr_answer=0
+    verdict() {   # <verdict> <label> <detail>
+        case "$1" in
+            MISSING) sr_missing=$((sr_missing + 1)) ;;
+            ANSWER)  sr_answer=$((sr_answer + 1)) ;;
+        esac
+        _sr_line "$1" "$2" "$3"
+    }
+
+    # ── what "this session" means here, said out loud ────────────────────────
+    # `new` means untracked-or-added, which only git can tell. Under mtime every path
+    # looks modified, so asking for `new` there would report a freshly written log as
+    # absent — a MISSING invented by the measuring mode rather than by the save. Found
+    # exactly that way while testing: the log existed, _PROJECT.md was reported updated
+    # from the same list, and the log was still called untouched.
+    sr_new=new
+    if git -C "$vault" rev-parse --git-dir >/dev/null 2>&1; then
+        sr_mode=git
+        changes=$(git -C "$vault" -c core.quotePath=false status --porcelain -uall 2>/dev/null)
+        _sr_line base "working tree" "uncommitted changes in $vault (run BEFORE the commit)"
+    else
+        # No git: mtime is all there is, and it cannot tell a new file from an edited
+        # one. Say so rather than guessing — a vault without git is a supported setup.
+        sr_mode=mtime
+        sr_new=any
+        sr_today=$(date +%Y-%m-%d)
+        changes=$(find "$vault" -name '*.md' -not -path '*/.git/*' -newermt "$sr_today 00:00:00" 2>/dev/null |
+                  sed "s|^$vault/||; s|^|M  |")
+        _sr_line base "mtime" "no git in the vault — files touched today; created vs updated cannot be told apart"
+    fi
+
+    # ── 1. session log (Step 1) — owed unconditionally ───────────────────────
+    logs=$(_sr_sel "$sr_new" "$project/sessions/" <<<"$changes" | grep '_session\.md$')
+    n_logs=$(_sr_count "$logs")
+    if [ "$n_logs" -gt 0 ]; then
+        verdict ok "session log" "$(printf '%s' "$logs" | tr '\n' ' ')"
+    else
+        verdict MISSING "session log" "no new file under $project/sessions/ — Step 1 left no trace"
+    fi
+
+    # ── 2. wiki notes (Step 2) ───────────────────────────────────────────────
+    w_new=$(_sr_sel "$sr_new" "$project/wiki/" <<<"$changes")
+    w_mod=$(_sr_sel mod "$project/wiki/" <<<"$changes")
+    n_wnew=$(_sr_count "$w_new"); n_wmod=$(_sr_count "$w_mod")
+    if [ "$sr_mode" = mtime ]; then
+        verdict ok "wiki" "$((n_wnew + n_wmod)) notes touched"
+    else
+        verdict ok "wiki" "$n_wnew created, $n_wmod updated"
+    fi
+
+    # ── 3. decision notes (Step 2b) — conditional, and the one most often skipped ──
+    d_new=$(printf '%s\n' "$w_new" | grep '/decision-[^/]*\.md$')
+    n_dec=$(_sr_count "$d_new")
+    if [ "$n_dec" -gt 0 ]; then
+        verdict ok "decision notes" "$(printf '%s' "$d_new" | sed 's|.*/||' | tr '\n' ' ')"
+    else
+        verdict ANSWER "decision notes" "none created — say whether a decision was made and where it went"
+    fi
+
+    # ── 4. brain-version (Step 0b) — owed unconditionally ────────────────────
+    # Equality of two strings, never an ordering: nine projects carry the literal `1.3`
+    # left by an old template, and `1.3` against `v1.7.0-34-g0ad2e5c` is not a comparison
+    # at all (preflight 19). The question here is only "was it re-stamped this save".
+    pm="$pdir/_PROJECT.md"
+    if [ ! -f "$pm" ]; then
+        verdict MISSING "brain-version" "no _PROJECT.md at $pm — nothing to stamp"
+    else
+        stamped=$(_lc_fm "$pm" brain-version | tr -d '"')
+        installed=$(brain_version)
+        if [ -z "$installed" ] || [ "$installed" = unknown ]; then
+            # Nothing to compare against: this copy was never installed (no VERSION file
+            # next to the script — normal when running straight out of the repo). Naming
+            # a MISSING here would be a verdict about the project drawn from a fact about
+            # the caller, which is the "diagnosis whose premise was never checked" class.
+            _sr_line "n/a" "brain-version" "the running copy reports no version — nothing to compare '$stamped' against"
+        elif [ -z "$stamped" ]; then
+            verdict MISSING "brain-version" "_PROJECT.md carries no brain-version: field; installed is $installed"
+        elif [ "$stamped" = "$installed" ]; then
+            verdict ok "brain-version" "$stamped"
+        else
+            verdict MISSING "brain-version" "_PROJECT.md says '$stamped', installed is '$installed' — Step 0b did not run"
+        fi
+    fi
+
+    # ── 5. _PROJECT.md (Step 3) — owed unconditionally ───────────────────────
+    if [ -n "$(_sr_sel any "$project/_PROJECT.md" <<<"$changes")" ]; then
+        verdict ok "_PROJECT.md" "updated"
+    else
+        verdict MISSING "_PROJECT.md" "unchanged — Step 3 left no trace"
+    fi
+
+    # ── 6. taskboard (Step 4) ────────────────────────────────────────────────
+    if [ -n "$(_sr_sel any "$project/taskboard.md" <<<"$changes")" ]; then
+        verdict ok "taskboard" "updated"
+    elif [ ! -f "$pdir/taskboard.md" ]; then
+        verdict ANSWER "taskboard" "no taskboard.md in this project — say whether one is due"
+    else
+        verdict ANSWER "taskboard" "unchanged — say whether nothing opened, closed or moved"
+    fi
+
+    # ── 7. architecture map (Step 5) — owed by code and mixed projects only ──
+    ptype=$(_lc_fm "$pm" type)
+    amap="$project/architecture-map.md"
+    case "$ptype" in
+        code|mixed)
+            if [ -n "$(_sr_sel any "$amap" <<<"$changes")" ]; then
+                verdict ok "architecture map" "updated"
+            elif [ ! -f "$vault/$amap" ]; then
+                verdict MISSING "architecture map" "type: $ptype and no architecture-map.md exists"
+            else
+                verdict ANSWER "architecture map" "unchanged (type: $ptype) — say whether the structure moved"
+            fi ;;
+        "") verdict ANSWER "architecture map" "_PROJECT.md declares no type: — say whether the map applies" ;;
+        *)  _sr_line "n/a" "architecture map" "type: $ptype — Step 5 does not apply" ;;
+    esac
+
+    # ── 8. index.md (Step 6) — owed WHEN notes were created ──────────────────
+    idx_touched=$(_sr_sel any "00-system/index.md" <<<"$changes")
+    if [ -n "$idx_touched" ]; then
+        verdict ok "index.md" "updated"
+    elif [ "$n_wnew" -gt 0 ]; then
+        verdict MISSING "index.md" "$n_wnew new notes and no entry in 00-system/index.md — Step 6 left no trace"
+    else
+        _sr_line "n/a" "index.md" "no new notes to register"
+    fi
+
+    # ── 9. connections.md (Step 7) ───────────────────────────────────────────
+    if [ -n "$(_sr_sel any "00-system/connections.md" <<<"$changes")" ]; then
+        verdict ok "connections.md" "updated"
+    else
+        verdict ANSWER "connections.md" "unchanged — say whether anything applies to another project"
+    fi
+
+    # ── 10. local conventions (Step 0c) ──────────────────────────────────────
+    # The step that leaves the least trace of all: it does not write a file, it makes the
+    # session write the right keys. So check the RESULT — does the new log carry the keys
+    # this project's earlier logs carry? Keys only, never values: the same session wrote
+    # `zone: root` on a log and `zone: backend` on a decision note, and a copied value is
+    # silently wrong where an absent one is merely missing.
+    if [ "$n_logs" -eq 0 ]; then
+        _sr_line "n/a" "local conventions" "no new log to check the keys of"
+    else
+        newlog="$vault/$(printf '%s\n' "$logs" | head -1)"
+        conv=$(_conv_keys "$pdir/sessions" '*_session.md' "$newlog")
+        if [ -z "$conv" ]; then
+            _sr_line "n/a" "local conventions" "fewer than 3 earlier logs — no convention to compare against"
+        else
+            have=$(_fm_keys_valued "$newlog")
+            lack=""
+            while read -r k; do
+                [ -n "$k" ] || continue
+                grep -qxF "$k" <<<"$have" || lack="$lack $k"
+            done <<<"$conv"
+            if [ -n "$lack" ]; then
+                verdict MISSING "local conventions" "the new log lacks the key(s) its predecessors carry:$lack"
+            else
+                verdict ok "local conventions" "the new log carries every key its predecessors do"
+            fi
+        fi
+    fi
+
+    # ── the line the session cannot skip reading ─────────────────────────────
+    if [ "$sr_missing" -gt 0 ]; then
+        printf 'save-report: %s step(s) left no trace, %s need a stated answer\n' "$sr_missing" "$sr_answer"
+        return 2
+    fi
+    printf 'save-report: every owed step left a trace, %s need a stated answer\n' "$sr_answer"
+    return 0
+}
+
 # ── lint-collect ─────────────────────────────────────────────────────────────
 # Every check /brain-lint used to describe in prose, as code that actually runs.
 #
@@ -1119,12 +1354,6 @@ lint_collect() {
     _lc_epoch() {
         date -d "$1" +%s 2>/dev/null ||
             date -j -f "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s 2>/dev/null || true
-    }
-    _lc_fm() {     # value of one frontmatter key, first block only
-        awk -v k="$2" '/^---$/ { c++; next }
-             c == 1 && index($0, k ":") == 1 {
-                 sub(/^[^:]*:[[:space:]]*/, ""); gsub(/"/, "")
-                 gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' "$1"
     }
     # Strip fenced blocks and inline code, keeping the line count intact so a hit's
     # line number still addresses the same line after cleaning.
@@ -1359,6 +1588,44 @@ lint_collect() {
 # of 32 cadrika notes, and counting presence alone made the three that lack the
 # empty line look like violations. A false finding costs more than a missed one:
 # it teaches the reader to skim.
+# Value of one frontmatter key, first block only. Top-level, not nested inside
+# lint_collect: save-report reads the same fields, and a helper reachable from one caller
+# only is how prose-budget once printed "ok" for a measurement that never ran.
+_lc_fm() {     # <file> <key>
+    awk -v k="$2" '/^---$/ { c++; next }
+         c == 1 && index($0, k ":") == 1 {
+             sub(/^[^:]*:[[:space:]]*/, ""); gsub(/"/, "")
+             gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' "$1"
+}
+
+# The keys of one entry that actually carry a value. One implementation, three callers
+# (_lc_keys twice, save-report once): a second copy of "what counts as a filled key"
+# would let the lint and the save disagree about the same file.
+_fm_keys_valued() {
+    awk '/^---$/ { c++; next }
+         c == 1 && /^[A-Za-z_-]+:/ {
+             k = $0; sub(/:.*/, "", k)
+             v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
+             gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+             if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
+         }' "$1" | LC_ALL=C sort -u
+}
+
+# The keys a project treats as a convention: carried with a value by more than 60% of
+# entries of that kind. Same threshold for the lint and for the save, for the same
+# reason as above. `exclude` leaves the entry under test out of its own baseline.
+_conv_keys() {   # <dir> <pattern> [exclude-file]
+    _ck_dir="$1"; _ck_pat="$2"; _ck_skip="${3:-}"
+    [ -d "$_ck_dir" ] || return 0
+    _ck_files=$(find "$_ck_dir" -maxdepth 1 -name "$_ck_pat" | LC_ALL=C sort)
+    [ -n "$_ck_skip" ] && _ck_files=$(grep -vxF "$_ck_skip" <<<"$_ck_files")
+    _ck_n=$(grep -c . <<<"$_ck_files")
+    [ "$_ck_n" -lt 3 ] && return 0
+    printf '%s\n' "$_ck_files" | while read -r f; do
+        [ -n "$f" ] && _fm_keys_valued "$f"
+    done | LC_ALL=C sort | uniq -c | awk -v n="$_ck_n" '$1 > n * 0.6 { print $2 }'
+}
+
 _lc_keys() {
     dir="$1"; pat="$2"; label="$3"
     [ -d "$dir" ] || return 0
@@ -1366,23 +1633,9 @@ _lc_keys() {
     n=$(printf '%s\n' "$files" | grep -c .)                # shell function (eza)
     [ "$n" -lt 3 ] && return 0
     kt=$(mktemp); ct=$(mktemp)
+    _conv_keys "$dir" "$pat" > "$ct"
     printf '%s\n' "$files" | while read -r f; do
-        awk '/^---$/ { c++; next }
-             c == 1 && /^[A-Za-z_-]+:/ {
-                 k = $0; sub(/:.*/, "", k)
-                 v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
-                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-                 if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
-             }' "$f" | LC_ALL=C sort -u
-    done | LC_ALL=C sort | uniq -c | awk -v n="$n" '$1 > n * 0.6 { print $2 }' > "$ct"
-    printf '%s\n' "$files" | while read -r f; do
-        have=$(awk '/^---$/ { c++; next }
-                    c == 1 && /^[A-Za-z_-]+:/ {
-                        k = $0; sub(/:.*/, "", k)
-                        v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
-                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-                        if (v != "" && v != "[]" && v != "\"\"" && v != "~" && v != "null") print k
-                    }' "$f" | LC_ALL=C sort -u)
+        have=$(_fm_keys_valued "$f")
         while read -r k; do
             [ -n "$k" ] || continue
             grep -qxF "$k" <<<"$have" || echo "$k"
@@ -1406,6 +1659,7 @@ case "${1:-}" in
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
     claude-md-audit)    shift; claude_md_audit "${1:-}" ;;
     sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
+    save-report)        shift; save_report "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""

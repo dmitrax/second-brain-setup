@@ -532,16 +532,58 @@ If session produced knowledge applicable to OTHER projects:
 - Add entry to `$VAULT/00-system/connections.md`
 - Format: `[DATE] | [[$PROJECT/wiki/note]] → applicable in [other-project]`
 
+## Step 8: Report what the save actually did
+
+Run this **after every write above and before the commit** — it reads the vault's
+working tree, so a commit first makes it see nothing:
+
+```bash
+bash "$BRAIN" save-report "$VAULT" "$PROJECT"
+```
+
+Exit **0** every owed step left a trace · **2** at least one did not · **1** could not
+measure (an error, not a pass — say so; do not report a clean save off it).
+
+The output is the Result block's raw material, and it is not optional prose:
+
+- **`ok`** — the step wrote something. Carry its numbers into the block as they are.
+- **`MISSING`** — a step that is owed unconditionally left no trace on disk. Either go
+  back and do it now, or write the line **"step skipped: <step> — <reason>"** in the
+  Result. Never both silent and finished.
+- **`ANSWER`** — a conditional step wrote nothing. That is often correct, but the
+  session has to *say* which: "no decision was made this session", "the structure did
+  not move", "nothing crossed into another project". An unstated answer is
+  indistinguishable from a forgotten step, which is the whole defect this step exists
+  for.
+- **`n/a`** — the step does not apply here (a content project has no architecture map).
+  Nothing to say.
+
+**Why this replaced a template.** Measured 2026-08-16 in `goprofi-voronka`, twice in one
+session: a save ran **eight steps of twelve** and reported success. The four that
+vanished were exactly the ones leaving no visible trace — `brain-version` (0b),
+`local-conventions` (0c), the decision note (2b), the architecture map (5) — and the miss
+was caught by the user noticing the save felt fast, not by anything printed. The old
+Result block listed those lines but asked for no numbers, so it was filled from the
+memory of what the session *meant* to do. A count has to be counted: the shell reports
+the facts, this step judges them, and the split is the same one `archive` uses — the
+model picks the boundary, the shell moves the bytes.
+
 ## Result
+
+Write the block from the `save-report` output — the numbers are its numbers, not a
+recollection. Shape:
 
 ```
 ✓ Session saved
 
-Log:        sessions/[YYYY-MM-DD_HHMM]_session.md
-Wiki:       [N] notes updated/created
-Decisions:  [K] decision notes created
-Arch map:   updated / not applicable
-Taskboard:  updated
+Log:        sessions/[the file save-report named]
+Wiki:       [N] created, [M] updated
+Decisions:  [K] created — or the stated reason there were none
+Version:    [the stamp save-report read]
+Taskboard:  updated / [stated reason it was not]
+Arch map:   updated / n/a / [stated reason it was not]
+Index:      updated / n/a
+step skipped: [step] — [reason]        ← one line per MISSING, or no such line at all
 
 Don't forget: git add -A && git commit -m "[DATE]" && git push
 ```

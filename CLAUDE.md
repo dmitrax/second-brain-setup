@@ -361,6 +361,37 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+- **A command's result block states measured facts, and names every step that left no
+  trace.** A template listing lines without demanding numbers gets filled from the memory
+  of what the session *meant* to do, and the steps that vanish first are the ones with no
+  visible output. Measured 2026-08-16 in `goprofi-voronka`, twice in one session:
+  `/brain-save` ran **eight steps of twelve** and reported success — missing the version
+  stamp (0b), the local-conventions lookup (0c), the decision note (2b) and the
+  architecture map (5). It was caught by the user noticing the save felt quick, which is
+  to say by nothing the command printed. **This is the package's own headline class
+  ("a failure indistinguishable from success") occurring inside the package**, with the
+  session saved, the commit made and everything green.
+  So the shell measures and the session judges — `brain.sh save-report` reads the vault's
+  working tree (before the commit; after it the tree is clean and every step reads as
+  skipped) and prints one line per step with one of four verdicts. Two of the four carry
+  the design:
+  **`MISSING`** is an unconditional step with no trace and sets exit 2; **`ANSWER`** is a
+  conditional step with no trace, which is usually legitimate but must be answered in
+  words — and it deliberately does **not** touch the exit code. A warning that fires on
+  every ordinary run stops being read, and this project has measured that twice already
+  (`prose-budget`'s permanent OVER, the Done counter advising an `archive` that moves
+  nothing). Two further things the implementation had to get right, both found by testing
+  rather than by reasoning: a verdict must never be produced by the *measuring mode*
+  (under a non-git vault nothing is "new", so asking for new files reported a
+  freshly-written log as absent), and a comparison must skip what it cannot compare (a
+  copy running with no `VERSION` file has no version to compare the stamp against, and
+  saying MISSING there is a verdict about the project drawn from a fact about the caller).
+  Checked by preflight 42, which runs all four outcomes on a fixture and verifies the call
+  sits between the writes and the commit. Note what the ordering half needed: grepping the
+  file for `save-report` passes on the prose *about* the step, and grepping the executable
+  blocks still passes on the Result template, which is fenced without a language and so
+  counts as code — only matching the invocation form goes red. Two negative tests to get
+  one line right.
 - **A fixture never carries a fresh literal date: the calendar is not an input to a
   test.** What must read *fresh* is computed from today (`$PF_FRESH`), what must read
   *stale* is written ancient (`$PF_ANCIENT`) — a date only ever gets older, so an ancient
