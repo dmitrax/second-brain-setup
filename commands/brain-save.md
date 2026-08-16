@@ -559,6 +559,9 @@ measure (an error, not a pass — say so; do not report a clean save off it).
 The output is the Result block's raw material, and it is not optional prose:
 
 - **`ok`** — the step wrote something. Carry its numbers into the block as they are.
+  Note `updated` and `brain-version` are reported separately: Step 0b stamps two fields,
+  and until 2026-08-16 only one of them was checked — a save that stamped the version and
+  not the date read as fully green.
 - **`MISSING`** — a step that is owed unconditionally left no trace on disk. Either go
   back and do it now, or write the line **"step skipped: <step> — <reason>"** in the
   Result. Never both silent and finished.

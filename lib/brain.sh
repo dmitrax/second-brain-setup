@@ -1495,6 +1495,29 @@ save_report() {
         else
             verdict MISSING "brain-version" "_PROJECT.md says '$stamped', installed is '$installed' — Step 0b did not run"
         fi
+
+        # Step 0b stamps TWO fields, and only one of them was ever checked here. Found
+        # 2026-08-16 by the owner asking why a save had felt quick: that save had run
+        # `stamp-field brain-version` and not `stamp-field updated`, and this report said
+        # `ok` twice — once for the version, once for "_PROJECT.md updated", which only
+        # means the file changed. On a fixture carrying `updated: 2020-01-01` the report
+        # was equally green. Half a step, invisible, inside the very command written to
+        # make skipped steps visible. The lint catches it later (stale-project compares
+        # the record to the last session); at write time nothing did.
+        upd=$(_lc_fm "$pm" updated)
+        newest_log=$(printf '%s\n' "$logs" | sed 's|.*/||; s|_.*||' | LC_ALL=C sort | tail -1)
+        if [ -z "$upd" ]; then
+            verdict MISSING "updated" "_PROJECT.md carries no updated: field"
+        elif [ -n "$newest_log" ] &&
+             [ "$(printf '%s\n%s\n' "$upd" "$newest_log" | LC_ALL=C sort | head -1)" = "$upd" ] &&
+             [ "$upd" != "$newest_log" ]; then
+            # sort, never `[ a \< b ]`: that form fails in zsh with "condition expected",
+            # and this package does not use a construct it forbids elsewhere just because
+            # this file happens to run under bash.
+            verdict MISSING "updated" "_PROJECT.md says '$upd', this session's log is '$newest_log' — Step 0b stamped the version but not the date"
+        else
+            _sr_line ok "updated" "$upd"
+        fi
     fi
 
     # ── 5. _PROJECT.md (Step 3) — owed unconditionally ───────────────────────

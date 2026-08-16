@@ -2572,6 +2572,8 @@ else
     # (a) a complete save: every owed step leaves a trace
     printf -- '---\ndate: %s\nzone: root\n---\nbody\n' "$PF_FRESH" > "$srv/proj/sessions/${PF_FRESH}_1200_session.md"
     printf -- '---\ndate: %s\n---\n[[../_PROJECT|_PROJECT]]\n' "$PF_FRESH" > "$srv/proj/wiki/decision-x.md"
+    # A complete save stamps `updated` too, or the run below would fail on that alone.
+    bash "$srb" stamp-field "$srv/proj/_PROJECT.md" updated "$PF_FRESH" >/dev/null 2>&1
     echo edit >> "$srv/proj/_PROJECT.md";        echo '- [ ] b' >> "$srv/proj/taskboard.md"
     echo row  >> "$srv/proj/architecture-map.md"; echo '- e'    >> "$srv/00-system/index.md"
     echo '- l' >> "$srv/00-system/connections.md"
@@ -2594,12 +2596,18 @@ else
         missing+="an unstamped brain-version is not reported MISSING"$'\n'
     grep -q 'MISSING  local conventions' <<<"$sr_out" ||
         missing+="a log dropping the project's own frontmatter key is not reported MISSING"$'\n'
+    # Step 0b stamps TWO fields. Checking only the version left half the step invisible:
+    # found 2026-08-16 when the owner asked why a save felt quick — that save had stamped
+    # brain-version and not updated, and the report said ok twice.
+    grep -q 'MISSING  updated' <<<"$sr_out" ||
+        missing+="_PROJECT.md older than this session's own log is not reported"$'\n'
     grep -q 'ANSWER   architecture map' <<<"$sr_out" ||
         missing+="an untouched map in a mixed project does not ask for an answer"$'\n'
     # ANSWER must NOT set the exit code on its own: a warning that fires every run stops
     # being read, and an ordinary save legitimately leaves conditional steps untouched.
     git -C "$srv" checkout -q . 2>/dev/null; git -C "$srv" clean -qfd 2>/dev/null
     printf -- '---\ndate: %s\nzone: root\n---\nbody\n' "$PF_FRESH" > "$srv/proj/sessions/${PF_FRESH}_1200_session.md"
+    bash "$srb" stamp-field "$srv/proj/_PROJECT.md" updated "$PF_FRESH" >/dev/null 2>&1
     echo edit >> "$srv/proj/_PROJECT.md"; echo row >> "$srv/proj/architecture-map.md"
     echo '- [ ] b' >> "$srv/proj/taskboard.md"
     bash "$srb" save-report "$srv" proj >/dev/null 2>&1

@@ -437,11 +437,19 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   copy running with no `VERSION` file has no version to compare the stamp against, and
   saying MISSING there is a verdict about the project drawn from a fact about the caller).
   Checked by preflight 42, which runs all four outcomes on a fixture and verifies the call
-  sits between the writes and the commit. Note what the ordering half needed: grepping the
-  file for `save-report` passes on the prose *about* the step, and grepping the executable
-  blocks still passes on the Result template, which is fenced without a language and so
-  counts as code — only matching the invocation form goes red. Two negative tests to get
-  one line right.
+  sits between the writes and the commit.
+  **A step that stamps two fields needs two assertions.** The first version of this report
+  checked `brain-version` and not `updated`, though Step 0b writes both — so a save that
+  stamped the version and skipped the date printed `ok` twice, and the second `ok` was
+  about the file having changed at all. Found 2026-08-16 by the owner asking why a save
+  had felt quick, which is the same instrument that found the original defect and the
+  reason the report exists; the report itself had inherited a smaller version of it.
+  Generalise: when a step performs N writes, the check enumerates N, and "the file
+  changed" is never evidence that a particular field in it was written.
+  Note what the ordering half of the check needed: grepping the file for `save-report`
+  passes on the prose *about* the step, and grepping the executable blocks still passes on
+  the Result template, which is fenced without a language and so counts as code — only
+  matching the invocation form goes red. Two negative tests to get one line right.
 - **A fixture never carries a fresh literal date: the calendar is not an input to a
   test.** What must read *fresh* is computed from today (`$PF_FRESH`), what must read
   *stale* is written ancient (`$PF_ANCIENT`) — a date only ever gets older, so an ancient
