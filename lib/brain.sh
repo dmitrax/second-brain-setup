@@ -1680,9 +1680,32 @@ lint_collect() {
     [ -n "$only" ] && PROJECTS="$only"
 
     # ── per project ──────────────────────────────────────────────────────────
+    # A project that is not `active` is not held to the freshness rules. The schema is
+    # `active` (the default when the field is absent) against anything else — `reference`,
+    # `paused`, `archived` all mean the same thing to the tool: no work is expected here,
+    # so "no work happened" is not a finding. The distinction between them is for the
+    # reader, exactly as with a decision note's status.
+    # The exclusion is never silent: excluded projects are named in the output, because a
+    # check that quietly looks at less than it claims is the defect this file exists for.
+    # Live case that forced this: puzzlebot-voronka is kept as a knowledge source for
+    # goprofi-voronka and is deliberately not developed — reporting it as stale every run
+    # is noise that cannot be acted on.
+    NOT_ACTIVE=""
+    for P in $PROJECTS; do
+        st=$(_lc_fm "$P/_PROJECT.md" status)
+        case "$st" in
+            ""|active) : ;;
+            *) NOT_ACTIVE="$NOT_ACTIVE $P($st)" ;;
+        esac
+    done
+    [ -n "$NOT_ACTIVE" ] &&
+        printf 'scope-note:not-active\tfreshness checks skipped for:%s\n' "$NOT_ACTIVE"
+
     for P in $PROJECTS; do
         f="$P/_PROJECT.md"
         [ -f "$f" ] || { printf 'project-missing:%s\tno _PROJECT.md\n' "$P"; continue; }
+        p_status=$(_lc_fm "$f" status)
+        case "$p_status" in ""|active) p_active=1 ;; *) p_active=0 ;; esac
 
         prose=$(_budget_prose "$f")
         ffc=$(_budget_ffc "$f")
@@ -1698,8 +1721,27 @@ lint_collect() {
                 echo "lint-collect: cannot parse date '$upd' in $f (no working date(1))" >&2
                 return 1
             fi
-            days=$(( (TODAY - us) / 86400 ))
-            [ "$days" -gt 14 ] && printf 'stale-project:%s\t%s days without an _PROJECT.md update\n' "$P" "$days"
+            # THE RECORD LAGGING THE WORK, not the calendar. This used to fire at 14 days
+            # since the last `updated:`, which measures how recently the owner chose to
+            # work on a project — not whether anything is wrong with it. Measured
+            # 2026-08-16 on the live vault: 7 findings, all noise. Six of those projects
+            # are simply not the current priority ("I work by need, not by schedule") and
+            # the seventh is kept as a reference source; every one of them had
+            # `updated:` exactly equal to the date of its own last session, i.e. every
+            # record was correct. A finding nobody can act on trains the reader to skim.
+            # What IS worth reporting is the opposite direction: a session was written and
+            # the project file was not updated with it — the save skipped Step 0b, or the
+            # file was edited by hand. That is the same class `save-report` catches at
+            # write time, caught here for every machine and every past save.
+            last_s=$(find "$P/sessions" -name '*_session.md' 2>/dev/null |
+                     sed 's|.*/||; s|_.*||' | LC_ALL=C sort | tail -1)
+            if [ -n "$last_s" ] && [ "$p_active" -eq 1 ]; then
+                ls_e=$(_lc_epoch "$last_s")
+                if [ -n "$ls_e" ] && [ "$ls_e" -gt "$us" ]; then
+                    printf 'stale-project:%s\tlast session %s, _PROJECT.md updated %s — the save did not stamp it\n' \
+                        "$P" "$last_s" "$upd"
+                fi
+            fi
         fi
 
         tb="$P/taskboard.md"
@@ -1718,6 +1760,7 @@ lint_collect() {
         fi
 
         am="$P/architecture-map.md"
+        [ "$p_active" -eq 0 ] && am=""   # not active: no work, so no map drift to report
         if [ -f "$am" ]; then
             mu=$(_lc_fm "$am" updated)
             ls_=$(find "$P/sessions" -maxdepth 1 -name '*_session.md' 2>/dev/null |

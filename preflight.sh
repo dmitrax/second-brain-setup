@@ -625,9 +625,13 @@ if [ -f "$LIBSH" ]; then
     # per-project check, because the project list was built from the top level. The file
     # sweeps always saw it, so the discrepancy read as a regression rather than a gap in
     # coverage.
-    mkdir -p "$LCV/other/nested"
+    mkdir -p "$LCV/other/nested/sessions"
     printf -- '---\nproject: nested\nupdated: 2020-01-01\n---\n## Current state\nbrief\n' \
         > "$LCV/other/nested/_PROJECT.md"
+    # A session the project file never recorded — that, not the calendar, is what
+    # stale-project reports since 2026-08-16 (see check 45).
+    printf -- '---\ndate: 2020-06-01\n---\nx\n' \
+        > "$LCV/other/nested/sessions/2020-06-01_1000_session.md"
 
     # A file under .gitignore must still be found: the sweep walks the filesystem, not
     # the git index. The session shell on macOS replaces grep with ugrep --ignore-files,
@@ -2725,6 +2729,65 @@ if [ -n "$missing" ]; then
     fail "a taskboard threshold measures the writing style, or advises what the tool cannot do" "$missing"
 else
     pass "taskboard budgets count open items and only advise archive for what it can reach"
+fi
+
+# ─── 45. Freshness measures the record against the work, and status is honoured ──
+# Two changes, one cause: a finding nobody can act on trains the reader to skim.
+#   * `stale-project` used to fire at 14 days since `updated:`. That measures how
+#     recently the owner chose to work on a project, not whether anything is wrong.
+#     Measured 2026-08-16 on the live vault: 7 findings, all noise — six projects were
+#     simply not the current priority, and every one of them had `updated:` exactly equal
+#     to the date of its own last session, i.e. every record was correct. It now reports
+#     the opposite direction: a session exists that the project file does not reflect.
+#   * A project that is not `active` is not held to freshness at all. Live case:
+#     puzzlebot-voronka is kept as a knowledge source for goprofi and deliberately not
+#     developed. The exclusion must be NAMED in the output — a check that quietly looks
+#     at less than it claims is this file's oldest enemy (sparse checkout, check 21).
+missing=""
+fv=$(mktemp -d)
+mkdir -p "$fv/00-system" "$fv/quiet/sessions" "$fv/quiet/wiki" "$fv/lagging/sessions" "$fv/lagging/wiki" "$fv/parked/sessions" "$fv/parked/wiki"
+printf -- '# index\n- [[quiet/_PROJECT]]\n- [[lagging/_PROJECT]]\n- [[parked/_PROJECT]]\n' > "$fv/00-system/index.md"
+# quiet: nothing written for ages, but the record matches its last session -> NOT a finding
+printf -- '---\nproject: quiet\nupdated: 2020-01-01\n---\n## Current state\nx\n' > "$fv/quiet/_PROJECT.md"
+printf -- '---\ndate: 2020-01-01\n---\nx\n' > "$fv/quiet/sessions/2020-01-01_1000_session.md"
+printf -- '---\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-q2]]\n' > "$fv/quiet/wiki/note-q1.md"
+# lagging: a session exists that the project file never recorded -> IS a finding
+printf -- '---\nproject: lagging\nupdated: 2020-01-01\n---\n## Current state\nx\n' > "$fv/lagging/_PROJECT.md"
+printf -- '---\ndate: 2020-06-01\n---\nx\n' > "$fv/lagging/sessions/2020-06-01_1000_session.md"
+printf -- '---\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-l2]]\n' > "$fv/lagging/wiki/note-l1.md"
+# parked: same lag, but not active -> excluded, and said out loud
+printf -- '---\nproject: parked\nstatus: reference\nupdated: 2020-01-01\n---\n## Current state\nx\n' > "$fv/parked/_PROJECT.md"
+printf -- '---\ndate: 2020-06-01\n---\nx\n' > "$fv/parked/sessions/2020-06-01_1000_session.md"
+printf -- '---\nupdated: 2019-01-01\n---\n# map\n' > "$fv/parked/architecture-map.md"
+printf -- '---\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-p2]]\n' > "$fv/parked/wiki/note-p1.md"
+# A note with no backlink: a CONTENT defect, unrelated to freshness. It must still be
+# reported for a parked project — the exemption covers staleness, not everything.
+printf -- '---\ndate: 2020-01-01\n---\nno backlink here [[note-p1]]\n' > "$fv/parked/wiki/note-p3.md"
+fv_out=$(bash "$LIBSH" lint-collect "$fv" 2>&1)
+if [ -z "$fv_out" ]; then
+    fail "check 45 got no output from lint-collect — the fixture or the command is broken"
+else
+    grep -q '^stale-project:lagging' <<<"$fv_out" ||
+        missing+="a session the project file never recorded is not reported"$'\n'
+    grep -q '^stale-project:quiet' <<<"$fv_out" &&
+        missing+="a project that is merely quiet is reported stale — the calendar is back"$'\n'
+    grep -q '^stale-project:parked' <<<"$fv_out" &&
+        missing+="a non-active project is held to freshness anyway"$'\n'
+    grep -q '^map-stale:parked' <<<"$fv_out" &&
+        missing+="a non-active project is reported for map drift"$'\n'
+    grep -q '^scope-note:not-active' <<<"$fv_out" ||
+        missing+="the excluded projects are not named — a silent exemption"$'\n'
+    grep -q 'parked' <<<"$(grep '^scope-note:not-active' <<<"$fv_out")" ||
+        missing+="the scope note does not name WHICH project it skipped"$'\n'
+    # The exemption must not swallow everything: content checks still apply to it.
+    grep -q '^wiki-no-backlink:parked' <<<"$fv_out" ||
+        missing+="a non-active project fell out of the content checks too — that is over-exemption"$'\n'
+fi
+rm -rf "$fv"
+if [ -n "$missing" ]; then
+    fail "freshness reports the calendar, or a status exemption hides projects silently" "$missing"
+else
+    pass "stale-project measures the record against the work; non-active projects are skipped and named"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

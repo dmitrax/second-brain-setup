@@ -361,6 +361,26 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+- **A freshness check measures the record against the work, never against the calendar.**
+  `stale-project` fired at 14 days since `updated:`, which reports how recently the owner
+  chose to work on a project — a fact about priorities, not about health. Measured
+  2026-08-16 on the live vault: 7 findings, all noise, and every one of those projects had
+  `updated:` exactly equal to the date of its own last session, meaning every record was
+  correct. The owner's description of how the work actually runs settled it: "I work by
+  need, not by schedule" — under which a month of quiet is the normal state of a project
+  that is simply not the current priority. It now reports the opposite direction, which is
+  actionable and rare: a session log exists that `_PROJECT.md` does not reflect (the save
+  skipped Step 0b, or someone edited by hand). **And a project carries `status:` —
+  `active` by default, against `reference`/`paused`/`archived` — which exempts it from
+  freshness entirely**, because a deliberately parked project cannot be "fixed" into
+  freshness. The exemption is named in the output (`scope-note:not-active`) and covers
+  staleness only: content checks still apply, or the status would become a way to hide a
+  project from the lint. Checked by preflight 45, whose fixture separates the three cases
+  that used to be one — quiet but recorded, recorded late, and parked.
+  Note what this cost elsewhere: seven `stale-project` keys left the shared baseline at
+  once, which reads exactly like debt somebody cleared. Say it out loud and reseal
+  deliberately, as when the taskboard-size metric was removed — a metric replaced silently
+  is indistinguishable from a metric satisfied.
 - **A command's result block states measured facts, and names every step that left no
   trace.** A template listing lines without demanding numbers gets filled from the memory
   of what the session *meant* to do, and the steps that vanish first are the ones with no
