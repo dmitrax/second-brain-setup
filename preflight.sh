@@ -38,13 +38,20 @@ PASSED=0
 # provisioning below (check 7) and the empty-input rule (check 14).
 # Detected by behaviour, not by reading $LANG: the variable can name a locale the
 # machine does not actually have, and it is the behaviour that the checks depend on.
-if printf 'caf\303\251\n' | grep -qE '[А-Яа-яЁё]'; then   # \ooo is POSIX, \xHH is not
+if grep -qE '[А-Яа-яЁё]' <<<"$(printf 'caf\303\251')"; then   # \ooo is POSIX, \xHH is not
     echo -e "${RED}✗${NC} the locale makes [А-Яа-яЁё] match any non-ASCII byte"
     echo "  Checks 32 and 33 would flag 'café' and 'Müller' as Russian."
     echo "  Current: LANG=${LANG:-unset} LC_ALL=${LC_ALL:-unset} LC_CTYPE=${LC_CTYPE:-unset}"
     echo "  Re-run under a UTF-8 locale, e.g.: LC_ALL=en_US.UTF-8 bash preflight.sh"
     exit 1
 fi
+
+# Fixture dates. Freshness is COMPUTED, staleness is written ancient — a literal date
+# meaning "recent" decays into a red on a fixed calendar day with nobody touching the
+# code (measured 2026-08-16, see check 40). PF_FRESH sits at 13 days so it also proves
+# the stale threshold is `> 14` rather than `>= 1`; PF_ANCIENT can only get older.
+PF_FRESH=$(date -d '-13 days' +%Y-%m-%d 2>/dev/null || date -v-13d +%Y-%m-%d)
+PF_ANCIENT=2020-01-01
 
 # Scan targets. preflight.sh is deliberately NOT among them: it holds the forbidden
 # patterns as search strings and would match itself — the same class of mistake as
@@ -278,7 +285,7 @@ else
     # 2026-08-04 by the sweep this rule demanded; here it had not fired yet only because
     # there are few obsidian calls and the producer finishes first.
     ob_calls=$(grep -nE '(^|[^-a-z])obsidian +vault' "$LIBSH" | grep -v '^[0-9]*:[[:space:]]*#')
-    if printf '%s\n' "$ob_calls" | grep -qv 'timeout [0-9]'; then
+    if grep -qv 'timeout [0-9]' <<<"$ob_calls"; then
         problems+="an obsidian call without timeout in lib/brain.sh"$'\n'
     fi
     # (1) An empty argument must be refused, not compared empty against empty.
@@ -328,9 +335,9 @@ if [ -f "$LIBSH" ]; then
     # property:set got wrong (quotes, inline lists, 007 -> 7).
     printf -- '---\ntags: [session, x]\nversion: "1.4.3"\nupdated: 2026-01-01\ncount: 007\n---\n\nbody\n' \
         > "$TMPLIB/a.md"
-    bash "$LIBSH" stamp-field "$TMPLIB/a.md" updated 2026-08-03 >/dev/null 2>&1 ||
+    bash "$LIBSH" stamp-field "$TMPLIB/a.md" updated 2026-02-03 >/dev/null 2>&1 ||
         problems+="stamp-field failed on a normal file"$'\n'
-    grep -q '^updated: 2026-08-03$' "$TMPLIB/a.md" || problems+="stamp-field did not write the date"$'\n'
+    grep -q '^updated: 2026-02-03$' "$TMPLIB/a.md" || problems+="stamp-field did not write the date"$'\n'
     grep -q '^tags: \[session, x\]$' "$TMPLIB/a.md" || problems+="stamp-field expanded an inline list"$'\n'
     grep -q '^version: "1.4.3"$' "$TMPLIB/a.md" || problems+="stamp-field stripped quotes"$'\n'
     grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field rewrote 007"$'\n'
@@ -530,11 +537,11 @@ if [ -f "$LIBSH" ]; then
     } > "$LCV/proj/taskboard.md"
 
     # The map is older than the last session.
-    printf -- '---\nupdated: 2026-01-01\n---\n# map\n' > "$LCV/proj/architecture-map.md"
+    printf -- '---\nupdated: 2019-01-01\n---\n# map\n' > "$LCV/proj/architecture-map.md"
     # Three sessions: two carry zone, the third does not -> key-uniformity.
     printf -- '---\ndate: 2026-06-01\nzone: root\n---\nx\n'  > "$LCV/proj/sessions/2026-06-01_1000_session.md"
     printf -- '---\ndate: 2026-06-02\nzone: back\n---\nx\n'  > "$LCV/proj/sessions/2026-06-02_1000_session.md"
-    printf -- '---\ndate: 2026-08-01\n---\nx\n'              > "$LCV/proj/sessions/2026-08-01_1000_session.md"
+    printf -- '---\ndate: 2026-02-01\n---\nx\n'              > "$LCV/proj/sessions/2026-02-01_1000_session.md"
 
     # Notes: one without a backlink, one without a sibling, one with no links at all.
     printf -- '---\ndate: 2026-06-01\n---\nbody [[note-sibling]]\n'         > "$LCV/proj/wiki/note-backless.md"
@@ -574,7 +581,13 @@ if [ -f "$LIBSH" ]; then
 
     # other: it IS in the registry; what it contributes is a duplicate basename
     # note-alone, which makes the bare [[note-alone]] in its note ambiguous.
-    printf -- '---\nproject: other\nupdated: 2026-08-01\n---\n## Current state\nbrief\n' \
+    # Its `updated:` is COMPUTED, never a literal. A fixture asserting "this project is
+    # NOT stale" against a hardcoded date decays into a red on a fixed calendar day with
+    # nobody touching the code: written 2026-08-04 as `2026-08-01`, it crossed the 14-day
+    # threshold on 2026-08-16 and failed the whole gate. Every other date here is
+    # deliberately ancient (2020, 2026-01), so only the freshness assertion needs this.
+    # 13 days, not 0: it must also prove the threshold is `> 14` and not `>= 1`.
+    printf -- '---\nproject: other\nupdated: %s\n---\n## Current state\nbrief\n' "$PF_FRESH" \
         > "$LCV/other/_PROJECT.md"
     printf -- '---\ndate: 2026-06-01\n---\nlink [[note-alone]] and [[../_PROJECT|_PROJECT]]\n' \
         > "$LCV/other/wiki/note-alone.md"
@@ -586,7 +599,7 @@ if [ -f "$LIBSH" ]; then
 
     # A project the registry does not know.
     mkdir -p "$LCV/unreg"
-    printf -- '---\nproject: unreg\nupdated: 2026-08-01\n---\n## Current state\nbrief\n' \
+    printf -- '---\nproject: unreg\nupdated: %s\n---\n## Current state\nbrief\n' "$PF_FRESH" \
         > "$LCV/unreg/_PROJECT.md"
 
     # A project NESTED inside another project. This is the class the inventory kept
@@ -814,7 +827,7 @@ while IFS= read -r line; do
     [ -z "$line" ] && continue
     hash="${line%% *}"
     msg="${line#* }"
-    echo "$msg" | grep -qE "^($CC_TYPES)(\([a-zA-Z0-9_.-]+\))?!?: .+" || \
+    grep -qE "^($CC_TYPES)(\([a-zA-Z0-9_.-]+\))?!?: .+" <<<"$msg" || \
         hits+="$hash: $msg"$'\n'
 done < <(git -C "$SCRIPT_DIR" log --no-merges --since="$CC_CUTOFF 00:00:00" --format="%h %s" 2>/dev/null)
 if [ -n "$hits" ]; then
@@ -838,7 +851,7 @@ CLAUDE_TPL=$(awk '
 ' "$SCRIPT_DIR/commands/brain-init.md")
 if [ -z "$CLAUDE_TPL" ]; then
     fail "the CLAUDE.md template was not found in brain-init.md Step 4 — the check did not run"
-elif echo "$CLAUDE_TPL" | grep -qE '^#{2,3} +(Current state|Статус)'; then
+elif grep -qE '^#{2,3} +(Current state|Статус)' <<<"$CLAUDE_TPL"; then
     fail "the CLAUDE.md template in brain-init.md opened a state section — that belongs to _PROJECT.md"
 else
     pass "the CLAUDE.md template opens no state section"
@@ -855,9 +868,9 @@ fi
 # handled by check 10 above.
 if [ -z "$CLAUDE_TPL" ]; then
     : # check 10 already failed on this; no need to say it twice
-elif echo "$CLAUDE_TPL" | grep -qE '^#{2,3} +(Stack|Стек)'; then
+elif grep -qE '^#{2,3} +(Stack|Стек)' <<<"$CLAUDE_TPL"; then
     fail "the CLAUDE.md template in brain-init.md opened an inventory section — that belongs to _PROJECT.md and architecture-map.md"
-elif echo "$CLAUDE_TPL" | grep -qF 'ANSWER TO QUESTION 5'; then
+elif grep -qF 'ANSWER TO QUESTION 5' <<<"$CLAUDE_TPL"; then
     fail "the CLAUDE.md template in brain-init.md pastes answer 5 whole — only the constraints from it belong in Rules"
 else
     pass "the CLAUDE.md template does not duplicate the stack inventory"
@@ -1022,7 +1035,7 @@ else
     zq=$(cd "$zg" && zsh -c "grep -rF --include='*.md' colima . | cat" 2>/dev/null)
     [ -n "$zu" ] && missing+="zsh ran an unquoted glob and it matched — the premise is gone"$'\n'
     [ -z "$zerr" ] && missing+="zsh did not refuse the unquoted glob — the rule's premise no longer holds"$'\n'
-    printf '%s\n' "$zq" | grep -qF colima ||
+    grep -qF colima <<<"$zq" ||
         missing+="the quoted form found nothing either — the test proves nothing"$'\n'
     rm -rf "$zg"
 fi
@@ -1153,12 +1166,12 @@ done_body=$(awk '/^_budget_done\(\)/ { f = 1 } f { print } f && /^}/ { exit }' "
 if [ -z "$done_body" ]; then
     missing+="lib: no _budget_done function — nowhere to check the Done counter"$'\n'
 else
-    printf '%s\n' "$done_body" | grep -qF '## (Done|Завершено)' ||
+    grep -qF '## (Done|Завершено)' <<<"$done_body" ||
         missing+="lib: the Done counter does not know where the Done section is"$'\n'
     # The section pattern being present is not enough: it can sit in the body without
     # taking part in the count. The counting line must be GUARDED by that flag. Caught by
     # a negative test 2026-08-04: removing the flag from the condition left this green.
-    printf '%s\n' "$done_body" | grep -qE '^[[:space:]]*d &&' ||
+    grep -qE '^[[:space:]]*d &&' <<<"$done_body" ||
         missing+="lib: the Done counter counts file-wide, not within the Done section"$'\n'
 fi
 grep -qE '^BUDGET_PROG=[0-9]{2,}' "$BL" ||
@@ -1434,12 +1447,12 @@ else
     done
     # Verified by RUNNING it on a fixture rather than grepping shape: three outcomes must differ.
     fx=$(mktemp -d)
-    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\none line\n' > "$fx/_PROJECT.md"
-    printf -- '# tb\n## In progress\n- [ ] one\n## Done\n- [x] 2026-08-01 done\n' > "$fx/taskboard.md"
+    printf -- '---\nupdated: %s\n---\n## Current state\none line\n' "$PF_ANCIENT" > "$fx/_PROJECT.md"
+    printf -- '# tb\n## In progress\n- [ ] one\n## Done\n- [x] 2020-08-01 done\n' > "$fx/taskboard.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 0 ] || missing+="within budget the exit code is not 0"$'\n'
     # over budget: inflate For future Claude past its threshold
-    { printf -- '---\nupdated: 2026-08-04\n---\n## For future Claude\n'
+    { printf -- '---\nupdated: %s\n---\n## For future Claude\n' "$PF_ANCIENT"
       i=0; while [ $i -lt 40 ]; do echo "- line $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 2 ] || missing+="an overrun does not give exit 2"$'\n'
@@ -1677,7 +1690,7 @@ PAIRS
     # negative test, which removed ЗАКРЫТО from the matcher and stayed green.
     lb_code=$(grep -vE '^[[:space:]]*#' "$LB")
     for ru in Завершено 'В работе' Статус 'Последняя сессия' ЗАКРЫТО; do
-        printf '%s\n' "$lb_code" | grep -qF "$ru" ||
+        grep -qF "$ru" <<<"$lb_code" ||
             missing+="  the pattern '$ru' disappeared from the code of lib/brain.sh"$'\n'
     done
     if [ -n "$missing" ]; then
@@ -1809,21 +1822,30 @@ fi
 # Measured 2026-08-04: check 26 went red against a fully working warning, and — worse —
 # the negative test on it reported a false "goes red", because it was red before the
 # mutation too. One such line voids both the check and the test on it.
-# The remedy: take the output into a variable and grep `printf '%s\n' "$var"`. The
-# producer then finishes before the grep and no SIGPIPE occurs.
-# The sweep this rule demanded over existing code found a second instance — the "obsidian
-# without timeout" check, where it had not fired only because the output was short.
+# The remedy is a here-string — `grep -q PATTERN <<<"$var"` — which is not a pipeline at
+# all, so pipefail has nothing to observe and the producer cannot be signalled.
+# WHAT THIS CHECK USED TO GET WRONG, and why the exemption is gone (measured 2026-08-16):
+# it exempted `printf`/`echo`/`cat`/`sed`/`head -N` as producers that "finish on their own
+# and take no SIGPIPE", and prescribed exactly that form as the fix. False. The race is
+# decided by the OUTPUT SIZE against the pipe buffer (64 KiB on Linux), not by the kind of
+# producer: with a match at 15% depth, `printf | grep -q` returned non-zero 0/200 times at
+# 28 KB, 199/200 at 56 KB and 200/200 at 114 KB. Check 33 fed it 42 KB — the grey zone —
+# and flapped red on ~20% of preflight runs, naming a different Russian pattern each time
+# while lib/brain.sh carried all of them. A release gate that fails at random is worse
+# than one that fails: its red is read as noise. So the rule is now absolute — no `grep -q`
+# ends a pipeline, whatever produces the input — because "is this output under 64 KB"
+# needs a judgement on every call site and grows with the vault, while "is there a pipe"
+# needs none.
 missing=""
 scanned=0
 for f in "$SCRIPT_DIR/preflight.sh" "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh"; do
     [ -f "$f" ] || continue
     scanned=$((scanned + 1))
-    # A printf/echo/cat/sed producer finishes on its own and takes no SIGPIPE — not counted.
+    # No producer is exempt (see the note above — the exemption was the defect).
     # Quoted spans are stripped first: a check may legitimately SEARCH for the string
     # "grep -q", and a pattern is data, not a pipeline. Caught by check 33's own line.
     h=$(sed -E "s@'[^']*'@@g; s@\"[^\"]*\"@@g" "$f" | grep -nE '\| *grep -q' |
-        grep -vE '^\s*[0-9]+:\s*#' |
-        grep -vE "(printf|echo|cat|sed|comm|sort|cut|head -[0-9]+) [^|]*\| *grep -q")
+        grep -vE '^\s*[0-9]+:\s*#')
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/    /')"$'\n'
 done
 if [ "$scanned" -eq 0 ]; then
@@ -1831,7 +1853,7 @@ if [ "$scanned" -eq 0 ]; then
 elif [ -n "$missing" ]; then
     fail "grep -q at the end of a pipeline: under pipefail the producer's SIGPIPE reads as failure" "$missing"
 else
-    pass "grep -q never follows a long-running producer ($scanned files)"
+    pass "grep -q never ends a pipeline, whatever produces the input ($scanned files)"
 fi
 
 # ─── 29. No personal data goes out to the public repo ────────────────────────
@@ -1887,7 +1909,7 @@ grep -nE '\beval\b|\bsh -c\b|\bbash -c\b' "$SCRIPT_DIR"/lib/*.sh >/dev/null 2>&1
 ij=$(mktemp -d)
 mkdir -p "$ij/00-system" "$ij/proj/wiki"
 printf -- '# index\n- [[proj/_PROJECT]]\n' > "$ij/00-system/index.md"
-printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nx\n' > "$ij/proj/_PROJECT.md"
+printf -- '---\nupdated: %s\n---\n## Current state\nx\n' "$PF_ANCIENT" > "$ij/proj/_PROJECT.md"
 IJ_FM='---\nstatus: draft\ndate: 2020-01-01\n---\n# x\n[[somename]]\n'
 ( cd "$ij/proj/wiki" || exit 1
   printf -- "$IJ_FM" > '$(touch zzz1).md'
@@ -1935,7 +1957,7 @@ sc2=$(mktemp -d)
 mkdir -p "$sc2/00-system" "$sc2/a/wiki" "$sc2/b/wiki"
 printf -- '# index\n- [[a/_PROJECT]]\n- [[b/_PROJECT]]\n' > "$sc2/00-system/index.md"
 for pr in a b; do
-    printf -- '---\nupdated: 2026-08-04\n---\n## Current state\nok\n' > "$sc2/$pr/_PROJECT.md"
+    printf -- '---\nupdated: %s\n---\n## Current state\nok\n' "$PF_FRESH" > "$sc2/$pr/_PROJECT.md"
     printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n# n\n[[../_PROJECT|_PROJECT]]\n' > "$sc2/$pr/wiki/note-$pr.md"
 done
 missing=""
@@ -1943,9 +1965,9 @@ out=$(bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project a 2>/dev/nul
 if [ -z "$out" ]; then
     missing+="the scoped run produced no findings — the fixture or the scope is broken"$'\n'
 else
-    printf '%s\n' "$out" | grep -qF 'stale-draft:a/wiki/note-a' ||
+    grep -qF 'stale-draft:a/wiki/note-a' <<<"$out" ||
         missing+="a finding inside the scope was lost"$'\n'
-    printf '%s\n' "$out" | grep -qE ':b(/|$)' &&
+    grep -qE ':b(/|$)' <<<"$out" &&
         missing+="another project's findings reached the scoped report: $(printf '%s\n' "$out" | grep -E ':b(/|$)' | tr '\n' ' ')"$'\n'
 fi
 bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$sc2" --project nosuchproj >/dev/null 2>&1 &&
@@ -1994,11 +2016,11 @@ else
         if [ -z "$short" ]; then
             missing+="$(basename "$f"): no short form"$'\n'; continue
         fi
-        printf '%s\n' "$short" | grep -qF '[[../_PROJECT|_PROJECT]]' ||
+        grep -qF '[[../_PROJECT|_PROJECT]]' <<<"$short" ||
             missing+="$(basename "$f"): the short form lacks the mandatory backlink"$'\n'
-        printf '%s\n' "$short" | grep -qF 'status: accepted' ||
+        grep -qF 'status: accepted' <<<"$short" ||
             missing+="$(basename "$f"): the short form carries different frontmatter"$'\n'
-        printf '%s\n' "$short" | grep -qF '## Alternatives rejected' &&
+        grep -qF '## Alternatives rejected' <<<"$short" &&
             missing+="$(basename "$f"): the short form carries a heavy section — that is not a second form"$'\n'
     done
     if [ -n "$missing" ]; then
@@ -2035,9 +2057,9 @@ cmp -s "$sc_fx/tb.md" "$sc_fx/orig.md" || missing+="the dry run changed the file
 bash "$BL" sweep-closed "$sc_fx/tb.md" --apply >/dev/null 2>&1 ||
     missing+="sweep-closed refused a valid fixture"$'\n'
 prog=$(awk '/^## /{ p = ($0 ~ /In progress/) } p' "$sc_fx/tb.md")
-printf '%s\n' "$prog" | grep -qF 'closed sub-item' ||
+grep -qF 'closed sub-item' <<<"$prog" ||
     missing+="the closed SUB-item left its open parent"$'\n'
-printf '%s\n' "$prog" | grep -qF '[x] closed top-level' &&
+grep -qF '[x] closed top-level' <<<"$prog" &&
     missing+="the closed top-level item stayed in In progress"$'\n'
 sort "$sc_fx/orig.md" > "$sc_fx/a"; sort "$sc_fx/tb.md" > "$sc_fx/b"
 cmp -s "$sc_fx/a" "$sc_fx/b" || missing+="the result is not a permutation of the input"$'\n'
@@ -2066,12 +2088,12 @@ LY
 # the negative test on it reported a false "goes red", because it was red before the
 # mutation too.
 ly_out=$(bash "$BL" sweep-closed "$sc_fx/lying.md" 2>&1)
-printf '%s\n' "$ly_out" | grep -qF 'this heading claims closure' ||
+grep -qF 'this heading claims closure' <<<"$ly_out" ||
     missing+="the move does not warn about a heading that will become false"$'\n'
 # And the reverse: an honest heading raises no warning.
 sed 's/✅ ЗАКРЫТО 2026-08-01 — всё сделано/Work in progress/' "$sc_fx/lying.md" > "$sc_fx/honest.md"
 ho_out=$(bash "$BL" sweep-closed "$sc_fx/honest.md" 2>&1)
-printf '%s\n' "$ho_out" | grep -qF 'this heading claims closure' &&
+grep -qF 'this heading claims closure' <<<"$ho_out" &&
     missing+="the warning fires on an honest heading — a false alarm"$'\n'
 # The guard is verified by RUNNING a broken copy, not by grepping for its presence.
 sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /body/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
@@ -2119,8 +2141,8 @@ for f in "${TARGETS[@]}"; do
     h=""
     for v in $used; do
         case "$v" in HOME|PATH|PWD|USER|TMPDIR|SHELL|IFS) continue ;; esac
-        printf '%s\n' "$assigned" | grep -qx "$v" && continue
-        printf '%s\n' "$prose"    | grep -qF "\$$v" && continue
+        grep -qx "$v" <<<"$assigned" && continue
+        grep -qF "\$$v" <<<"$prose" && continue
         h+="  \$$v — no assignment in a block and no mention in the file's prose"$'\n'
     done
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$h"
@@ -2178,9 +2200,9 @@ for fn in '_lc_strip' 'rename_note'; do
             on = 1; match($0, /^[[:space:]]*/); ind = substr($0, 1, RLENGTH); print; next }
         on { print; if ($0 == ind "}") exit }' "$SCRIPT_DIR/lib/brain.sh")
     [ -n "$body" ] || { missing+="$fn not found — the state-machine comparison had nothing to read"$'\n'; continue; }
-    printf '%s\n' "$body" | grep -q 'fence = !fence'   || missing+="$fn lost the fenced-block rule"$'\n'
-    printf '%s\n' "$body" | grep -q 'incode = 0'       || missing+="$fn lost the blank-line reset"$'\n'
-    printf '%s\n' "$body" | grep -q 'split($0, part'   || missing+="$fn lost the inline-code split"$'\n'
+    grep -q 'fence = !fence' <<<"$body"   || missing+="$fn lost the fenced-block rule"$'\n'
+    grep -q 'incode = 0' <<<"$body"       || missing+="$fn lost the blank-line reset"$'\n'
+    grep -q 'split($0, part' <<<"$body"   || missing+="$fn lost the inline-code split"$'\n'
 done
 # Behavioural: one fixture, every form, run for real.
 rf=$(mktemp -d); mkdir -p "$rf/proj/wiki" "$rf/proj/sessions"
@@ -2213,10 +2235,10 @@ rc=$?
 pm=$(cat "$rf/proj/_PROJECT.md")
 for form in '[[renamed]]' '[[proj/wiki/renamed]]' '[[renamed|alias]]' '[[renamed#head]]' \
             '[[renamed^blk]]' '![[renamed]]' '[[proj/wiki/renamed.md]]'; do
-    printf '%s\n' "$pm" | grep -qF "$form" || missing+="rename did not produce $form"$'\n'
+    grep -qF "$form" <<<"$pm" || missing+="rename did not produce $form"$'\n'
 done
-printf '%s\n' "$pm" | grep -qF '[[note-two]]'  || missing+="rename damaged the longer name note-two"$'\n'
-printf '%s\n' "$pm" | grep -qF '`[[note]]`'    || missing+="rename rewrote a quotation in inline code"$'\n'
+grep -qF '[[note-two]]' <<<"$pm"  || missing+="rename damaged the longer name note-two"$'\n'
+grep -qF '`[[note]]`' <<<"$pm"    || missing+="rename rewrote a quotation in inline code"$'\n'
 grep -qF 'pointer [[../wiki/renamed]]' "$rf/proj/sessions/s.md" || missing+="rename skipped a pointer in sessions/"$'\n'
 grep -qF 'quoted [[note]]' "$rf/proj/sessions/s.md" || missing+="rename rewrote a quotation inside a fenced block"$'\n'
 grep -qF 'spaced [[renamed]]' "$rf/proj/wiki/a name with spaces.md" ||
@@ -2394,6 +2416,45 @@ if [ -n "$missing" ]; then
     fail "a project CLAUDE.md can hold state that nothing ever looks at" "$missing"
 else
     pass "an existing CLAUDE.md is audited every save (7 outcomes, both languages, size ignored)"
+fi
+
+# ─── 41. A fixture date is never a fresh literal — the calendar is not an input ──
+# A test whose verdict changes with the date, on code nobody touched, is a broken test in
+# both directions: red it wastes the gate's credibility, green it proves nothing.
+# Measured 2026-08-16: the lint-collect fixture asserted `nope stale-project:other` against
+# `updated: 2026-08-01`, written 08-04 when it was 3 days old. On 08-16 it turned 15 — one
+# day past the threshold — and failed the whole release gate with the code unchanged since
+# 08-05. The sweep this rule demanded found four more not yet fired, one of them 3 days
+# out (the scope fixture's `2026-08-04`, healthy-by-intent projects that were about to be
+# reported stale).
+# So: what must read FRESH is computed ($PF_FRESH), what must read STALE is written ancient
+# ($PF_ANCIENT or an explicit old year) — a date can only get older, never younger, so an
+# ancient literal is stable while a recent one is a delayed failure. The bound is 30 days,
+# twice the largest age threshold in lib/ (14), so a literal cannot drift into a window.
+# Scope: only `date:`/`updated:` values, which is where an age is read from. Prose dates in
+# comments are records of when something was measured and must NOT be touched.
+missing=""
+PF_NOW=$(date +%s)
+pf_lits=$(grep -oE '^[^#]*(date|updated): 2[0-9]{3}-[0-9]{2}-[0-9]{2}' "$SCRIPT_DIR/preflight.sh" |
+          grep -oE '2[0-9]{3}-[0-9]{2}-[0-9]{2}' | LC_ALL=C sort -u)
+if [ -z "$pf_lits" ]; then
+    fail "check 41 found no fixture dates at all — empty input, not a clean file"
+else
+    pf_n=0
+    for d in $pf_lits; do
+        ds=$(date -d "$d" +%s 2>/dev/null || date -j -f "%Y-%m-%d %H:%M:%S" "$d 00:00:00" +%s)
+        [ -n "$ds" ] || { missing+="  cannot parse the fixture date $d"$'\n'; continue; }
+        pf_n=$((pf_n + 1))
+        age=$(( (PF_NOW - ds) / 86400 ))
+        [ "$age" -ge 30 ] ||
+            missing+="  $d is only $age days old — a fixture that must read fresh uses \$PF_FRESH"$'\n'
+    done
+    [ "$pf_n" -gt 0 ] || missing+="  no fixture date could be parsed — the date fallback is broken"$'\n'
+    if [ -n "$missing" ]; then
+        fail "a fixture carries a fresh literal date — it will go red on a calendar day, untouched" "$missing"
+    else
+        pass "fixture dates cannot drift into a threshold ($pf_n literals, all ≥30 days; freshness computed)"
+    fi
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

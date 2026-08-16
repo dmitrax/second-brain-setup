@@ -70,7 +70,7 @@ echo ""
 # exits non-zero (no exact tag — the normal state) aborts the script. The call used to
 # sit inside an `if`, which forgave it; taking it out of the pipeline exposed that.
 exact_tag=$(git -C "$SCRIPT_DIR" describe --tags --exact-match 2>/dev/null || true)
-if printf '%s\n' "$exact_tag" | grep -q "^v[0-9]*\.0"; then
+if grep -q "^v[0-9]*\.0" <<<"$exact_tag"; then
     echo -e "${YELLOW}⚠️  Major version detected.${NC}"
     echo "   Check migration guide before using on existing vaults."
     echo ""

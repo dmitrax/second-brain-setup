@@ -554,7 +554,7 @@ stamp_field() {
     case "$key" in
         *[!A-Za-z0-9_-]*) echo "stamp-field: refusing odd key '$key'" >&2; return 1 ;;
     esac
-    head -1 "$file" | grep -q '^---$' || {
+    [ "$(head -1 "$file")" = "---" ] || {
         echo "stamp-field: $file has no frontmatter block" >&2; return 1; }
 
     tmp="$file.brain-tmp.$$"
@@ -1182,7 +1182,7 @@ lint_collect() {
         return 1
     fi
     for p in $FS_P; do
-        printf '%s\n' "$REG_P" | grep -qxF "$p" || \
+        grep -qxF "$p" <<<"$REG_P" || \
             printf 'project-unregistered:%s\tin the vault, absent from %s\n' "$p" "$REG"
     done
     for p in $REG_P; do
@@ -1291,7 +1291,7 @@ lint_collect() {
 
     # ── frontmatter structure (no parser needed) ─────────────────────────────
     printf '%s\n' "$SCOPED_MD" | while read -r p; do
-        head -1 "$p" | grep -qx -- '---' || continue
+        [ "$(head -1 "$p")" = "---" ] || continue
         awk 'NR == 1 { next } /^---$/ { ok = 1; exit } END { exit ok }' "$p" && \
             printf 'frontmatter:%s\tblock not terminated\n' "${p#./}"
     done
@@ -1316,7 +1316,7 @@ lint_collect() {
                 # test passes every hit in it. And never just drop lines containing a
                 # backtick: a real bare link and an unrelated backtick share a line
                 # often enough (confirmed live in goprofi-voronka/_PROJECT.md).
-                sed -n "${ln}p" "$(_lc_clean "$hf")" | grep -qF "[[$name]]" || continue
+                grep -qF "[[$name]]" <<<"$(sed -n "${ln}p" "$(_lc_clean "$hf")")" || continue
                 echo "${hf#./}" >> "$LC_TMP/amb"
             done
     done < "$LC_TMP/dup"
@@ -1385,7 +1385,7 @@ _lc_keys() {
                     }' "$f" | LC_ALL=C sort -u)
         while read -r k; do
             [ -n "$k" ] || continue
-            printf '%s\n' "$have" | grep -qxF "$k" || echo "$k"
+            grep -qxF "$k" <<<"$have" || echo "$k"
         done < "$ct"
     done | LC_ALL=C sort | uniq -c | while read -r cnt k; do
         printf 'key-uniformity:%s\t%s entries lack %s (of %s)\n' "$label" "$cnt" "$k" "$n"

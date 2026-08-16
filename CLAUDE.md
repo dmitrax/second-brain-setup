@@ -332,12 +332,25 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   execution. Only a real vector reddens it — `eval`, `sh -c`, `bash -c` — which is why the
   check also asserts statically that none of those appears in `lib/`. A dynamic test whose
   failure mode you have not identified is a green you cannot spend.
-- **`grep -q` must not end a pipeline whose producer can still be writing.** The repo
+- **`grep -q` never ends a pipeline — no producer is exempt.** The repo
   scripts run under `set -uo pipefail`. `grep -q`/`-qv` exits at the first qualifying
   line, the producer then dies of SIGPIPE with 141, and `pipefail` makes 141 the status
-  of the whole pipeline — so a *successful match* reads as a failure. Take the output
-  into a variable and grep `printf '%s\n' "$var"` instead; bounded producers (`printf`,
-  `echo`, `cat`, `head -N`) cannot trigger it. Measured 2026-08-04: preflight 26 went red
+  of the whole pipeline — so a *successful match* reads as a failure. Use a here-string,
+  `grep -qF PATTERN <<<"$var"`: that is not a pipeline at all, so `pipefail` has nothing
+  to observe and the producer cannot be signalled.
+  **This rule shipped with a false exemption, and the correction is the point.** Until
+  2026-08-16 it said to take the output into a variable and grep `printf '%s\n' "$var"`,
+  because "bounded producers (`printf`, `echo`, `cat`, `head -N`) cannot trigger it".
+  They can, and the prescribed fix was itself the defect. What decides the race is the
+  **output size against the pipe buffer** (64 KiB on Linux), not the kind of producer:
+  measured with a match at 15% depth, `printf … | grep -q` returned non-zero 0/200 times
+  at 28 KB, **199/200 at 56 KB** and 200/200 at 114 KB. Preflight 33 fed it 42 KB — the
+  grey zone — and flapped red on roughly a fifth of runs, naming a different Russian
+  pattern each time while `lib/brain.sh` carried all of them; two consecutive runs
+  accused different patterns, which is what exposed it. A gate that fails at random is
+  worse than one that fails, because its red gets read as noise. Hence the absolute form:
+  "is this output under 64 KB" needs a judgement at every call site and grows with the
+  vault, "is there a pipe" needs none. Measured 2026-08-04: preflight 26 went red
   against a working warning, and — worse — the negative test on it reported a cheerful
   "goes red" because the check was red *before* the mutation too. One such line voids
   both the check and its test. The sweep this rule demanded found three more, one of them
@@ -348,6 +361,21 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+- **A fixture never carries a fresh literal date: the calendar is not an input to a
+  test.** What must read *fresh* is computed from today (`$PF_FRESH`), what must read
+  *stale* is written ancient (`$PF_ANCIENT`) — a date only ever gets older, so an ancient
+  literal is stable while a recent one is a failure with a delay fuse. Measured
+  2026-08-16: the `lint-collect` fixture asserted `nope stale-project:other` against
+  `updated: 2026-08-01`, written on 08-04 when it was three days old; on 08-16 it turned
+  15, one day past the threshold, and failed the release gate with no commit since 08-05.
+  Both halves of that are bad — the red says nothing about the code, and had the assertion
+  been the other way round it would have gone *green* for the same reason. The sweep found
+  four more not yet fired, the nearest three days out: the scope fixture dated
+  `2026-08-04` set up two projects that are healthy *by intent*, which the stale check was
+  about to contradict. Bound is 30 days, twice the largest age threshold in `lib/`, so a
+  literal cannot drift into a window. Checked by preflight 41, which reads `date:` and
+  `updated:` values only — a date in a comment is a record of when something was measured
+  and must never be rewritten to satisfy a check.
 - **Section names are matched in BOTH languages at once, never switched between them.**
   `(Done|Завершено)`, `(In progress|В работе)`, `(Current state|Статус)` — the code
   reads a vault, and a real vault is mixed: measured 2026-08-04, `second-brain-setup`
