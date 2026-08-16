@@ -482,7 +482,13 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   tool will ever file, and the Done threshold it then trips is unsatisfiable by any amount
   of running `archive`. Measured 2026-08-04 in this project: 35 closed entries, 2 dated.
   A closed **sub-item** under a parent needs no date — it is not an archivable entry and
-  is not counted as one. Where the date usually goes missing: it sat in a section heading
+  is not counted as one. **If the entries are already closed and undated**, do not date
+  them by hand and do not nest them: `brain.sh backfill-dates <taskboard>` reads the date
+  of the first commit showing each entry closed (dry-run; add `--apply`). It refuses
+  outside git and on entries whose text cannot be told apart, and its rewrite must differ
+  from the original by dates alone. A date in the entry BODY is never used for this — in
+  a live board those meant, variously, when the task closed, when it was opened, and when
+  it was due. Where the date usually goes missing: it sat in a section heading
   (`### ✅ ЗАКРЫТО 03.08`), and headings are not moved, so the sweep separates the item
   from the only date it ever had. Date the items before sweeping, not after.
 - taskboard `In progress` / total → `brain.sh sweep-closed <taskboard>` (dry-run by

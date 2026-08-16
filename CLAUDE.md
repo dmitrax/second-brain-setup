@@ -457,10 +457,23 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   counted as an entry. Where the date usually goes missing: it sat in a section heading
   (`### ✅ ЗАКРЫТО 03.08`), and headings are not moved, so `sweep-closed` separates the
   item from the only date it ever had — which is why it must be said before the sweep, not
-  by the warning after it. Do not repair such a backlog from git history: a commit date is
-  not a completion date, and 33 near-identical ones are noise where chronology was wanted.
-  Nest the undated entries under the dated parent step they were sub-results of. Checked by
-  preflight 37, whose file list is **derived** — any command that creates a `## Done`
+  by the warning after it.
+  **The repair clause is reversed as of 2026-08-16, and the reversal is the useful part.**
+  It said: do not repair such a backlog from git history, a commit date is not a completion
+  date, nest the undated entries under a dated parent instead. Two things were wrong with
+  that. First, the alternative does not exist at scale — measured on the goprofi board as
+  of 08-07, 36 of 37 entries needed it, and "nest them under a parent" is not an operation
+  anyone performs 36 times; the entries stayed undated for nine days and the threshold
+  stayed unsatisfiable. Second, the objection targets the wrong quantity: `backfill-dates`
+  does not read "the commit date" but the date of the FIRST commit showing that entry
+  closed, which errs in one direction only (never earlier than the real closure) and is
+  wrong by a day at most in the observed cases. Against no date at all, that is a better
+  answer, and it is the one goprofi reached by hand on 08-15 — 34 entries, zero collisions,
+  zero re-opened. What survives from the old clause: a **body** date is still never used
+  (`Исправлено 07.08` is a closing date, `(заведено 2026-07-31)` is not, `со сроком
+  2026-08-02` is a deadline — measured in the same board, 31 of 37 entries), so `archive`
+  reports them as a separate state instead of moving by them. Checked by preflight 43, and
+  by preflight 37, whose file list is **derived** — any command that creates a `## Done`
   section or hands entries to `archive` must state the rule, so a sixth such command is
   caught without anyone extending a list. It found `brain-lint.md` on its first run, which
   the hand-written list of two had missed.

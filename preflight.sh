@@ -375,6 +375,23 @@ if [ -f "$LIBSH" ]; then
     grep -q 'closed sub-item' "$TMPLIB/tb.md" || problems+="archive: touched the In progress section"$'\n'
     grep -q 'tail' "$TMPLIB/tb.md" || problems+="archive: lost the section after Done"$'\n'
     grep -q '2026-06-01' "$TMPLIB/tb.md" && problems+="archive: duplicated an entry (it is still in the taskboard)"$'\n'
+    # Three states, three different words. "0 entries older than X" is TRUE and useless
+    # when the dates are in the bodies: measured 2026-08-16 on the goprofi board as of
+    # 08-07, 31 of 37 entries were dated only in the body and the run said "0 moved,
+    # 42 stay", which was read for nine days as "nothing is due for archiving".
+    printf -- '## Done\n- [x] dated in the body\n      closed on 2026-07-01 per the log\n- [x] nothing date-like at all\n      just prose\n' > "$TMPLIB/tb3.md"
+    printf -- '# Archive\n' > "$TMPLIB/ar3.md"
+    a3=$(bash "$LIBSH" archive "$TMPLIB/tb3.md" "$TMPLIB/ar3.md" --before 2026-08-01 2>&1)
+    grep -q 'date in the BODY' <<<"$a3" ||
+        problems+="archive: a body-dated entry is not distinguished from an undated one"$'\n'
+    grep -q 'no date anywhere' <<<"$a3" ||
+        problems+="archive: an entry with no date at all is not named as such"$'\n'
+    grep -q 'backfill-dates' <<<"$a3" ||
+        problems+="archive: does not say how to recover the missing dates"$'\n'
+    # And it must NOT move by a body date: those mean different things (closed on / opened
+    # on / due by), so archiving on them files entries under the wrong date, silently.
+    grep -q 'dated in the body' "$TMPLIB/tb3.md" ||
+        problems+="archive: moved an entry using a date from its body"$'\n'
     # A malformed date and a missing file must be refused, not read as "found nothing".
     bash "$LIBSH" archive "$TMPLIB/tb.md" "$TMPLIB/ar.md" --before yesterday >/dev/null 2>&1 &&
         problems+="archive: accepted a malformed date"$'\n'
@@ -2573,6 +2590,141 @@ if [ -n "$missing" ]; then
     fail "a skipped save step can still read as a successful save" "$missing"
 else
     pass "save-report measures the save on disk (4 outcomes run, ordering and MISSING wording checked)"
+fi
+
+# ─── 43. backfill-dates recovers closing dates from history, or refuses ──────
+# `archive` moves dated entries only, so an undated Done backlog makes its threshold
+# unsatisfiable by any amount of running `archive` — a permanent violation rather than a
+# standard. goprofi did the recovery by hand on 2026-08-15 (34 entries, zero collisions);
+# this is that, in the package, because by hand nobody will do it twice.
+# Checked by running against a real repository, not by grepping shape. What each case
+# guards is written next to it — every one of them broke at least once while being built.
+missing=""
+bf=$(mktemp -d)
+git -C "$bf" init -q >/dev/null 2>&1
+git -C "$bf" config user.email t@t >/dev/null 2>&1
+git -C "$bf" config user.name t >/dev/null 2>&1
+if ! git -C "$bf" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "check 43 could not build a git fixture — the outcome would be untested, not clean"
+else
+    # Three commits: an entry is opened, then closed, then a second one is closed later.
+    printf -- '## In progress\n- [ ] alpha\n- [ ] beta\n\n## Done\n' > "$bf/taskboard.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-05-01T10:00:00' GIT_COMMITTER_DATE='2026-05-01T10:00:00' \
+        git -C "$bf" commit -qm one >/dev/null 2>&1
+    printf -- '## In progress\n- [ ] beta\n\n## Done\n- [x] alpha, closed with no date\n      body line\n' > "$bf/taskboard.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-06-02T10:00:00' GIT_COMMITTER_DATE='2026-06-02T10:00:00' \
+        git -C "$bf" commit -qm two >/dev/null 2>&1
+    printf -- '## In progress\n\n## Done\n- [x] alpha, closed with no date\n      body line\n- [x] beta, also undated\n- [x] 2026-01-01 gamma, already dated\n' > "$bf/taskboard.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-07-03T10:00:00' GIT_COMMITTER_DATE='2026-07-03T10:00:00' \
+        git -C "$bf" commit -qm three >/dev/null 2>&1
+
+    # (a) a dry run reports and writes nothing
+    before=$(command cat "$bf/taskboard.md")
+    out=$(bash "$LIBSH" backfill-dates "$bf/taskboard.md" 2>&1)
+    [ "$(command cat "$bf/taskboard.md")" = "$before" ] ||
+        missing+="the dry run wrote to the taskboard"$'\n'
+    grep -q '2 undated entries, 2 datable' <<<"$out" ||
+        missing+="the dry run does not count what it can date (got: $(head -1 <<<"$out"))"$'\n'
+
+    # (b) --apply dates each entry from the commit that first shows it closed
+    bash "$LIBSH" backfill-dates "$bf/taskboard.md" --apply >/dev/null 2>&1 ||
+        missing+="--apply failed on a valid board"$'\n'
+    grep -q '^- \[x\] 2026-06-02 alpha' "$bf/taskboard.md" ||
+        missing+="alpha was not dated from the commit that closed it (2026-06-02)"$'\n'
+    grep -q '^- \[x\] 2026-07-03 beta' "$bf/taskboard.md" ||
+        missing+="beta was not dated from its own commit (2026-07-03)"$'\n'
+    grep -q '^- \[x\] 2026-01-01 gamma' "$bf/taskboard.md" ||
+        missing+="an already dated entry was rewritten"$'\n'
+    grep -q '^      body line' "$bf/taskboard.md" ||
+        missing+="a body line was lost or moved"$'\n'
+    # Nothing but dates: strip them from both sides and the files must be identical.
+    sed -E 's/^(- \[x\]) [0-9]{4}-[0-9]{2}-[0-9]{2}/\1/' "$bf/taskboard.md" > "$bf/after.strip"
+    printf '%s\n' "$before" | sed -E 's/^(- \[x\]) [0-9]{4}-[0-9]{2}-[0-9]{2}/\1/' > "$bf/before.strip"
+    cmp -s "$bf/after.strip" "$bf/before.strip" ||
+        missing+="the rewrite changed something other than the dates"$'\n'
+    # Running it again must be a no-op, not a second date on the same line.
+    out=$(bash "$LIBSH" backfill-dates "$bf/taskboard.md" 2>&1)
+    grep -q 'already carries a date' <<<"$out" ||
+        missing+="a second run does not recognise the board as fully dated"$'\n'
+
+    # (c) two entries with the same text cannot be told apart — refuse, never guess.
+    printf -- '## Done\n- [x] same text\n- [x] same text\n' > "$bf/dup.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    git -C "$bf" commit -qm dup >/dev/null 2>&1
+    bash "$LIBSH" backfill-dates "$bf/dup.md" >/dev/null 2>&1
+    [ $? -eq 1 ] || missing+="duplicate entry texts are not refused"$'\n'
+
+    # (d) no git, no history: that is an error, not an empty result. This is the check
+    # that caught the real bug — the pathspec was resolved from the file's own directory
+    # instead of the repository root, so git returned an empty log for a file with 156
+    # revisions and every entry would have been reported undatable.
+    ng=$(mktemp -d)
+    printf -- '## Done\n- [x] whatever\n' > "$ng/taskboard.md"
+    bash "$LIBSH" backfill-dates "$ng/taskboard.md" >/dev/null 2>&1
+    [ $? -eq 1 ] || missing+="a taskboard outside git does not exit 1"$'\n'
+    # A tracked-but-in-a-subdirectory board must still find its history.
+    mkdir -p "$bf/sub"
+    printf -- '## Done\n- [x] sub entry undated\n' > "$bf/sub/taskboard.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-07-04T10:00:00' GIT_COMMITTER_DATE='2026-07-04T10:00:00' \
+        git -C "$bf" commit -qm sub >/dev/null 2>&1
+    out=$(bash "$LIBSH" backfill-dates "$bf/sub/taskboard.md" 2>&1)
+    grep -q '1 datable' <<<"$out" ||
+        missing+="a board in a subdirectory finds no history — the pathspec is resolved from the wrong root"$'\n'
+    rm -rf "$ng"
+fi
+rm -rf "$bf"
+if [ -n "$missing" ]; then
+    fail "backfill-dates cannot recover a closing date, or damages the board doing it" "$missing"
+else
+    pass "backfill-dates dates entries from history, refuses ambiguity, touches nothing else"
+fi
+
+# ─── 44. The taskboard counters measure debt, and never advise the impossible ──
+# Two complaints from live use, both fixed by measuring something else:
+#   * In progress was counted in LINES. goprofi read 1148/300 with 64 genuinely open
+#     tasks, because that board requires each task to carry its measurement — so the
+#     threshold punished the format and was unreachable without breaking another rule.
+#   * The Done overrun advised running `archive`, which moves dated entries only. On a
+#     board where none are dated it moves zero, and an instruction the tool cannot carry
+#     out teaches the reader to skip the whole block.
+missing=""
+tc=$(mktemp -d)
+printf -- '---\nupdated: %s\n---\n## Current state\nx\n' "$PF_ANCIENT" > "$tc/_PROJECT.md"
+# 5 open items, each with a long justified body: many lines, little debt.
+{ echo '## In progress'
+  i=0; while [ $i -lt 5 ]; do echo "- [ ] task $i"
+      j=0; while [ $j -lt 40 ]; do echo "      justification line $j"; j=$((j + 1)); done
+      i=$((i + 1)); done
+  echo '## Done'; } > "$tc/verbose.md"
+out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/verbose.md" 2>&1)
+grep -q 'In progress (open items): 5/' <<<"$out" ||
+    missing+="a board of 5 well-justified tasks is not measured as 5 items"$'\n'
+grep -q 'OVER.*In progress' <<<"$out" &&
+    missing+="200 lines of justification for 5 tasks reads as an overrun"$'\n'
+# Done over budget with nothing archivable must say so and point at the recovery.
+{ echo '## Done'; i=0; while [ $i -lt 25 ]; do echo "- [x] closed $i"; i=$((i + 1)); done; } > "$tc/undated.md"
+out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/undated.md" 2>&1)
+grep -q 'archive can move: 0' <<<"$out" ||
+    missing+="a Done overrun with no dated entry does not say archive can move nothing"$'\n'
+grep -q 'backfill-dates' <<<"$out" ||
+    missing+="the unactionable advice is not replaced by the one that works"$'\n'
+# With dated entries it must name how many are reachable, not repeat the total.
+{ echo '## Done'; i=0; while [ $i -lt 25 ]; do echo "- [x] 2026-01-0$((i % 9 + 1)) closed $i"; i=$((i + 1)); done; } > "$tc/dated.md"
+out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/dated.md" 2>&1)
+grep -q 'archive can move: 25' <<<"$out" ||
+    missing+="a fully dated Done section does not report all entries as archivable"$'\n'
+# The lint and prose-budget must agree: one implementation, or they disagree per board.
+lc_out=$(cd "$tc" 2>/dev/null && bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/dated.md" 2>&1)
+[ "$out" = "$lc_out" ] || missing+="prose-budget is not deterministic on the same input"$'\n'
+rm -rf "$tc"
+if [ -n "$missing" ]; then
+    fail "a taskboard threshold measures the writing style, or advises what the tool cannot do" "$missing"
+else
+    pass "taskboard budgets count open items and only advise archive for what it can reach"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

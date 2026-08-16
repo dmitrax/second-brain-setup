@@ -46,6 +46,13 @@ usage: brain.sh <command> [args]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+  backfill-dates <taskboard> [--apply]
+                               give every undated closed entry the date of the first
+                               commit that shows it closed. archive can only move dated
+                               entries, so an undated Done section is a threshold no
+                               amount of archiving can satisfy. Refuses outside git and
+                               on entries it cannot tell apart. Dry-run unless --apply;
+                               the rewrite must differ from the original by dates alone.
   sweep-closed <taskboard> [--apply]
                                move closed top-level items, with their bodies, from
                                the In progress section into Done — the section the
@@ -232,12 +239,30 @@ archive_done() {
             # Continuation lines fall through to `dest` below, which is what makes the
             # sub-items follow their parent once they stop being counted as entries.
             if ($0 ~ /^-[[:space:]]*(\[x\]|✅)/) {
+                entry++                       # a new entry begins; body lines follow
                 d = ""
                 if (match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/))
                     d = substr($0, RSTART, RLENGTH)
                 # No date -> keep. Never move what we cannot date.
                 dest = (d != "" && d < before) ? "moved" : "kept"
                 n[dest]++
+                # Three states, three different words — see the note above the function.
+                # `undatable` is the one that used to be silent: the entry carries no date
+                # in its head, but its BODY does, so "nothing to archive" was read as
+                # "nothing is due" when it meant "I am not looking where the date is".
+                if (d == "") { undated_head++; body_date = 0; cur_undated = 1 }
+                else         { cur_undated = 0 }
+                next_is_body = 1
+            }
+            # A body line of an entry whose head carried no date: remember that a date
+            # exists down here, but never USE it — measured 2026-08-16 on the goprofi
+            # taskboard as of 08-07, body dates mean several different things
+            # ("Исправлено 07.08" is a closing date, "(заведено 2026-07-31)" is not,
+            # "со сроком 2026-08-02" is a deadline). Moving by them would archive
+            # entries by the wrong date, silently.
+            if (cur_undated && $0 !~ /^-[[:space:]]*(\[x\]|✅)/ &&
+                $0 ~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|[0-9][0-9]?\.[0-9][0-9]/) {
+                if (!body_date) { body_date = 1; undatable++ }
             }
             if (dest == "") { print > (w "/head"); next }   # prose before the first entry
             print > (w "/" dest)
@@ -245,6 +270,8 @@ archive_done() {
         END {
             print n["moved"] + 0 > (w "/n_moved")
             print n["kept"]  + 0 > (w "/n_kept")
+            print undated_head + 0 > (w "/n_undated")
+            print undatable + 0 > (w "/n_undatable")
         }
     ' "$tb" || { rm -rf "$work"; return 1; }
 
@@ -252,6 +279,8 @@ archive_done() {
     for f in head kept moved tail; do [ -f "$work/$f" ] || : > "$work/$f"; done
     n_moved=$(cat "$work/n_moved" 2>/dev/null || echo 0)
     n_kept=$(cat "$work/n_kept" 2>/dev/null || echo 0)
+    n_undated=$(cat "$work/n_undated" 2>/dev/null || echo 0)
+    n_undatable=$(cat "$work/n_undatable" 2>/dev/null || echo 0)
 
     # Balance check before touching anything. The first hand-rolled archiving in
     # this repo duplicated three entries; a count that does not add up means stop.
@@ -272,6 +301,22 @@ archive_done() {
     fi
 
     echo "archive: $n_moved entries older than $before, $n_kept stay (of $total_before)"
+    # Say which of the three states the untouched entries are in. "0 moved" used to be
+    # the whole message, and it reads as "nothing is due for archiving" when it can also
+    # mean "36 entries are due and I cannot see their dates" — a green answering a
+    # different question than the one asked, which is this package's headline defect
+    # class. Measured 2026-08-16 on goprofi's taskboard as of 08-07: 5 entries dated in
+    # the head, 31 dated only in the body, 1 with no date at all.
+    if [ "$n_undated" -gt 0 ]; then
+        if [ "$n_undatable" -gt 0 ]; then
+            echo "archive: $n_undatable of them carry a date in the BODY, not in the entry line —"
+            echo "archive:   not moved on purpose: a body date may be when the task was opened or due,"
+            echo "archive:   not when it closed. Recover the real ones with: brain.sh backfill-dates $tb"
+        fi
+        no_date=$((n_undated - n_undatable))
+        [ "$no_date" -gt 0 ] &&
+            echo "archive: $no_date carry no date anywhere — date them by hand or with backfill-dates"
+    fi
     if [ "$apply" != "--apply" ]; then
         echo "archive: dry-run, nothing written (pass --apply)"
         rm -rf "$work"; return 0
@@ -298,6 +343,181 @@ archive_done() {
     mv "$work/tb.new" "$tb" && mv "$work/ar.new" "$ar"
     echo "archive: moved $n_moved entries ($moved_lines lines) into $(basename "$ar")"
     rm -rf "$work"
+}
+
+# ── backfill-dates ───────────────────────────────────────────────────────────
+# Recover the closing date of a Done entry from the file's own git history: the date of
+# the FIRST commit in which that entry appears closed. `archive` moves dated entries and
+# refuses undated ones, so an undated backlog makes the Done threshold unsatisfiable by
+# any amount of running `archive` — a permanent violation rather than a standard, which
+# this project classifies as a defect in the rule, not in the board.
+#
+# Why git and not the text: measured 2026-08-16 on the goprofi taskboard as of 08-07,
+# 31 of 37 entries carried a date ONLY in the body, and those dates mean different
+# things — "Исправлено 07.08" is a closing date, "(заведено 2026-07-31)" is an opening
+# one, "со сроком 2026-08-02" is a deadline. Reading them would date entries wrongly and
+# silently. The first commit that shows the entry closed is not an opinion.
+#
+# What the date means, stated because it is not quite "when the work finished": it is
+# when the closure was first COMMITTED under the entry's current wording. Re-wording an
+# entry after closing it moves its key, so the date found is that of the re-wording. That
+# is a bounded error in one direction (never earlier than the real closure) and it beats
+# the alternative on offer, which is no date at all — goprofi did exactly this by hand on
+# 2026-08-15 for 34 entries, with zero key collisions and zero re-opened items.
+#
+# The key is the entry head with the marker, dates and markdown noise stripped. ASCII
+# operations only: a character class like [^[:alnum:]] behaves differently for Cyrillic
+# between gawk, mawk and the BSD awk on macOS, and the vault is full of Cyrillic.
+_bf_key_awk='
+function bfkey(s) {
+    sub(/^-[[:space:]]*(\[x\]|\[ \]|✅)[[:space:]]*/, "", s)
+    gsub(/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/, "", s)
+    gsub(/[`*_]/, "", s)
+    gsub(/[[:space:]]+/, " ", s)
+    sub(/^ /, "", s); sub(/ $/, "", s)
+    # Deliberately NOT truncated. substr() counts bytes in mawk and in the BSD awk, so a
+    # cut at N would split a Cyrillic character in half — and a key holding invalid UTF-8
+    # is the class that already cost this project three checks in a row, because GNU grep
+    # returns zero matches on such input. The whole line costs nothing to hold.
+    return s
+}'
+
+# Closed entry keys of one taskboard, read from stdin.
+_bf_keys() {
+    awk "$_bf_key_awk"'
+        /^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+        d && /^-[[:space:]]*(\[x\]|✅)/ { k = bfkey($0); if (k != "") print k }
+    '
+}
+
+backfill_dates() {
+    tb="${1:-}"; apply="${2:-}"
+    [ -f "$tb" ] || { echo "backfill-dates: no taskboard at '${tb:-}'" >&2; return 1; }
+    dir=$(cd "$(dirname "$tb")" && pwd) || return 1
+    base=$(basename "$tb")
+    if ! git -C "$dir" rev-parse --git-dir >/dev/null 2>&1; then
+        # No history means no source of truth. Refuse loudly: "cannot look" and
+        # "nothing to find" are different facts, and only one deserves a clean exit.
+        echo "backfill-dates: $dir is not a git repository — there is no history to read" >&2
+        return 1
+    fi
+    rel=$(git -C "$dir" ls-files --full-name -- "$base" 2>/dev/null | head -1)
+    [ -n "$rel" ] || { echo "backfill-dates: $base is not tracked by git — no history to read" >&2; return 1; }
+    # `--full-name` is relative to the repository ROOT, so every git call below has to run
+    # from there. Run from the file's own directory instead and the pathspec resolves to
+    # `<dir>/<dir>/<file>`, which matches nothing: git exits 0 with an empty log, and the
+    # backfill would have reported "no entry is datable" about a file with 156 revisions.
+    top=$(git -C "$dir" rev-parse --show-toplevel) || return 1
+
+    work="${TMPDIR:-/tmp}/brain-backfill.$$"
+    mkdir -p "$work" || return 1
+
+    # Which entries need a date: closed, in Done, no date in the entry line.
+    awk "$_bf_key_awk"'
+        /^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+        d && /^-[[:space:]]*(\[x\]|✅)/ && $0 !~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ {
+            k = bfkey($0); if (k != "") print k
+        }
+    ' "$tb" > "$work/need"
+    n_need=$(grep -c . "$work/need")
+    if [ "$n_need" -eq 0 ]; then
+        echo "backfill-dates: every closed entry already carries a date — nothing to do"
+        rm -rf "$work"; return 0
+    fi
+    # Duplicate keys would each claim the other's date. Refuse, as lint-diff does.
+    dup=$(LC_ALL=C sort "$work/need" | uniq -d)
+    if [ -n "$dup" ]; then
+        echo "backfill-dates: refused — these entries are indistinguishable by their text:" >&2
+        printf '%s\n' "$dup" | sed 's/^/  /' >&2
+        rm -rf "$work"; return 1
+    fi
+
+    # Walk the history oldest first; the first commit showing a key as closed dates it.
+    : > "$work/found"
+    n_rev=0
+    git -C "$top" log --format='%H %ad' --date=short --reverse -- "$rel" > "$work/revs" 2>/dev/null
+    while read -r sha day; do
+        [ -n "$sha" ] || continue
+        n_rev=$((n_rev + 1))
+        git -C "$top" show "$sha:$rel" 2>/dev/null | _bf_keys |
+            while IFS= read -r k; do
+                [ -n "$k" ] || continue
+                grep -qxF "$k" <<<"$(cut -f2- "$work/found")" || printf '%s\t%s\n' "$day" "$k" >> "$work/found"
+            done
+    done < "$work/revs"
+    if [ "$n_rev" -eq 0 ]; then
+        echo "backfill-dates: git knows no revision of $rel — nothing to read" >&2
+        rm -rf "$work"; return 1
+    fi
+
+    # Report before writing: which entries got a date, which the history cannot date.
+    n_hit=0; n_miss=0
+    : > "$work/plan"
+    while IFS= read -r k; do
+        [ -n "$k" ] || continue
+        day=$(awk -F'\t' -v key="$k" '$2 == key { print $1; exit }' "$work/found")
+        if [ -n "$day" ]; then
+            n_hit=$((n_hit + 1)); printf '%s\t%s\n' "$day" "$k" >> "$work/plan"
+        else
+            n_miss=$((n_miss + 1))
+            printf 'backfill-dates:   no commit shows this entry closed: %s\n' "$(cut -c1-60 <<<"$k")"
+        fi
+    done < "$work/need"
+
+    echo "backfill-dates: $n_need undated entries, $n_hit datable from $n_rev revisions, $n_miss not"
+    if [ "$apply" != "--apply" ]; then
+        [ "$n_hit" -gt 0 ] && head -5 "$work/plan" |
+            while IFS="$(printf '\t')" read -r day k; do
+                printf 'backfill-dates:   %s  %s\n' "$day" "$(cut -c1-60 <<<"$k")"
+            done
+        echo "backfill-dates: dry-run, nothing written (pass --apply)"
+        rm -rf "$work"; return 0
+    fi
+    if [ "$n_hit" -eq 0 ]; then
+        echo "backfill-dates: nothing to write"; rm -rf "$work"; return 0
+    fi
+
+    cp "$tb" "$work/tb.bak"
+    # -v, not a trailing PLAN=... assignment: an operand assignment is applied when awk
+    # reaches that argument, which is AFTER BEGIN has run, so the plan would be read from
+    # an empty filename. Caught by awk going fatal; had BEGIN not used it, it would have
+    # been a silent no-op instead.
+    awk -v PLAN="$work/plan" "$_bf_key_awk"'
+        BEGIN { FS = "\t"
+                while ((getline line < PLAN) > 0) { split(line, a, "\t"); date[a[2]] = a[1] } }
+        /^## / { d = ($0 ~ /^## (Done|Завершено)/) }
+        {
+            if (d && $0 ~ /^-[[:space:]]*(\[x\]|✅)/ && $0 !~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/) {
+                k = bfkey($0)
+                if (k in date) {
+                    # Insert right after the marker, the position `archive` reads.
+                    match($0, /^-[[:space:]]*(\[x\]|✅)/)
+                    print substr($0, 1, RLENGTH) " " date[k] substr($0, RLENGTH + 1)
+                    next
+                }
+            }
+            print
+        }
+    ' "$tb" > "$work/tb.new" || { rm -rf "$work"; return 1; }
+
+    # Two safeties, both refusing rather than repairing. (1) the entry count may not
+    # change; (2) stripping the inserted dates again must reproduce the original byte
+    # for byte — that is what proves nothing but a date was touched.
+    c_old=$(awk '/^## /{d=($0 ~ /^## (Done|Завершено)/); next} d && /^-[[:space:]]*(\[x\]|✅)/{n++} END{print n+0}' "$tb")
+    c_new=$(awk '/^## /{d=($0 ~ /^## (Done|Завершено)/); next} d && /^-[[:space:]]*(\[x\]|✅)/{n++} END{print n+0}' "$work/tb.new")
+    if [ "$c_old" -ne "$c_new" ]; then
+        echo "backfill-dates: refused — entry count changed $c_old -> $c_new" >&2
+        rm -rf "$work"; return 1
+    fi
+    sed -E 's/^(-[[:space:]]*(\[x\]|✅)) [0-9]{4}-[0-9]{2}-[0-9]{2}/\1/' "$work/tb.new" > "$work/tb.strip"
+    sed -E 's/^(-[[:space:]]*(\[x\]|✅)) [0-9]{4}-[0-9]{2}-[0-9]{2}/\1/' "$tb"           > "$work/tb.orig.strip"
+    if ! cmp -s "$work/tb.strip" "$work/tb.orig.strip"; then
+        echo "backfill-dates: refused — the rewrite changed something other than a date" >&2
+        rm -rf "$work"; return 1
+    fi
+    cat "$work/tb.new" > "$tb" || { rm -rf "$work"; return 1; }
+    echo "backfill-dates: dated $n_hit entries from git history (backup: $work/tb.bak)"
+    return 0
 }
 
 # ── version ──────────────────────────────────────────────────────────────────
@@ -756,7 +976,9 @@ sweep_closed() {
 BUDGET_PROSE=60
 BUDGET_FFC=20
 BUDGET_DONE=20
-BUDGET_PROG=300
+# Items, not lines — see _budget_prog. 40 open top-level tasks is roughly what the two
+# outlier boards exceed and every other board sits far below (next largest: 4).
+BUDGET_PROG=40
 
 # non-blank lines of one '## ' section, heading excluded. Top-level, not nested in
 # lint_collect: prose-budget needs the same counter, and a copy would be a second
@@ -775,7 +997,32 @@ _budget_done() {
          d && /^-[[:space:]]*(\[x\]|✅)/ { n++ }
          END { print n + 0 }' "$1"
 }
-_budget_prog() { awk '/^## /{ p = ($0 ~ /In progress|В работе/) } p' "$1" | grep -c .; }
+# How many Done entries `archive` can actually move: the ones carrying a date in the
+# entry line, which is the only place it reads. One implementation, two callers (the lint
+# and prose-budget) — the advice "run archive" is worthless when this is 0, and both
+# callers have to say the same number or they will disagree about the same board.
+_budget_done_dated() {
+    awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+         d && /^-[[:space:]]*(\[x\]|✅)/ && /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
+         END { print n + 0 }' "$1"
+}
+
+# Open top-level items in In progress — ITEMS, not lines.
+# Lines were the wrong unit and the complaint came from a live project: goprofi-voronka
+# read 1148/300 with 64 genuinely open tasks, ~18 lines each, because that board requires
+# every task to carry its measurement and its mechanism. The threshold was therefore
+# unreachable without breaking another rule of that project, which by this project's own
+# classification makes it a permanent violation rather than a standard. Counting items
+# measures the debt (how much is open) instead of the writing style (how well each item is
+# justified), and it is comparable between projects that record tasks differently.
+# Measured 2026-08-16 across 10 boards: 130, 60, 4, 3, 3, 0, 0, 0, 0, 0 open items against
+# 2084, 494, 55, 10, 4, 2, 2, 2, 1, 1 lines — the two projects the line threshold caught
+# are exactly the two the item threshold catches, so no signal is lost in the change.
+_budget_prog() {
+    awk '/^## / { p = ($0 ~ /In progress|В работе/); next }
+         p && /^-[[:space:]]*\[ \]/ { n++ }
+         END { print n + 0 }' "$1"
+}
 
 # prose-budget <_PROJECT.md> [taskboard.md]
 #   exit 0 within budget · 2 over budget · 1 could not measure
@@ -809,8 +1056,19 @@ prose_budget() {
         # NOT READ, never silence: "no taskboard" and "no overrun" are different facts.
         echo "taskboard.md                       NOT READ — no file at $tb"
     else
-        report "taskboard Done (entries)" "$(_budget_done "$tb")" "$BUDGET_DONE"
-        report "taskboard In progress (lines)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
+        dn=$(_budget_done "$tb"); dnd=$(_budget_done_dated "$tb")
+        report "taskboard Done (entries)" "$dn" "$BUDGET_DONE"
+        # Never advise `archive` without saying how much of it archive can reach: the
+        # advice was unactionable on every board whose entries are undated, and an
+        # instruction the tool cannot carry out devalues the whole block of output.
+        if [ "$dn" -gt "$BUDGET_DONE" ]; then
+            if [ "$dnd" -eq 0 ]; then
+                echo "        of them archive can move: 0 — date them first: brain.sh backfill-dates $tb"
+            else
+                echo "        of them archive can move: $dnd (the rest carry no date in the entry line)"
+            fi
+        fi
+        report "taskboard In progress (open items)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
@@ -1454,12 +1712,9 @@ lint_collect() {
             prog=$(_budget_prog "$tb")
             # The detail names the ACTIONABLE part: archive only moves dated entries,
             # and "archive it" is useless advice when not one entry carries a date.
-            dnd=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
-                       d && /^-[[:space:]]*(\[x\]|✅)/ &&
-                       /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
-                       END { print n + 0 }' "$tb")
+            dnd=$(_budget_done_dated "$tb")
             [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
-            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s lines\n' "$P" "$prog"
+            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s open items\n' "$P" "$prog"
         fi
 
         am="$P/architecture-map.md"
@@ -1660,6 +1915,7 @@ case "${1:-}" in
     claude-md-audit)    shift; claude_md_audit "${1:-}" ;;
     sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
     save-report)        shift; save_report "${1:-}" "${2:-}" ;;
+    backfill-dates)     shift; backfill_dates "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
