@@ -973,7 +973,24 @@ sweep_closed() {
 # `_PROJECT.md` crossed its budget four times through ordinary status edits, each time
 # announced only by a lint run by hand. A session cannot be relied on to run that lint,
 # so the measurement belongs at the write.
-BUDGET_PROSE=60
+# Three sections, three independent limits — never their sum.
+# The sum was the defect. `For future Claude` already had its own limit of 20 and was
+# counted again inside the 60; `Последняя сессия` is already governed by "keep the last
+# ~5 entries" and was counted again as lines. So two thirds of the budget was regulating
+# what another rule already regulated, and the only unregulated section — Current state —
+# got whatever was left, which on a busy project was nothing. Measured 2026-08-16 over
+# every revision since the budget was introduced: goprofi-voronka was OVER in 66 of 96
+# revisions (peak 162) and _arch/dimarch in 11 of 14 (peak 201), while both sit at 58-60
+# today because sessions squeeze them there every save. A warning that fires two runs out
+# of three is not a warning. This is the same duplicate-signal removal already performed
+# once on the taskboard, where a whole-file threshold restated two targeted ones.
+# Current state: measured 12-35 across the vault; SKILL.md asks for ~10 and 30 is the
+# point past which it is demonstrably a recap rather than a status.
+BUDGET_CURRENT=30
+# Entries, not lines: the rule was always "keep the last ~5 entries", and the same 5
+# entries span 5 lines in one project and 26 in another — lines measure how wordy each
+# entry is, which is the author's judgement, not debt.
+BUDGET_SESSIONS=5
 BUDGET_FFC=20
 BUDGET_DONE=20
 # Items, not lines — see _budget_prog. 40 open top-level tasks is roughly what the two
@@ -987,7 +1004,13 @@ _lc_section() {
     awk -v pat="$2" '/^## /{ p = ($0 ~ pat); next } p && NF' "$1" | grep -c .
 }
 
-_budget_prose() { _lc_section "$1" '^## (Current state|Статус|Last session|Последняя сессия|For future Claude)'; }
+_budget_current() { _lc_section "$1" '^## (Current state|Статус)'; }
+# Entries of the session list: a line that starts with a date. Both heading spellings.
+_budget_sessions() {
+    awk '/^## / { p = ($0 ~ /^## (Last session|Последняя сессия)/); next }
+         p && /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
+         END { print n + 0 }' "$1"
+}
 _budget_ffc()   { _lc_section "$1" '^## For future Claude'; }
 # Both markers, always: projects write closed items as `- [x]` and as `- ✅`, and a
 # counter that knows one reports zero for a project using the other. Count inside Done
@@ -1048,7 +1071,8 @@ prose_budget() {
             printf 'ok              %s: %s/%s\n' "$1" "$2" "$3"
         fi
     }
-    report "_PROJECT.md prose" "$(_budget_prose "$pm")" "$BUDGET_PROSE"
+    report "_PROJECT.md Current state" "$(_budget_current "$pm")" "$BUDGET_CURRENT"
+    report "_PROJECT.md session list (entries)" "$(_budget_sessions "$pm")" "$BUDGET_SESSIONS"
     report "_PROJECT.md For future Claude" "$(_budget_ffc "$pm")" "$BUDGET_FFC"
     if [ -z "$tb" ]; then
         echo "taskboard.md                       not given — only the _PROJECT.md sections measured"
@@ -1102,13 +1126,10 @@ prose_budget() {
 # there. Summing legitimate rules with chronicle is the same distortion already removed
 # twice — from the `_PROJECT.md` threshold and from the taskboard one. Measure the part
 # that hurts: the sections that carry state, not the total.
-claude_md_audit() {
-    f="${1:-}"
-    [ -n "$f" ] || { echo "claude-md-audit: need <CLAUDE.md>" >&2; return 1; }
-    # NOT READ, never silence: "no file" and "no findings" are different facts, and only
-    # one of them is worth a zero exit.
-    [ -f "$f" ] || { echo "claude-md-audit: no such file: $f" >&2; return 1; }
-
+# Audit ONE file. The public entry point below runs this over every instruction file the
+# repository has, because a project's instructions are rarely one file.
+_cma_one() {
+    f="$1"
     found=0
     # Both spellings, always — a live fleet is mixed, and a pattern that knows one
     # language reports zero for a project using the other.
@@ -1145,8 +1166,65 @@ claude_md_audit() {
     fi
 
     [ "$found" -eq 1 ] && return 2
-    echo "ok  CLAUDE.md carries no state section, no inventory copy and no dated chronicle"
     return 0
+}
+
+# claude-md-audit <CLAUDE.md>
+#   exit 0 clean · 2 findings · 1 could not read the file
+#
+# Scope: the file given AND every other CLAUDE.md tracked in the same repository. A
+# project's instructions are not one file — measured 2026-08-16 in goprofi-voronka, they
+# are four (root 765 lines, backend 645, content 579, infra 200: 2189 lines, 172 KB) and
+# only the root one was ever audited, because that is the path /brain-save happens to
+# hand over. Three files out of four were watched by nobody. The scope is printed rather
+# than assumed — a check that quietly covers less than it claims is the defect this file
+# exists for, and "one file was clean" must never be read as "the instructions are clean".
+# Size is still deliberately not measured: rules grow legitimately, and this project has
+# removed a size threshold twice for exactly that reason.
+claude_md_audit() {
+    f="${1:-}"
+    [ -n "$f" ] || { echo "claude-md-audit: need <CLAUDE.md>" >&2; return 1; }
+    # NOT READ, never silence: "no file" and "no findings" are different facts, and only
+    # one of them is worth a zero exit.
+    [ -f "$f" ] || { echo "claude-md-audit: no such file: $f" >&2; return 1; }
+
+    dir=$(cd "$(dirname "$f")" && pwd) || return 1
+    files="$f"
+    if git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1; then
+        top=$(git -C "$dir" rev-parse --show-toplevel)
+        # Tracked files only: an untracked CLAUDE.md in someone's scratch directory is not
+        # part of the project's instructions. `ls-files` prints paths from the root.
+        others=$(git -C "$top" ls-files -- '*CLAUDE.md' 'CLAUDE.md' 2>/dev/null |
+                 while IFS= read -r rel; do
+                     [ -f "$top/$rel" ] || continue
+                     [ "$top/$rel" = "$f" ] || echo "$top/$rel"
+                 done)
+        [ -n "$others" ] && files="$f
+$others"
+    fi
+    n_files=$(grep -c . <<<"$files")
+    n_lines=0
+    while IFS= read -r one; do
+        [ -n "$one" ] || continue
+        n_lines=$(( n_lines + $(grep -c '' "$one") ))
+    done <<<"$files"
+    printf 'scope\t%s instruction file(s), %s lines loaded at session start\n' "$n_files" "$n_lines"
+
+    rc=0
+    while IFS= read -r one; do
+        [ -n "$one" ] || continue
+        out=$(_cma_one "$one"); one_rc=$?
+        if [ "$one_rc" -eq 2 ]; then
+            rc=2
+            printf '%s:
+' "${one#$(dirname "$f")/}"
+            printf '%s
+' "$out" | sed 's/^/  /'
+        fi
+    done <<<"$files"
+    [ "$rc" -eq 0 ] &&
+        echo "ok  no state section, no inventory copy and no dated chronicle in any of them"
+    return "$rc"
 }
 
 # ── vault-language ───────────────────────────────────────────────────────────
@@ -1707,9 +1785,11 @@ lint_collect() {
         p_status=$(_lc_fm "$f" status)
         case "$p_status" in ""|active) p_active=1 ;; *) p_active=0 ;; esac
 
-        prose=$(_budget_prose "$f")
+        cur=$(_budget_current "$f")
+        sess=$(_budget_sessions "$f")
         ffc=$(_budget_ffc "$f")
-        [ "$prose" -gt "$BUDGET_PROSE" ] && printf 'prose-budget:%s\t%s lines against a budget of ~%s\n' "$P" "$prose" "$BUDGET_PROSE"
+        [ "$cur" -gt "$BUDGET_CURRENT" ] && printf 'current-state:%s\tCurrent state %s lines against ~%s — status and open blockers only\n' "$P" "$cur" "$BUDGET_CURRENT"
+        [ "$sess" -gt "$BUDGET_SESSIONS" ] && printf 'session-list:%s\t%s entries against ~%s — drop the oldest, the account stays in sessions/\n' "$P" "$sess" "$BUDGET_SESSIONS"
         [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s lines\n' "$P" "$ffc"
 
         upd=$(_lc_fm "$f" updated)

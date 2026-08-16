@@ -465,8 +465,14 @@ not a pass — say so and do not claim the sizes are fine).
 
 On **2**, name the overrun in the result block and act on it now, in this session:
 
-- `_PROJECT.md` prose → the paragraph to collapse is almost always one restating a wiki
+- `Current state` → the paragraph to collapse is almost always one restating a wiki
   note written this same session. Replace it with one line plus the `[[wikilink]]`.
+  The three sections are measured **independently**, never as a sum: `For future Claude`
+  has its own limit and the session list is counted in entries, so an overrun here is
+  about this section alone and cannot be paid off by trimming another.
+- `session list (entries)` → more than ~5 entries. Drop the oldest, **after** checking it
+  links a session log that exists (the step above says why). Entries, not lines: how
+  wordy an entry is, is your judgement; how many there are, is the rule.
 - `For future Claude` → drop what has aged into a fact no longer surprising; it stays
   findable by grep in `wiki/`.
 - taskboard Done → `brain.sh archive <taskboard> <archive-note> --before <YYYY-MM-DD>

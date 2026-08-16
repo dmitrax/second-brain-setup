@@ -361,6 +361,36 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+- **Sections are limited independently; a budget that sums them punishes twice and
+  fires always.** `prose-budget` added `Current state` + `Последняя сессия` + `For future
+  Claude` against 60 lines — but FFC already had its own limit of 20, and the session list
+  was already governed by "keep the last ~5 entries". Two thirds of the budget therefore
+  re-regulated what another rule regulated, leaving the only ungoverned section, `Current
+  state`, with whatever remained: on a busy project, nothing. Measured 2026-08-16 over
+  every revision since the budget was introduced: `goprofi-voronka` was OVER in **66 of 96**
+  revisions (peak 162) and `_arch/dimarch` in **11 of 14** (peak 201), while both sit at
+  58-60 today because sessions squeeze them there at every save. A warning that fires two
+  runs out of three is not a warning, and this is the same duplicate-signal removal already
+  performed on the taskboard, where a whole-file threshold restated two targeted ones.
+  Now three limits: `Current state` 30 lines, the session list **5 entries** (the same five
+  entries span 5 lines in one project and 26 in another — lines measure wordiness, which is
+  the author's judgement), FFC 20 lines. The finding key changed with the metric
+  (`prose-budget:` → `current-state:`, plus `session-list:`) rather than keeping a name that
+  no longer describes what is measured; the baseline was resealed and the swap said out loud.
+  Checked by preflight 25, whose fixture is three sections each inside its own limit and
+  past the old sum.
+- **An audit covers every instruction file the project has, and prints how many.** A
+  project's instructions are rarely one file: measured 2026-08-16 in `goprofi-voronka` they
+  are four — root 765 lines, backend 645, content 579, infra 200, together 2189 lines and
+  172 KB loaded at session start — and only the root was ever audited, because that is the
+  path `/brain-save` happens to hand over. Three files of four were watched by nobody, and
+  "the file I was given is clean" read as "the instructions are clean". `claude-md-audit`
+  now audits the given file plus every other `CLAUDE.md` **tracked** in the same repository
+  (untracked ones are somebody's scratch, not the project's rules), names the file each
+  finding came from, and prints a `scope` line with the file and line count. Size remains
+  deliberately unmeasured — rules grow legitimately, and a size threshold has been removed
+  twice here for that reason; the scope line is a statement of coverage, not a budget.
+  Checked by preflight 40, including that an untracked file is not counted.
 - **A freshness check measures the record against the work, never against the calendar.**
   `stale-project` fired at 14 days since `updated:`, which reports how recently the owner
   chose to work on a project — a fact about priorities, not about health. Measured

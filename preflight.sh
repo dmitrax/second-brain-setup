@@ -539,6 +539,8 @@ if [ -f "$LIBSH" ]; then
     {
         printf -- '---\nproject: proj\nupdated: 2020-01-01\n---\n\n## Current state\n'
         i=0; while [ $i -lt 55 ]; do echo "state line $i"; i=$((i + 1)); done
+        printf -- '\n## Последняя сессия\n'
+        i=0; while [ $i -lt 6 ]; do echo "2026-01-0$((i + 1)) — entry $i"; i=$((i + 1)); done
         printf -- '\n## For future Claude\n'
         i=0; while [ $i -lt 25 ]; do echo "constant $i"; i=$((i + 1)); done
     } > "$LCV/proj/_PROJECT.md"
@@ -647,8 +649,13 @@ if [ -f "$LIBSH" ]; then
     want() { grep -q "^$1	" "$out" || problems+="class not found: $1"$'\n'; }
     nope() { grep -q "^$1	" "$out" && problems+="false finding: $1"$'\n'; }
 
-    want 'prose-budget:proj'
+    # Three independent limits since 2026-08-16, never their sum: Current state (lines),
+    # the session list (ENTRIES) and For future Claude (lines).
+    want 'current-state:proj'
+    want 'session-list:proj'
     want 'ffc-budget:proj'
+    nope 'prose-budget:proj'   # the summed metric was removed — it double-counted two
+                               # sections that already carry their own limits
     want 'stale-project:proj'
     want 'taskboard-inprogress:proj'
     nope 'taskboard-size:proj'   # the metric was removed 2026-08-04 — it must not come back
@@ -1461,7 +1468,7 @@ else
     grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
         missing+="an overrun is allowed to finish silently"$'\n'
     # One implementation: the thresholds are variables, and lint_collect reads the same ones.
-    for v in BUDGET_PROSE BUDGET_FFC BUDGET_DONE BUDGET_PROG; do
+    for v in BUDGET_CURRENT BUDGET_SESSIONS BUDGET_FFC BUDGET_DONE BUDGET_PROG; do
         n=$(grep -c "^$v=" "$lb")
         [ "$n" -eq 1 ] || missing+="$v is defined $n time(s), it must be exactly one"$'\n'
         grep -qF "\$$v" "$lb" || missing+="$v is used nowhere"$'\n'
@@ -1477,6 +1484,27 @@ else
       i=0; while [ $i -lt 40 ]; do echo "- line $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 2 ] || missing+="an overrun does not give exit 2"$'\n'
+    # The three sections are limited independently, never as a sum. A file whose sections
+    # are each within their own limit must pass even when they add up past the old 60:
+    # `For future Claude` carries its own threshold and `Последняя сессия` is governed by
+    # an entry count, so summing them punished a project twice for one thing and left the
+    # only unregulated section — Current state — with whatever remained.
+    { printf -- '---\nupdated: %s\n---\n## Current state\n' "$PF_ANCIENT"
+      i=0; while [ $i -lt 25 ]; do echo "state line $i"; i=$((i + 1)); done
+      printf -- '\n## Последняя сессия\n'
+      i=0; while [ $i -lt 5 ]; do echo "2026-01-0$((i + 1)) — entry $i"; echo "  wrapped line"; i=$((i + 1)); done
+      printf -- '\n## For future Claude\n'
+      i=0; while [ $i -lt 18 ]; do echo "- constant $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
+    out=$(bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" 2>&1); rc=$?
+    [ "$rc" -eq 0 ] ||
+        missing+="53 lines across three sections, each within its own limit, still reads as an overrun"$'\n'
+    grep -q 'session list (entries): 5/' <<<"$out" ||
+        missing+="the session list is not measured in entries"$'\n'
+    # Six entries must trip it even though they are fewer lines than five wordy ones.
+    { printf -- '---\nupdated: %s\n---\n## Последняя сессия\n' "$PF_ANCIENT"
+      i=0; while [ $i -lt 6 ]; do echo "2026-01-0$((i + 1)) — entry $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
+    bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
+    [ $? -eq 2 ] || missing+="a sixth session entry does not trip the limit"$'\n'
     # a counter did not run: that is an error, not "within budget"
     sed 's|^_budget_ffc()   { _lc_section|_budget_ffc()   { _no_such_counter|' "$lb" > "$fx/broken.sh"
     if cmp -s "$fx/broken.sh" "$lb" || [ ! -s "$fx/broken.sh" ] || ! bash -n "$fx/broken.sh" 2>/dev/null; then
@@ -2431,6 +2459,34 @@ what happened
     # NOT READ is an error, never a pass: "no file" and "no findings" are different facts.
     bash "$lb" claude-md-audit "$cm/absent.md" >/dev/null 2>&1
     [ "$?" -eq 1 ] || missing+="an unreadable file does not give exit 1"$'\n'
+
+    # Scope: a project's instructions are rarely one file. Measured 2026-08-16 in
+    # goprofi-voronka — root 765 lines, backend 645, content 579, infra 200 — of which
+    # only the root was ever audited, because that is the path /brain-save hands over.
+    # A zoned file must be audited too, and the coverage must be PRINTED: "one file was
+    # clean" read as "the instructions are clean" for as long as nobody looked.
+    zc=$(mktemp -d)
+    git -C "$zc" init -q >/dev/null 2>&1
+    git -C "$zc" config user.email t@t >/dev/null 2>&1
+    git -C "$zc" config user.name t >/dev/null 2>&1
+    mkdir -p "$zc/backend"
+    printf -- '# root\n\n## Rules\n- pnpm, never npm\n' > "$zc/CLAUDE.md"
+    printf -- '# zone\n\n## Current state\nphase two is running\n' > "$zc/backend/CLAUDE.md"
+    git -C "$zc" add -A >/dev/null 2>&1
+    git -C "$zc" commit -qm z >/dev/null 2>&1
+    zout=$(bash "$lb" claude-md-audit "$zc/CLAUDE.md" 2>&1); zrc=$?
+    [ "$zrc" -eq 2 ] ||
+        missing+="a state section in a zoned CLAUDE.md is not found (the root file is clean, rc=$zrc)"$'\n'
+    grep -q 'backend/CLAUDE.md' <<<"$zout" ||
+        missing+="the finding does not name which instruction file it came from"$'\n'
+    grep -qE '^scope	2 instruction file' <<<"$zout" ||
+        missing+="the audit does not print how many instruction files it covered"$'\n'
+    # An untracked file is not part of the project's instructions and must not be counted.
+    printf -- '# scratch\n\n## Current state\nnot part of the project\n' > "$zc/scratch-CLAUDE.md"
+    zout=$(bash "$lb" claude-md-audit "$zc/CLAUDE.md" 2>&1)
+    grep -qE '^scope	2 instruction file' <<<"$zout" ||
+        missing+="an untracked CLAUDE.md is counted as project instructions"$'\n'
+    rm -rf "$zc"
     rm -rf "$cm"
 fi
 if [ -n "$missing" ]; then
