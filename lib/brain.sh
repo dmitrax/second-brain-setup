@@ -1493,7 +1493,13 @@ save_report() {
         elif [ "$stamped" = "$installed" ]; then
             verdict ok "brain-version" "$stamped"
         else
-            verdict MISSING "brain-version" "_PROJECT.md says '$stamped', installed is '$installed' — Step 0b did not run"
+            # States the difference, never why it exists. The report knows the two values
+            # differ; it does NOT know whether Step 0b ran — the stamp is also stale when
+            # the package was updated since the last save, which is the normal case for a
+            # project not touched today. Saying "Step 0b did not run" is a diagnosis whose
+            # premise was never checked, the class preflight 19 exists for. Caught
+            # 2026-08-16 by previewing the report against goprofi, where 0b had run fine.
+            verdict MISSING "brain-version" "_PROJECT.md says '$stamped', installed is '$installed' — re-stamp it (Step 0b)"
         fi
 
         # Step 0b stamps TWO fields, and only one of them was ever checked here. Found
@@ -1514,7 +1520,7 @@ save_report() {
             # sort, never `[ a \< b ]`: that form fails in zsh with "condition expected",
             # and this package does not use a construct it forbids elsewhere just because
             # this file happens to run under bash.
-            verdict MISSING "updated" "_PROJECT.md says '$upd', this session's log is '$newest_log' — Step 0b stamped the version but not the date"
+            verdict MISSING "updated" "_PROJECT.md says '$upd', this session's log is '$newest_log' — stamp the date too (Step 0b)"
         else
             _sr_line ok "updated" "$upd"
         fi
