@@ -260,6 +260,13 @@ When rewriting a synthesis note:
 - Remove outdated facts
 - Add new facts and [[wikilinks]]
 
+**Before writing a final `status:` on somebody else's note, state the diagnosis in one
+line** — what you concluded and from what evidence — then write it. Not a question: a
+statement the owner can contradict while it is still cheap. Measured 2026-08-17: a
+recorded verdict was read as a decision that had never been made, and the closure
+propagated into four files with every individual edit correct in form. See `SKILL.md`,
+"Before changing a status, state the diagnosis in one line".
+
 **Decision notes are an exception to rewrite:** if a new decision supersedes an old one,
 write a NEW `decision-<slug>-because-<reason>.md` and mark the old note's frontmatter:
 

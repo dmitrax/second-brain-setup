@@ -157,6 +157,29 @@ dates for anything parked.
 After 10+ exchanges suggest: "Want to run /brain-save before continuing?"
 When user says "done", "bye", "thanks", "finished" — suggest /brain-save.
 
+## Before changing a status, state the diagnosis in one line
+
+Writing a final `status:`, closing a top-level task, or declaring a run finished is a
+judgement about somebody else's work, not a mechanical edit. **Say what you concluded and
+from what evidence, in one line, before the write** — then do it. Not a question, not a
+confirmation prompt: a statement the owner can contradict while it is still cheap.
+
+Measured 2026-08-17: a session read a recorded verdict about a tool ("useful, does not fit
+our system") as a decision on the brief's own fork/no-fork stage, set `status: closed`,
+marked stage 4 removed, and propagated the closure into four vault files. The verdict was
+real; the decision it was taken for had never been made. Every individual edit was correct
+in form, and nothing in the mechanism could catch it, because the defect was in the reading
+rather than in the writing. One line — «вижу вердикт о нестыковке, читаю это как решение
+по этапу 3, закрываю бриф» — would have been contradicted in seconds.
+
+Borrowed from the nf-content `insights` skill, which returns its understanding («КАК ПОНЯЛ
+КОНТЕКСТ / ТРАНСФОРМАЦИЮ») before acting on it. Deliberately narrowed on the way in: their
+version asks after every answer, which suits an interview with a person and would be pure
+friction here. The trigger is a **status change or a closure**, not every step.
+
+Where this does NOT apply, so it stays a rule rather than a ritual: your own working notes,
+adding new content, and anything the owner just asked for in those words.
+
 ## Documents with a lifecycle (briefs, audit requests, verification plans)
 
 Not every `.md` in a project is knowledge. A brief, an audit request or a verification
@@ -250,9 +273,29 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
 Do NOT full-scan the vault on every session. Use the index and search:
 - Tier 1 (always at start): CRITICAL_FACTS.md, _PROJECT.md, taskboard.md,
   and architecture-map.md for code/mixed projects
-- Tier 2 (on demand): wiki/ notes relevant to the current task — find via index.md
-  or a search (below)
+- Tier 2 (on demand): wiki/ notes relevant to the current task — find via the catalogue
+  (below), `index.md`, or a search
 - Never load entire wiki/ folders when looking for one specific topic
+
+**Before searching a project's notes, list them — `brain.sh catalog <vault> --project <p>`.**
+One line per note, newest first, and for each decision its standing: `accepted`,
+`superseded→<note>`, or `accepted+corrected` (still the authority, but a fact inside it
+has been retracted). A search answers "which notes contain this word"; the catalogue
+answers "what does this project know, and what of it still holds" — the second question
+has no other answer short of opening files. Without `--project` it prints one line per
+project: notes, decisions, how many are in force, how many retired, newest date.
+
+It is generated on every call and stored nowhere, so it cannot fall out of sync with the
+notes; do not write its output into a file "for speed" — a stored index drifts and then
+lies, which is worse than no index. Two things it deliberately does not do: it never looks
+inside note bodies (that is what the search above is for), and it does not answer "what
+does the base know about this file of code".
+
+Standing is the part worth reading twice. Measured on the live vault the first time it ran:
+four decisions in `second-brain-setup` carry `corrected-by`, two of which nobody had in
+mind — a note that reads as fully correct while one of its supporting facts is already
+retracted is exactly the failure the `corrected-by` marker exists to prevent, and it only
+becomes visible in a listing that shows it.
 
 **Searching the vault — always pick `-F` or `-E`, never a bare search.**
 A pattern given to `grep` with neither flag is read as a *basic* regex, where `|`,

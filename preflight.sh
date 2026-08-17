@@ -15,6 +15,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAST=0
 [ "${1:-}" = "--fast" ] && FAST=1
+# Guard for check 49, which runs this script against itself to prove the coverage
+# block actually prints. One level only: the nested run sees 1 and skips the check.
+PF_NESTED="${PF_NESTED:-0}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -59,6 +62,21 @@ PF_ANCIENT=2020-01-01
 TARGETS=("$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/brain-*.md)
 
 pass() { PASSED=$((PASSED + 1)); echo -e "  ${GREEN}✓${NC} $1"; }
+# gap <what was not verified here> — record a hole in this run's COVERAGE.
+#
+# Green must mean "ran and found nothing". Some checks legitimately cannot run on the
+# machine at hand: check 38 verifies the BSD branch of a date fallback and this machine has
+# no BSD `date`, so it prints "GNU branch only" — a true statement, dissolved among 66
+# green lines and collected nowhere. That is why "check 41 has never executed under BSD
+# date" lives as a task on the board instead of coming out of the gate that knows it.
+#
+# Borrowed from nf-content, where a missing component of a record becomes an explicit
+# «вопрос для интервью» in a list rather than a silence: absence is recorded next to
+# presence. Deliberately does NOT touch FAILED — an uncovered branch is not a red, and a
+# warning that fires on every ordinary run stops being read (measured three times here:
+# prose-budget's permanent OVER, the Done counter's unactionable advice, ANSWER at 40%).
+GAPS=""
+gap() { GAPS="$GAPS$1"$'\n'; }
 fail() {
     FAILED=$((FAILED + 1))
     echo -e "  ${RED}✗${NC} $1"
@@ -2368,6 +2386,7 @@ else
     # read the clock stayed green here while the static half was satisfied. So where a BSD
     # date exists, run the shipped chain again with a PATH that offers only that one.
     mode="GNU branch only (this machine has no BSD date)"
+    gap "the BSD branch of the date fallback (check 38) — no BSD \`date\` on this machine; run on macOS with PATH=/usr/bin:/bin"
     if /bin/date -j -f "%Y-%m-%d %H:%M:%S" "2026-07-20 00:00:00" +%s >/dev/null 2>&1; then
         mode="both branches, BSD included"
         pf_ed=$(mktemp -d); pf_bsd="$pf_ed/epoch_bsd.sh"
@@ -2993,6 +3012,15 @@ bash "$LIBSH" catalog "$cv" --project nosuch >/dev/null 2>&1 &&
 bash "$LIBSH" catalog "$cv" --project nowiki >/dev/null 2>&1 &&
     missing+="a project with no wiki/ returned success"$'\n'
 
+# A call site is not optional. `catalog` shipped with none — executable, gated, and run
+# never, which is this project's third failure mode (the step exists, nothing invokes it).
+# So the check asserts an actual invocation in a command, not a mention in prose: matching
+# the word alone would pass on the sentence explaining the rule.
+grep -qEe 'bash "\$BRAIN" catalog' "$SCRIPT_DIR/commands/brain-lint.md" ||
+    missing+="no command invokes catalog — it would exist and never run"$'\n'
+grep -qFe 'brain.sh catalog' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md does not tell a session to list notes before searching them"$'\n'
+
 # Generated, never stored: the command must not leave an index file behind.
 # No `find … | grep -q .`: grep -q exits at the first match, the producer dies of
 # SIGPIPE, and under pipefail a successful match reads as failure (rule in CLAUDE.md).
@@ -3067,6 +3095,92 @@ else
     pass "documents with a lifecycle are inventoried with their state; notes and registries are not"
 fi
 
+# ─── 49. The gate states what it did NOT verify, and that is not a failure ─────
+# Green must mean "ran and found nothing", never "did not run". Some checks cannot run on
+# the machine at hand — check 38 needs a BSD `date` and this machine has none — and until
+# now that admission was a phrase inside a green line, collected nowhere. Which is exactly
+# why "check 41 has never executed under BSD date" sat as a task on the board rather than
+# coming out of the gate that knew it.
+# Borrowed from nf-content, where a missing component becomes an explicit item in a list
+# instead of a silence. Adapted in one way that matters: it must NOT affect the exit code,
+# because a warning that fires on every ordinary run stops being read — measured three
+# times in this project already.
+# This check is BEHAVIOURAL: it runs this script against itself (guarded by PF_NESTED, one
+# level) rather than grepping for the mechanism, because a static check would pass on a
+# gap() that is defined, called, and whose output is never printed.
+if [ "$PF_NESTED" = "1" ]; then
+    pass "coverage-gap reporting (skipped in the nested run)"
+else
+    missing=""
+    nested_out=$(PF_NESTED=1 bash "$0" --fast 2>&1); nested_rc=$?
+    grep -qFe 'not verified by this run' <<<"$nested_out" ||
+        missing+="the run does not print a coverage-gap block at all"$'\n'
+    grep -qFe 'BSD branch of the date fallback' <<<"$nested_out" ||
+        missing+="check 38's admission that it could not test the BSD branch is not collected"$'\n'
+    grep -qFe 'the install into a clean' <<<"$nested_out" ||
+        missing+="--fast does not report the skipped install as a gap"$'\n'
+    [ "$nested_rc" -eq 0 ] ||
+        missing+="a coverage gap changed the exit code (got $nested_rc) — a gap is not a failure"$'\n'
+    grep -qFe 'preflight passed' <<<"$nested_out" ||
+        missing+="the gap block replaced the pass line instead of preceding it"$'\n'
+    # The gap list must not be silently empty on a machine that has real gaps: an empty
+    # block would read as full coverage, the very confusion this check exists to remove.
+    n_gaps=$(grep -cEe '^  · ' <<<"$nested_out")
+    [ "$n_gaps" -ge 2 ] ||
+        missing+="expected at least two gaps in a --fast run, got $n_gaps"$'\n'
+    if [ -n "$missing" ]; then
+        fail "the gate does not state its own coverage gaps, or turns them into failures" "$missing"
+    else
+        pass "coverage gaps are collected, named and kept out of the exit code ($n_gaps in a --fast run)"
+    fi
+fi
+
+# ─── 50. Two rules that the borrowing measured down to their working size ─────
+# A: an account without an owner. A bullet of 3+ lines in `Current state` is no longer a
+# state but an account, and an account with no `[[link]]` has no full text anywhere — a
+# recap living in the one file forbidden to hold recaps. Length is the discriminator by
+# measurement, not taste: demanding a link from every bullet reports 16 across the vault
+# and fires on one-line statuses that legitimately cite nothing; demanding it only from the
+# long ones reports 1. Borrowed from nf-content, where the obligation to link belongs to a
+# record TYPE that exists to point at detail, never to every line.
+# C: state the diagnosis before changing a status. Measured the same day — a session read a
+# verdict as a decision, closed a brief and propagated the closure into four files, every
+# edit correct in form. Prose-only by nature (the defect is in the reading), so what a check
+# can hold is that the obligation is stated where a status is actually written, derived from
+# the files rather than from a hand-kept list.
+missing=""
+rv=$(mktemp -d); mkdir -p "$rv/p/wiki" "$rv/00-system"
+printf -- '# index\n- [[p/_PROJECT]]\n' > "$rv/00-system/index.md"
+{ printf -- '---\nproject: p\nupdated: %s\n---\n## Current state\n' "$PF_ANCIENT"
+  printf -- '- short bullet with no link at all\n'
+  printf -- '- a long bullet that retells something\n  second line of the retelling\n  third line of it\n'
+  printf -- '- another long one, but sourced\n  second line\n  third line [[some-note]]\n'
+} > "$rv/p/_PROJECT.md"
+printf -- '# board\n## In progress\n' > "$rv/p/taskboard.md"
+rout=$(bash "$LIBSH" lint-collect "$rv" 2>&1)
+grep -qEe '^retelling-no-source:p	1 bullet' <<<"$rout" ||
+    missing+="expected exactly 1 unsourced long bullet, got: $(grep retelling <<<"$rout" || echo none)"$'\n'
+# The short bullet must NOT count: that is what keeps this off every ordinary status line.
+grep -qEe '^retelling-no-source:p	[2-9]' <<<"$rout" &&
+    missing+="a short bullet without a link was counted — the check would fire on plain status"$'\n'
+rm -rf "$rv"
+
+# C, derived: any command that writes a final status or closes a task must carry the rule.
+for f in "$SCRIPT_DIR"/commands/*.md; do
+    writes=$(grep -Ee 'status: (closed|superseded|deprecated)' "$f" || true)
+    [ -n "$writes" ] || continue
+    cites=$(grep -Ee 'diagnos|диагноз' "$f" || true)
+    [ -n "$cites" ] ||
+        missing+="$(basename "$f") writes a final status and never mentions stating the diagnosis"$'\n'
+done
+grep -qFe 'state the diagnosis' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md does not require stating the diagnosis before a status change"$'\n'
+if [ -n "$missing" ]; then
+    fail "an unsourced account is unreported, or a status change needs no diagnosis" "$missing"
+else
+    pass "a long unsourced bullet is reported (a short one is not), and status changes owe a diagnosis"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then
@@ -3081,6 +3195,7 @@ echo ""
 echo -e "${BLUE}[3/3] Install into a clean \$HOME${NC}"
 if [ "$FAST" = "1" ]; then
     echo -e "  ${YELLOW}—${NC} skipped (--fast)"
+    gap "the install into a clean \$HOME (--fast was passed) — the release gate requires a full run"
 else
     TMPHOME=$(mktemp -d)
     trap 'rm -rf "$TMPHOME"' EXIT
@@ -3143,6 +3258,15 @@ fi
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
+if [ -n "$GAPS" ]; then
+    echo -e "${YELLOW}━━━ not verified by this run ━━━${NC}"
+    printf '%s' "$GAPS" | sed 's/^/  · /'
+    echo ""
+    echo "  These are gaps in COVERAGE, not failures — the exit code is unaffected."
+    echo "  A green above means the checks that ran found nothing, never that everything"
+    echo "  was checked. Each line is a task: it needs another machine or another mode."
+    echo ""
+fi
 if [ "$FAILED" -eq 0 ]; then
     echo -e "${GREEN}━━━ preflight passed: $PASSED checks ━━━${NC}"
     echo ""

@@ -76,8 +76,26 @@ baseline findings had gone GONE with nobody fixing them. A check cannot tell "ab
 ## Step 1: Run the checks
 
 ```bash
+bash "$BRAIN" catalog "$VAULT"                                    # or --project "$PROJECT"
 bash "$BRAIN" lint-collect "$VAULT" > /tmp/lint-findings.txt      # or --project "$PROJECT"
 ```
+
+The catalogue runs **first and unconditionally**, and its output belongs in the report as
+the audit's inventory: how many notes and decisions each project holds, how many decisions
+are still in force, how many retired, and the newest date. Findings tell you what is
+broken; this tells you what is *there*, which is the fact an audit is otherwise silent
+about — and a lint that names its scope is a rule this package already carries.
+
+Read two numbers off it before going further. A project whose **retired** count is high
+relative to its decisions has churn worth a look; a project whose **newest** date is far
+behind its own last session is the `stale-project` case seen from the other side. Neither
+is a finding on its own — do not turn them into one, there is deliberately no threshold
+here.
+
+Why this call sits in a command rather than in prose: `catalog` shipped 2026-08-17 with no
+call site at all, reachable only if a session happened to remember it. That is the third
+failure mode this project keeps re-learning — the step exists, it is executable, and it
+runs never. Checked by preflight 47.
 
 One finding per line, `key<TAB>detail`. It **fails** rather than printing an empty result
 when its input is empty — "found nothing" and "never looked" are different facts and only

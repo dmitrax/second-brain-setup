@@ -108,6 +108,13 @@ Name = statement answering "what was decided and why it matters":
 ❌ `wiki/decisions/auth.md`
 ✅ `wiki/decision-chose-supabase-auth-because-rls-per-table.md`
 
+**Before writing a final `status:` on somebody else's note, state the diagnosis in one
+line** — what you concluded and from what evidence — then write it. Not a question: a
+statement the owner can contradict while it is still cheap. Measured 2026-08-17: a
+recorded verdict was read as a decision that had never been made, and the closure
+propagated into four files with every individual edit correct in form. See `SKILL.md`,
+"Before changing a status, state the diagnosis in one line".
+
 **Decision notes are immutable.** Do not edit a decision to change it. Write a new
 decision note and mark the old one `status: superseded` + `superseded-by:
 decision-<new>.md` (two fields — the one-line `status: superseded-by: x` form is

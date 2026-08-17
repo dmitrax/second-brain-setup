@@ -2109,6 +2109,29 @@ EOF
         [ "$sess" -gt "$BUDGET_SESSIONS" ] && printf 'session-list:%s\t%s entries against ~%s — drop the oldest, the account stays in sessions/\n' "$P" "$sess" "$BUDGET_SESSIONS"
         [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s lines\n' "$P" "$ffc"
 
+        # A bullet in `Current state` that runs three lines or more is no longer a state —
+        # it is an account of something, and an account without a `[[link]]` has no owner
+        # elsewhere, which is how a recap ends up living in the one file that must not hold
+        # recaps ([[decision-project-md-links-not-duplicates-wiki…]]).
+        #
+        # Length is the discriminator, and that is a measurement rather than taste: asking
+        # every bullet for a link reports 16 across the vault and would fire on a one-line
+        # status ("1.8.0 in progress, steps 1-4 closed") that legitimately cites nothing;
+        # asking only the long ones reports exactly **1** in the whole vault today. Borrowed
+        # from nf-content, where the obligation to link is attached to a record TYPE whose
+        # purpose is to point at detail rather than restate it, never to every line.
+        retell=$(awk '
+            /^## (Current state|Статус)/ { f = 1; next }
+            /^## / { f = 0 }
+            f && /^- / {
+                if (n > 0 && lines >= 3 && !haslink) bad++
+                n++; lines = 1; haslink = ($0 ~ /\[\[/); next
+            }
+            f && n > 0 { lines++; if ($0 ~ /\[\[/) haslink = 1 }
+            END { if (n > 0 && lines >= 3 && !haslink) bad++; print bad + 0 }
+        ' "$f")
+        [ "$retell" -gt 0 ] && printf 'retelling-no-source:%s\t%s bullet(s) of 3+ lines carry no [[link]] — an account needs an owner elsewhere\n' "$P" "$retell"
+
         upd=$(_lc_fm "$f" updated)
         if [ -z "$upd" ]; then
             printf 'missing-updated:%s\t_PROJECT.md has no updated: field\n' "$P"

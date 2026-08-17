@@ -842,6 +842,31 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
     already noticed the conflict, which is the rare one. Now in `SKILL.md`, with the two
     exceptions that keep it honest (a decision outranks a newer synthesis note; a note
     that records history is not in conflict).
+  **Second round, same day, and it is the stronger evidence: three of the four forms of one
+  borrowing were killed by measurement before the fourth worked.** The idea was theirs —
+  absence of knowledge is recorded next to presence («вопрос для интервью» in a list) — and
+  finding our version of "absence" took four attempts, each rejected by a number rather than
+  by taste: **broken `[[links]]`** (13 distinct targets, 15 occurrences, half of them noise
+  like `:space:` — signal too small to act on); **unfilled mandatory sections** (their own
+  measurement found 29 of 286 notes with an empty `Alternatives rejected`; ours found **2 of
+  350**, so the disease is absent here); **notes claiming a fact about code with no way to
+  re-check it** (280 of 392 — 71%, a permanently-red warning, and the heuristic could not
+  tell a claim about code from a path merely mentioned). What worked was the fourth: **the
+  gate states what it did NOT verify.** `preflight.sh` already knew — check 38 prints "GNU
+  branch only (this machine has no BSD date)" — and that admission was dissolved among 66
+  green lines, which is precisely why "check 41 has never run under BSD date" lived as a
+  task on the board instead of coming out of the tool that knew it. Now `gap()` collects
+  them and the summary prints them under "not verified by this run", deliberately **without
+  touching the exit code**: an uncovered branch is not a red, and a warning that fires on
+  every ordinary run stops being read (measured three times here already). Checked by
+  preflight 49, which is behavioural — it runs this script against itself under `PF_NESTED`
+  rather than grepping for the mechanism, because a static check passes on a `gap()` that is
+  defined, called, and whose output is never printed.
+  The lesson to carry: **a borrowing that fails to transfer three times is not a failed
+  borrowing.** Each rejected form cost one measurement and bought a fact about our own vault
+  we did not have. Stopping at the first form that "looks right" is how a threshold nobody
+  can satisfy gets shipped — this project has done that four times, and each time the number
+  came later.
   The general form, which is the reason this is written out: **a mechanism proven
   elsewhere is evidence that the problem is real, never that the solution transfers.**
   Their scale, their platform and their failure history are inputs to their design and not
