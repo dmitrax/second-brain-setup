@@ -3189,6 +3189,132 @@ else
     pass "a long unsourced bullet is reported (a short one is not), and status changes owe a diagnosis"
 fi
 
+# ─── 51. Every prescribed call is executable AS WRITTEN ────────────────────────
+# Open since 2026-08-04, when three places prescribed `brain.sh archive` without its flags:
+# the bare form exits 1, and with `--before` but no `--apply` it moves nothing and exits 0.
+# Documented that day, checked by nobody — and the class recurred immediately: on 2026-08-17
+# `SKILL.md` shipped `brain.sh catalog --project <p>` with no vault argument, which exits 64.
+# A prompt names the form; nothing proved the form runs.
+#
+# What this checks is USAGE, not semantics: every invocation form found in the prompts is
+# run against a fixture, and the failure condition is an argument-handling complaint
+# (`unknown option`, `no vault at '--…'`, `needs …`). A finding-shaped non-zero exit (2) is
+# a legitimate answer and must not read as a broken call.
+missing=""
+cw=$(mktemp -d)
+mkdir -p "$cw/00-system" "$cw/proj/wiki" "$cw/proj/sessions"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$cw/00-system/index.md"
+printf -- '---\nproject: proj\nupdated: %s\nstatus: active\n---\n## Current state\nx\n' "$PF_ANCIENT" \
+    > "$cw/proj/_PROJECT.md"
+printf -- '# board\n## In progress\n- [ ] open\n## Done\n- [x] %s closed\n' "$PF_ANCIENT" \
+    > "$cw/proj/taskboard.md"
+printf -- '# Connections\n\n## Knowledge transfers\n\n- %s | [[a]] → b\n' "$PF_ANCIENT" \
+    > "$cw/00-system/connections.md"
+printf -- '---\nstatus: accepted\ndate: %s\n---\n[[../_PROJECT|_PROJECT]] [[other]]\n' "$PF_ANCIENT" \
+    > "$cw/proj/wiki/decision-x.md"
+printf -- '# archive\n' > "$cw/proj/archive-notes.md"
+printf -- '# CLAUDE.md\n\nProject: proj\n' > "$cw/CLAUDE.md"
+: > "$cw/baseline.txt"
+
+# Each row: the form as prescribed, with placeholders bound to the fixture.
+run_form() {
+    _label="$1"; shift
+    _out=$("$@" 2>&1); _rc=$?
+    case "$_out" in
+        *"unknown option"*|*"unknown command"*|*"unknown argument"*|*"needs "*|*"no vault at '--"*|*"no taskboard at ''"*|*"no connections file at ''"*)
+            missing+="$_label is not executable as written: ${_out%%$'\n'*} (rc=$_rc)"$'\n' ;;
+    esac
+    [ "$_rc" -eq 64 ] && missing+="$_label exits 64 (usage error) as written"$'\n'
+    return 0
+}
+run_form "catalog <vault>"                bash "$LIBSH" catalog "$cw"
+run_form "catalog <vault> --project <p>"  bash "$LIBSH" catalog "$cw" --project proj
+run_form "lint-collect <vault>"           bash "$LIBSH" lint-collect "$cw"
+run_form "lint-collect --project"         bash "$LIBSH" lint-collect "$cw" --project proj
+run_form "prose-budget two args"          bash "$LIBSH" prose-budget "$cw/proj/_PROJECT.md" "$cw/proj/taskboard.md"
+run_form "claude-md-audit <path>"         bash "$LIBSH" claude-md-audit "$cw/CLAUDE.md"
+run_form "local-conventions three args"   bash "$LIBSH" local-conventions "$cw" proj "$cw/CLAUDE.md"
+run_form "save-report <vault> <project>"  bash "$LIBSH" save-report "$cw" proj
+run_form "stamp-field three args"         bash "$LIBSH" stamp-field "$cw/proj/_PROJECT.md" updated "$PF_ANCIENT"
+run_form "sweep-closed <taskboard>"       bash "$LIBSH" sweep-closed "$cw/proj/taskboard.md"
+run_form "backfill-dates <taskboard>"     bash "$LIBSH" backfill-dates "$cw/proj/taskboard.md"
+run_form "archive with both flags"        bash "$LIBSH" archive "$cw/proj/taskboard.md" "$cw/proj/archive-notes.md" --before 2030-01-01
+run_form "vault-language <vault>"         bash "$LIBSH" vault-language "$cw"
+run_form "version"                        bash "$LIBSH" version
+run_form "obsidian-available <vault>"     bash "$LIBSH" obsidian-available "$cw"
+# connections-add reads the entry from stdin, so it needs its own invocation
+ca_out=$(printf 'x → y\n' | bash "$LIBSH" connections-add "$cw/00-system/connections.md" "$PF_ANCIENT" 2>&1)
+case "$ca_out" in *"unknown option"*|*"needs "*) missing+="connections-add is not executable as written: $ca_out"$'\n' ;; esac
+rm -rf "$cw"
+if [ -n "$missing" ]; then
+    fail "a call prescribed in a prompt does not run as written" "$missing"
+else
+    pass "all 16 prescribed invocation forms run as written (usage, not semantics)"
+fi
+
+# ─── 52. Live docs do not restate a number the code owns; history is left alone ──
+# Two halves, and the second one cost more to get right than the first.
+#
+# The defect: the architecture map forbids writing the check count anywhere but the run
+# output (it changed every session and drifted three times), and the Russian architecture
+# reference still said `stale-project` fires at 14 days — untrue since 2026-08-16 — and
+# described the summed ~60-line prose budget, removed the same day. A doc restating a number
+# the code owns is a second copy of it, and copies drift.
+#
+# The trap, hit while fixing exactly this on 2026-08-17: **most "stale" numbers in these
+# files are HISTORY, not claims.** A changelog entry for v1.6.0 saying "23 checks" or "the
+# prose threshold counts prose" is correct forever — it records that release. Five of seven
+# greps landed inside changelog sections, and editing them falsified the release history
+# before the mistake was caught. So the check needs an explicit live/history boundary per
+# file, and it must not be "the first `### v` heading": in README the live sections come
+# BEFORE the changelog, and in the Russian reference the history is a set of italic
+# `*vX.Y.Z — …*` summaries under one late heading.
+missing=""
+check_live_docs() {
+    _f="$1"; _stop="$2"
+    [ -f "$_f" ] || return 0
+    _live=$(awk -v stop="$_stop" '$0 ~ stop { exit } { print }' "$_f")
+    # (a) no live claim about how many checks the gate has
+    _cnt=$(grep -nEe '[0-9]+ (checks|проверк)' <<<"$_live" || true)
+    [ -z "$_cnt" ] ||
+        missing+="$(basename "$_f") states a live check count (the run output owns it): ${_cnt%%$'\n'*}"$'\n'
+    # (b) any number presented as a THRESHOLD must be one the code actually holds. A TARGET
+    # is a different fact and is not compared: /brain-save asks for ~10 lines of
+    # `Current state` while the lint fires at 30, and both are true.
+    # Case variants written out rather than tolower(): tolower() on Cyrillic depends on the
+    # locale, and this file refuses to trust the locale (see the self-test at the top). The
+    # first draft matched lowercase only and went green on a mutated line reading
+    # "**Порог прозы — 60 строк**" — capitalised, which is how such a sentence usually starts.
+    _claimed=$(awk '/([Пп]орог|[Бб]юджет|[Tt]hreshold|[Bb]udget)/ {
+            while (match($0, /~?[0-9]+ (lines|строк)/)) {
+                s = substr($0, RSTART, RLENGTH); gsub(/[^0-9]/, "", s); print s
+                $0 = substr($0, RSTART + RLENGTH)
+            }
+        }' <<<"$_live" | LC_ALL=C sort -u)
+    for _c in $_claimed; do
+        grep -qxFe "$_c" <<<"$BUDGETS" ||
+            missing+="$(basename "$_f") claims a threshold of $_c lines, which no BUDGET_* holds"$'\n'
+    done
+}
+BUDGETS=$(grep -oE '^BUDGET_[A-Z]+=[0-9]+' "$LIBSH" | cut -d= -f2 | LC_ALL=C sort -u)
+[ -n "$BUDGETS" ] || missing+="no BUDGET_* found in lib/brain.sh — the comparison had no input"$'\n'
+check_live_docs "$SCRIPT_DIR/README.md"     '^## Changelog'
+check_live_docs "$SCRIPT_DIR/README_RU.md"  '^## Changelog'
+check_live_docs "$SCRIPT_DIR/WORKFLOW.md"   '^## Changelog'
+for _r in "$SCRIPT_DIR"/ВТОРОЙ_МОЗГ_*.md; do
+    check_live_docs "$_r" '^## Версионирование системы'
+done
+# The boundary itself must exist, or the whole check silently reads a file as all-live.
+for _f in "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/README_RU.md"; do
+    grep -qEe '^## Changelog' "$_f" ||
+        missing+="$(basename "$_f") has no '## Changelog' heading — the live/history boundary this check needs"$'\n'
+done
+if [ -n "$missing" ]; then
+    fail "live documentation restates a number the code owns" "$missing"
+else
+    pass "live docs cite no check count and no threshold the code lacks; changelogs untouched"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then

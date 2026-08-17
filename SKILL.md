@@ -265,7 +265,7 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
   `status: accepted` outranks a newer synthesis note that merely mentions the topic
   (kind beats recency — a decision is the authority by construction), and a note whose
   own body says it records a historical state is not in conflict with anything.
-  `brain.sh catalog --project <p>` prints date and standing side by side, which is
+  `brain.sh catalog <vault> --project <p>` prints date and standing side by side, which is
   where a conflict becomes visible at all.
 
 ## Tier navigation
