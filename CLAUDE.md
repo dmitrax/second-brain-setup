@@ -871,6 +871,22 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   elsewhere is evidence that the problem is real, never that the solution transfers.**
   Their scale, their platform and their failure history are inputs to their design and not
   to ours. Adopt the argument, re-derive the number.
+- **A changelog entry is not a stale claim — it is a record, and editing it is the one
+  edit this repo cannot detect.** Measured 2026-08-17 while sweeping the docs for numbers
+  that had drifted: seven looked stale, **five were changelog entries for v1.6.0/v1.7.0**,
+  and they had already been rewritten with August facts before the mistake was noticed —
+  `git checkout` undid it. "23 checks" under `### v1.6.0` is correct forever: it says what
+  that release shipped. The live/history boundary is explicit per file (`## Changelog` in
+  both READMEs, `## Версионирование системы` in the Russian reference) and is NOT "the
+  first `### v` heading": in README the live sections come *before* the changelog, so that
+  rule would exempt exactly the text that can rot. Checked by preflight 52, which compares
+  only the live half against `BUDGET_*` and leaves history alone. Same immutability
+  argument as decision notes, one level up: a record of what was true then is not a claim
+  about now, and correcting it destroys the only evidence of when the change happened.
+  Note the second-order trap found in the same check: matching `порог` in lowercase only
+  went green on `**Порог прозы — 60 строк**`, the capitalised form such a sentence
+  normally starts with — write case variants out, never `tolower()`, whose behaviour on
+  Cyrillic depends on the locale this file refuses to trust.
 
 ### Do not
 - Commit API keys, secrets, or vault content

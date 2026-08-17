@@ -883,7 +883,11 @@ sweep_closed() {
     for f in pre keep moved post_head post_tail; do [ -f "$work/$f" ] || : > "$work/$f"; done
     n_moved=$(cat "$work/n_moved" 2>/dev/null || echo 0)
     n_kept=$(cat "$work/n_kept" 2>/dev/null || echo 0)
-    moved_lines=$(grep -c '' "$work/moved" 2>/dev/null || echo 0)
+    # `grep -c ''` prints 0 AND exits 1 on an empty file, so `|| echo 0` appended a SECOND
+    # zero and the report read `(0\n0 lines)`. awk gives the count with a zero exit, so the
+    # fallback that produced the defect is not needed at all. Found 2026-08-17 by reading
+    # the tool's own output during a save.
+    moved_lines=$(awk 'END { print NR }' "$work/moved")
 
     if [ ! -s "$work/post_head" ]; then
         echo "sweep-closed: refused — Done heading not found while splitting" >&2
