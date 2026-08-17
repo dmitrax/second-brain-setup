@@ -157,6 +157,32 @@ dates for anything parked.
 After 10+ exchanges suggest: "Want to run /brain-save before continuing?"
 When user says "done", "bye", "thanks", "finished" — suggest /brain-save.
 
+## Documents with a lifecycle (briefs, audit requests, verification plans)
+
+Not every `.md` in a project is knowledge. A brief, an audit request or a verification
+plan is an **instruction with a lifespan**: it is created for a run and stops being true
+when that run closes. It is not a wiki note (a note outlives the project) and not a
+session log (a log is an account, not an instruction), so it lives in the project root or
+a subfolder — and until 2026-08-17 nothing watched it.
+
+- **Prefer expressing state by LOCATION over a field.** A field has to be remembered; a
+  move is performed by the act itself. Measured twice: two verification briefs stood at
+  `status: open` for twelve days while `_PROJECT.md` already announced their runs closed,
+  and the Autopilot brief did the same for two days — while its own text warned against
+  exactly that. Borrowed from nf-content's `catalog-records`, where a pending record is
+  marked `<!-- НЕ КАТАЛОГИЗИРОВАНО -->` and *becomes* processed by moving into the
+  archive: «состояние читается по файловой системе, никакого pending-файла», which also
+  makes a repeat run safe.
+- **When a field is used anyway** — and for a handful of documents it is the cheaper
+  answer — closing it writes **two** things: the final `status:` *and* `closed: <date>`.
+  One field says what, the other says when, and a step that writes N fields is checked
+  for N (the lesson `save-report` already carries).
+- `brain.sh lint-collect` prints these documents as `scope-note:lifecycle-docs` with each
+  state — an inventory, never a threshold: a brief legitimately stays open for weeks, so
+  age is the wrong measure here, exactly as it is for project freshness. The point is
+  that "open while the work is finished" is visible on every lint instead of being
+  invisible until somebody happens to read the file.
+
 ## Note kinds in wiki/
 
 The vault stays flat — no fixed folder taxonomy. Knowledge is shaped by note *kind*,
@@ -201,6 +227,23 @@ re-litigate. Created by `/brain-save` when a decision with rationale appears in 
   is stale there and then. A backlink from the new note does not achieve this — it is
   visible only to someone who already found the correction, while the reader being
   misled is precisely the one who did not.
+- **Two notes contradict each other and neither is marked → the newer `date:` wins,
+  and saying so is the whole rule.** Supersession and `corrected-by` cover the case
+  where somebody noticed the conflict; they say nothing about the case where nobody
+  did, which is the common one. Without a tie-break a session finds two answers and
+  either picks by position in the search output or asks the owner to re-adjudicate
+  something already decided. So: the note with the later `date:` is current, the older
+  one is to be marked (`corrected-by:` if only a fact went stale, supersession if the
+  whole position moved) — and marking it is part of the same edit, not a later chore.
+  Borrowed from the nf-content record standard, which states the reason plainly:
+  *«взгляды автора меняются со временем, поэтому при конфликте записей приоритет у
+  более свежей»* — the date exists to make that resolvable rather than to decorate.
+  Two conditions where this must NOT be applied blindly: a decision note carrying
+  `status: accepted` outranks a newer synthesis note that merely mentions the topic
+  (kind beats recency — a decision is the authority by construction), and a note whose
+  own body says it records a historical state is not in conflict with anything.
+  `brain.sh catalog --project <p>` prints date and standing side by side, which is
+  where a conflict becomes visible at all.
 
 ## Tier navigation
 

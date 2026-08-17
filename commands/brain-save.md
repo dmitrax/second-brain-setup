@@ -200,6 +200,24 @@ start — and the field was still missed, because at the moment of writing a fen
 with three keys reads as exhaustive. An explicit template at hand beats a rule read two
 hundred messages ago, so the template has to say out loud that it is incomplete.
 
+**If the context was compacted during this session, the log is not written from memory.**
+This step runs at the end of a long session, which is exactly when a summary has replaced
+the early part of it — so "what we did" is reconstructed from a summary of a summary, and
+what drops out first is the same class this command exists to catch: the measurement
+somebody took, the finding that was contradicted, the decision that was reversed
+mid-session. Before writing, re-read what is actually available — the transcript still in
+context, the vault diff (`git -C "$VAULT" status --porcelain` and `git -C "$VAULT" diff`),
+the repository's own diff and commits of today — and write the log from those, not from
+recollection. **Say in the log that compaction happened**, so the next session knows the
+account was reconstructed rather than remembered.
+Borrowed from the nf-content `insights` skill, which carries the same instruction for the
+same reason at the same point (its ЭТАП 6 collects the session's material into records):
+*«защита от сжатия контекста: если к этому моменту произошла компрессия — перед сбором
+просмотреть все сообщения эксперта в чате»*. Note what `save-report` (Step 8) can and
+cannot do about this: it measures which FILES a save touched, so it catches a step that
+wrote nothing at all, and it cannot see a log that was written thinly. Only this
+instruction covers that.
+
 ```markdown
 ---
 tags: [session]

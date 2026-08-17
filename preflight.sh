@@ -2923,6 +2923,150 @@ else
     pass "connections-add puts the entry at the top, refuses four ways, and no age window exists"
 fi
 
+# ─── 47. The catalogue is generated, and it states each decision's standing ───
+# Borrowed from nf-content's `catalog-records` — read a compact index and pull only what
+# is relevant, instead of reading the base. Two properties make it worth having rather
+# than being `ls` with extra steps, and both are asserted here:
+#   * it is GENERATED per call and never stored, so it cannot drift from the notes. Their
+#     version is maintained by a skill and their own limitation 2.3.2 admits it does not
+#     re-sync a hand-edited record; a stored index that lies is worse than no index.
+#   * it carries a decision's STANDING — superseded / corrected — which a file listing
+#     cannot. On the live vault the first run surfaced two `corrected-by` notes in this
+#     project that nobody had in mind, i.e. notes whose facts are partly retracted.
+# The refusals matter for the same reason as everywhere here: an empty catalogue must be
+# an error, never a clean answer.
+missing=""
+cv=$(mktemp -d)
+mkdir -p "$cv/alpha/wiki" "$cv/beta/wiki" "$cv/nowiki"
+printf -- '---\nproject: alpha\n---\n' > "$cv/alpha/_PROJECT.md"
+printf -- '---\nproject: beta\n---\n'  > "$cv/beta/_PROJECT.md"
+printf -- '---\nproject: nowiki\n---\n' > "$cv/nowiki/_PROJECT.md"
+printf -- '---\nstatus: accepted\ndate: %s\nsupersedes:\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/decision-in-force.md"
+printf -- '---\nstatus: superseded\nsuperseded-by: decision-in-force.md\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/decision-retired.md"
+printf -- '---\nstatus: accepted\ncorrected-by: decision-in-force.md\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/decision-partly-wrong.md"
+# `supersedes: ~` is YAML null, not a note name — it must not read as a supersession.
+printf -- '---\nstatus: accepted\nsupersedes: ~\ncorrected-by: ~\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/decision-null-fields.md"
+printf -- '---\nstatus: stable\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/synthesis-note.md"
+printf -- '---\nproject: beta\n---\nno date at all\n' > "$cv/beta/wiki/undated.md"
+
+sum=$(bash "$LIBSH" catalog "$cv" 2>&1)
+if [ -z "$sum" ]; then
+    fail "check 47 got no output from catalog — the fixture or the command is broken"
+else
+    # alpha: 5 notes, 4 decisions, 3 in force (accepted×3), 1 retired (superseded)
+    grep -qEe '^5[[:space:]]+4[[:space:]]+3[[:space:]]+1[[:space:]]' <<<"$sum" ||
+        missing+="the summary counts are wrong for alpha (want 5 notes / 4 decs / 3 in force / 1 retired), got: $(grep alpha <<<"$sum")"$'\n'
+    grep -qFe 'alpha' <<<"$sum" || missing+="the summary does not list project alpha"$'\n'
+    grep -qFe 'nowiki' <<<"$sum" &&
+        missing+="a project with no wiki/ appears in the summary"$'\n'
+fi
+
+idx=$(bash "$LIBSH" catalog "$cv" --project alpha 2>&1)
+grep -qEe '^[0-9-]+[[:space:]]+accepted[[:space:]]+decision-in-force$' <<<"$idx" ||
+    missing+="an in-force decision is not reported as accepted"$'\n'
+grep -qFe 'superseded→decision-in-force' <<<"$idx" ||
+    missing+="a superseded decision does not name what replaced it — the standing is the point"$'\n'
+grep -qFe 'accepted+corrected' <<<"$idx" ||
+    missing+="a corrected decision is not marked — its retracted fact would be read as current"$'\n'
+null_line=$(grep -Fe 'decision-null-fields' <<<"$idx")
+case "$null_line" in
+    *"→"*|*"+corrected"*) missing+="YAML null (~) was read as a note name: $null_line"$'\n' ;;
+esac
+# Newest first: sorting is what makes a long index usable at all.
+[ "$(printf '%s\n' "$idx" | head -1 | cut -f1)" = "$(printf '%s\n' "$idx" | cut -f1 | LC_ALL=C sort -r | head -1)" ] ||
+    missing+="the index is not sorted newest first"$'\n'
+
+# Refusals: each is a fact the caller must not mistake for an empty vault.
+bash "$LIBSH" catalog "$cv/../definitely-absent-$$" >/dev/null 2>&1 &&
+    missing+="a missing vault path was accepted"$'\n'
+ev=$(mktemp -d)
+bash "$LIBSH" catalog "$ev" >/dev/null 2>&1 &&
+    missing+="a vault with no _PROJECT.md printed a clean catalogue instead of failing"$'\n'
+rmdir "$ev" 2>/dev/null || rm -rf "$ev"
+bash "$LIBSH" catalog "$cv" --project nosuch >/dev/null 2>&1 &&
+    missing+="an unknown project name was accepted"$'\n'
+bash "$LIBSH" catalog "$cv" --project nowiki >/dev/null 2>&1 &&
+    missing+="a project with no wiki/ returned success"$'\n'
+
+# Generated, never stored: the command must not leave an index file behind.
+# No `find … | grep -q .`: grep -q exits at the first match, the producer dies of
+# SIGPIPE, and under pipefail a successful match reads as failure (rule in CLAUDE.md).
+leftover=$(find "$cv" -name 'catalog*' -o -name '*каталог*')
+[ -n "$leftover" ] &&
+    missing+="catalog wrote an index file into the vault — a stored index drifts: $leftover"$'\n'
+rm -rf "$cv"
+if [ -n "$missing" ]; then
+    fail "the catalogue does not state standing, miscounts, or accepts an empty vault" "$missing"
+else
+    pass "catalog is generated per call, counts notes and reports each decision's standing"
+fi
+
+# ─── 48. A document with a lifecycle is inventoried, and knowledge is not ─────
+# The class: a brief / audit request / verification plan — an instruction that stops being
+# true when its run closes. Measured 2026-08-16 (two briefs `open` for twelve days while
+# _PROJECT.md announced their runs closed) and 2026-08-17 (the Autopilot brief, two days,
+# while its own text warned against it). Deliberately an inventory rather than a
+# threshold: the vault holds six such documents, five already final, and a brief
+# legitimately stays open for weeks — so age is the wrong measure, as it is for project
+# freshness (check 45). What the check must therefore prove is the SEPARATION: process
+# state is reported, knowledge is not, and registries are not.
+missing=""
+lv=$(mktemp -d)
+mkdir -p "$lv/proj/wiki" "$lv/proj/sessions" "$lv/proj/audits"
+printf -- '---\nproject: proj\nstatus: active\n---\n## Current state\nx\n' > "$lv/proj/_PROJECT.md"
+printf -- '# board\n## In progress\n' > "$lv/proj/taskboard.md"
+printf -- '---\ntype: task-brief\nstatus: open\n---\nbrief body\n' > "$lv/proj/brief-open.md"
+printf -- '---\ntype: task-brief\nstatus: closed\nclosed: %s\n---\nbrief body\n' "$PF_ANCIENT" \
+    > "$lv/proj/brief-closed.md"
+printf -- '---\nstatus: processed\n---\naudit\n' > "$lv/proj/audits/audit-request.md"
+# Knowledge, not process: these must NOT appear, or the line becomes noise.
+printf -- '---\nstatus: accepted\ndate: %s\n---\n[[../_PROJECT|_PROJECT]] [[other]]\n' "$PF_ANCIENT" \
+    > "$lv/proj/wiki/decision-something.md"
+printf -- '---\nstatus: stable\ndate: %s\n---\nconcept\n' "$PF_ANCIENT" > "$lv/proj/concept-note.md"
+printf -- '---\ndate: %s\n---\nlog\n' "$PF_ANCIENT" > "$lv/proj/sessions/${PF_ANCIENT}_1000_session.md"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$lv/00-system-index-stub.md"
+mkdir -p "$lv/00-system"; printf -- '# index\n- [[proj/_PROJECT]]\n' > "$lv/00-system/index.md"
+
+lout=$(bash "$LIBSH" lint-collect "$lv" 2>&1)
+lline=$(grep -Fe 'scope-note:lifecycle-docs' <<<"$lout")
+if [ -z "$lline" ]; then
+    missing+="lifecycle documents are not reported at all"$'\n'
+else
+    grep -qFe 'brief-open.md=open' <<<"$lline" ||
+        missing+="an open brief is not named with its state"$'\n'
+    grep -qFe "brief-closed.md=closed@$PF_ANCIENT" <<<"$lline" ||
+        missing+="a closed brief does not carry its closing date — the second field is unchecked"$'\n'
+    grep -qFe 'audit-request.md=processed' <<<"$lline" ||
+        missing+="a document one level down (audits/) is missed"$'\n'
+    grep -qFe 'decision-something' <<<"$lline" &&
+        missing+="a wiki note is reported as a lifecycle document"$'\n'
+    grep -qFe '_session' <<<"$lline" &&
+        missing+="a session log is reported as a lifecycle document"$'\n'
+    grep -qFe '_PROJECT.md' <<<"$lline" &&
+        missing+="_PROJECT.md is reported — a project is not a document with a run"$'\n'
+    grep -qFe 'concept-note' <<<"$lline" &&
+        missing+="knowledge (status: stable) is reported as process state"$'\n'
+fi
+# It must stay a scope note: a threshold here would fire on a brief that is legitimately open.
+grep -qEe '^(stale-brief|lifecycle-stale):' <<<"$lout" &&
+    missing+="an age threshold on lifecycle documents appeared — a brief may stay open for weeks"$'\n'
+# The rule must live where every session reads it, not only in the code.
+grep -qFe 'lifecycle-docs' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md does not describe the lifecycle-document rule"$'\n'
+grep -qFe 'closed:' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md does not require a closing date next to the final status"$'\n'
+rm -rf "$lv"
+if [ -n "$missing" ]; then
+    fail "lifecycle documents are unreported, confused with knowledge, or given a deadline" "$missing"
+else
+    pass "documents with a lifecycle are inventoried with their state; notes and registries are not"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then

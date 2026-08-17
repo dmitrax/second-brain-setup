@@ -60,6 +60,15 @@ usage: brain.sh <command> [args]
                                A closed sub-item never moves alone: its text explains
                                the open parent above it. Dry-run unless --apply, and
                                the result must be a permutation of the input.
+  catalog <vault> [--project <name>]
+                               print a GENERATED index of the vault's notes. Without
+                               --project: one line per project — notes, decisions, how
+                               many are still in force, how many retired, newest date.
+                               With --project: one line per note, newest first, carrying
+                               each decision's state (accepted / superseded→<note> /
+                               +corrected). Never stored, so it cannot drift out of sync
+                               with the notes; borrowed from nf-content's catalog-records,
+                               where the same index is maintained by hand and may.
   connections-add <connections.md> <YYYY-MM-DD>
                                read one cross-project entry from stdin and insert it at
                                the TOP of the knowledge-transfers section. The address is
@@ -1622,6 +1631,133 @@ save_report() {
     return 0
 }
 
+# ── catalog ──────────────────────────────────────────────────────────────────
+# A generated index of the vault's notes: what exists, and — for decisions — what is
+# still the authority.
+#
+# Borrowed from the nf-content skill stack (`catalog-records`), where the argument is
+# stated plainly: read a compact catalogue and pull only the relevant records, instead
+# of reading the base. Our open 🔴 task said the same thing from the other side — there
+# is no path from a file to the notes about it, only a grep on a luckily remembered word.
+#
+# Two things had to change in the borrowing, and they are the reason this is not a copy:
+#   * SCALE. Their catalogue indexes 52 records in 265 lines, so reading it whole is
+#     cheap. We hold 511 notes (383 of them decisions), and goprofi-voronka alone has
+#     220 — an index of everything would cost more than the grep it replaces. So the
+#     default is a per-project summary (one line each) and the full list is per project.
+#   * OWNERSHIP. Theirs is maintained by a skill and can therefore drift; their own
+#     limitation 2.3.2 says it does not re-sync a record edited by hand. Ours is
+#     GENERATED on every call and never stored, so it cannot drift — and it is not a
+#     second copy of knowledge, which our own rule forbids.
+# What it adds over `ls`: a decision's state. 383 decisions exist and some are retired;
+# today the only way to know which is to open the file.
+_cat_fm() {
+    # Print `date<TAB>status<TAB>superseded-by<TAB>corrected-by` of one note, reading the
+    # frontmatter only: the first block between the opening and closing `---`.
+    awk '
+        NR == 1 && $0 != "---" { exit }
+        NR > 1 && /^---[[:space:]]*$/ { exit }
+        /^date:/         { sub(/^date:[[:space:]]*/, "");         d = $0 }
+        /^status:/       { sub(/^status:[[:space:]]*/, "");       s = $0 }
+        /^superseded-by:/{ sub(/^superseded-by:[[:space:]]*/, ""); sb = $0 }
+        /^corrected-by:/ { sub(/^corrected-by:[[:space:]]*/, ""); cb = $0 }
+        END { printf "%s\t%s\t%s\t%s\n", d, s, sb, cb }
+    ' "$1" 2>/dev/null
+}
+
+catalog() {
+    vault="${1:-}"; only="${2:-}"
+    [ -d "$vault" ] || { echo "catalog: no vault at '${vault:-}'" >&2; return 1; }
+    cd "$vault" || return 1
+
+    projects=$(find . -name '_PROJECT.md' -not -path './.git/*' |
+        sed 's|/_PROJECT.md$||; s|^\./||' | LC_ALL=C sort -u)
+    # Empty input must fail, never print a clean catalogue: "no projects" and "I could not
+    # enumerate them" are different facts and only one deserves an exit 0.
+    if [ -z "$projects" ]; then
+        echo "catalog: no _PROJECT.md anywhere under $vault — refusing to print an empty catalogue" >&2
+        return 1
+    fi
+    if [ -n "$only" ]; then
+        grep -qxFe "$only" <<<"$projects" ||
+            { echo "catalog: no project '$only' in $vault" >&2; return 1; }
+        projects="$only"
+    fi
+
+    if [ -z "$only" ]; then
+        printf 'notes\tdecs\tinforce\tretired\tnewest\tproject\n'
+        # `while read` over find, never `for f in $(find …)`: a filename with a space would
+        # split into two words and the note would be read as two missing files.
+        printf '%s\n' "$projects" | while IFS= read -r p; do
+            [ -n "$p" ] && [ -d "$p/wiki" ] || continue
+            n_all=0; n_dec=0; n_force=0; n_ret=0; dates=""
+            while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                n_all=$((n_all + 1))
+                fm=$(_cat_fm "$f")
+                d=$(printf '%s' "$fm" | cut -f1); s=$(printf '%s' "$fm" | cut -f2)
+                case "$(basename "$f")" in
+                    decision-*)
+                        n_dec=$((n_dec + 1))
+                        case "$s" in
+                            superseded|deprecated) n_ret=$((n_ret + 1)) ;;
+                            *) n_force=$((n_force + 1)) ;;
+                        esac ;;
+                esac
+                case "$d" in
+                    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) dates="$dates$d
+" ;;
+                esac
+            done <<EOF
+$(find "$p/wiki" -maxdepth 1 -name '*.md')
+EOF
+            # Newest date via sort, never `[ "$a" \> "$b" ]` — that form fails in zsh, and
+            # this package does not use what it forbids others (taskboard, 2026-08-16).
+            newest=$(printf '%s' "$dates" | grep -v '^$' | LC_ALL=C sort -r | head -1)
+            printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$n_all" "$n_dec" "$n_force" "$n_ret" "${newest:-—}" "$p"
+        done
+        return 0
+    fi
+
+    # Per-project index: one line per note, newest first.
+    p="$only"
+    [ -d "$p/wiki" ] || { echo "catalog: $p has no wiki/ — nothing to index" >&2; return 1; }
+    # Counted BEFORE the loop: the loop's output goes through a pipe to sort, so anything
+    # it increments lives in a subshell and reads as 0 outside — the same defect that made
+    # a prose-budget counter report `ok` for a section it never measured.
+    n=$(find "$p/wiki" -maxdepth 1 -name '*.md' | grep -c .)
+    if [ "$n" -eq 0 ]; then
+        echo "catalog: $p/wiki holds no notes" >&2
+        return 1
+    fi
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        fm=$(_cat_fm "$f")
+        d=$(printf '%s' "$fm" | cut -f1)
+        s=$(printf '%s' "$fm" | cut -f2)
+        sb=$(printf '%s' "$fm" | cut -f3)
+        cb=$(printf '%s' "$fm" | cut -f4)
+        base=$(basename "$f" .md)
+        state="-"
+        case "$base" in
+            decision-*)
+                state="${s:-?}"
+                # A note can be in force AND carry a correction to one of its facts; the
+                # marker says "trust it, but read the correction" and must not be lost in
+                # a listing, or the reader is misled by exactly the note that was fixed.
+                [ -n "$cb" ] && [ "$cb" != "~" ] && state="$state+corrected"
+                [ -n "$sb" ] && [ "$sb" != "~" ] && state="$state→$(basename "$sb" .md)"
+                ;;
+            *) [ -n "$s" ] && state="$s" ;;
+        esac
+        printf '%s\t%s\t%s\n' "${d:-0000-00-00}" "$state" "$base"
+    done <<EOF | LC_ALL=C sort -r
+$(find "$p/wiki" -maxdepth 1 -name '*.md')
+EOF
+    return 0
+}
+
 # ── connections-add ──────────────────────────────────────────────────────────
 # Insert one cross-project entry at the TOP of the knowledge-transfers section.
 #
@@ -1924,6 +2060,42 @@ lint_collect() {
     [ -n "$NOT_ACTIVE" ] &&
         printf 'scope-note:not-active\tfreshness checks skipped for:%s\n' "$NOT_ACTIVE"
 
+    # ── documents with a lifecycle, which live outside wiki/ and sessions/ ────
+    # A brief, an audit request, a verification plan: not a wiki note (it dies when its
+    # run closes) and not a session log (it is an instruction, not an account). Nothing
+    # watched them. Measured 2026-08-16: two verification briefs stood at `status: open`
+    # for twelve days while _PROJECT.md already announced their runs closed; 2026-08-17:
+    # the Autopilot brief did the same for two days, and the brief's own text warns
+    # against exactly that. A field has to be remembered; that is the whole defect.
+    #
+    # This is deliberately an INVENTORY, not a threshold. Measured before writing it:
+    # the whole vault holds six such documents and five are already in a final state, so
+    # a warning would fire on one draft that the baseline already carries — and a brief
+    # legitimately stays open for weeks, which makes age the wrong measure (the same
+    # reason `stale-project` stopped counting days). Printing the state of each on every
+    # lint makes "open while the work is done" visible without inventing a deadline.
+    # `scope-note:`-shaped key so the detail can change without a fake NEW/GONE.
+    LIFECYCLE=""
+    for P in $PROJECTS; do
+        while IFS= read -r lf; do
+            [ -n "$lf" ] || continue
+            case "$(basename "$lf")" in
+                _PROJECT.md|taskboard.md|architecture-map.md|CLAUDE.md) continue ;;
+            esac
+            lst=$(_lc_fm "$lf" status)
+            [ -n "$lst" ] || continue
+            # `accepted`/`stable` mark knowledge, not a process — a concept note carries
+            # them and has no lifecycle to report.
+            case "$lst" in accepted|stable) continue ;; esac
+            lcl=$(_lc_fm "$lf" closed)
+            LIFECYCLE="$LIFECYCLE ${lf#./}=$lst${lcl:+@$lcl}"
+        done <<EOF
+$(find "$P" -maxdepth 2 -name '*.md' -not -path "*/wiki/*" -not -path "*/sessions/*" 2>/dev/null)
+EOF
+    done
+    [ -n "$LIFECYCLE" ] &&
+        printf 'scope-note:lifecycle-docs\tstate is a field, not a location — verify each against the work:%s\n' "$LIFECYCLE"
+
     for P in $PROJECTS; do
         f="$P/_PROJECT.md"
         [ -f "$f" ] || { printf 'project-missing:%s\tno _PROJECT.md\n' "$P"; continue; }
@@ -2186,6 +2358,16 @@ case "${1:-}" in
     backfill-dates)     shift; backfill_dates "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     connections-add)    shift; connections_add "${1:-}" "${2:-}" ;;
+    catalog)            shift; cat_v="${1:-}"; cat_p=""
+                        shift 2>/dev/null || true
+                        while [ $# -gt 0 ]; do
+                            case "$1" in
+                                --project) shift; cat_p="${1:-}" ;;
+                                *) echo "catalog: unknown option '$1'" >&2; exit 64 ;;
+                            esac
+                            shift
+                        done
+                        catalog "$cat_v" "$cat_p" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
                         shift 2 2>/dev/null

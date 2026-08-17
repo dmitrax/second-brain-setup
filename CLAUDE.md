@@ -802,6 +802,51 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   `lib/`, and by a derived enumeration — any instruction file telling a session to add a
   connection must name the command, which caught `brain-ingest.md` on its first run.
 
+- **A borrowed mechanism is re-measured against our own numbers before it is adopted, and
+  the measurement changes the design about as often as it confirms it.** Studied
+  2026-08-17: the `nf-content` skill stack (12 skills, ~11 500 lines) solves knowledge
+  capture well enough that four of its mechanisms were adopted, and each one had to be
+  re-shaped or refused on evidence rather than copied:
+  - **A generated catalogue, not a maintained one.** Their argument is right — read a
+    compact index and pull only what is relevant instead of reading the base — and their
+    index covers 52 records in 265 lines, so reading it whole is cheap. We hold **511
+    notes, 383 of them decisions, 220 in one project**: an index of everything would cost
+    more than the grep it replaces, so the default is a per-project summary and the full
+    list is per project. Theirs is maintained by a skill and their own limitation admits
+    it does not re-sync a hand-edited record; ours is **generated per call and never
+    stored**, because a stored index is a second copy of knowledge — which this Block
+    already forbids — and a second copy drifts. What it adds over `ls` is a decision's
+    **standing**: the first live run surfaced two `corrected-by` notes nobody had in mind.
+    Checked by preflight 47, whose negative test removes the standing and goes red.
+  - **State by location beats state in a field, but six files do not justify a folder
+    scheme.** Their pending record carries `<!-- НЕ КАТАЛОГИЗИРОВАНО -->` and *becomes*
+    processed by moving into an archive, so a repeat run is safe and nothing has to be
+    remembered. Our failure is the same shape (two verification briefs `open` for twelve
+    days while `_PROJECT.md` announced their runs closed; the Autopilot brief for two days
+    while its own text warned against it) — but the measurement said the vault holds
+    **six** such documents and five were already final, so the fix is an inventory line
+    (`scope-note:lifecycle-docs`) plus `closed:` next to the final status, never a
+    threshold: a brief legitimately stays open for weeks, which makes age the wrong
+    measure exactly as it is for project freshness. Checked by preflight 48.
+  - **A rule refused on evidence: their NFC/NFD normalisation.** It is load-bearing for
+    them (an anchor failure named in their own text: Cyrillic filenames not matching
+    because macOS stores NFD and Linux NFC, plus non-breaking spaces from Google Docs) and
+    it looks like a direct hit on our two-machine setup. Measured before adopting: **0
+    Cyrillic filenames, 926 files in NFC, all content NFC, zero non-breaking spaces** —
+    the exposure does not exist, because the "file names in English" rule already closed
+    it. Adopting it would have added a permanent normalisation step guarding nothing. The
+    condition that would revive it: Cyrillic file names, or an import from Google Docs.
+  - **A rule adopted because we had nothing at all: the newer note wins.** Their record
+    standard states it plainly — views change, so on a conflict the fresher record has
+    priority — and our supersession/`corrected-by` only cover the case where somebody
+    already noticed the conflict, which is the rare one. Now in `SKILL.md`, with the two
+    exceptions that keep it honest (a decision outranks a newer synthesis note; a note
+    that records history is not in conflict).
+  The general form, which is the reason this is written out: **a mechanism proven
+  elsewhere is evidence that the problem is real, never that the solution transfers.**
+  Their scale, their platform and their failure history are inputs to their design and not
+  to ours. Adopt the argument, re-derive the number.
+
 ### Do not
 - Commit API keys, secrets, or vault content
 - Edit decision notes in place — supersede with a new note
