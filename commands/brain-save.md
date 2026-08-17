@@ -540,9 +540,44 @@ turning over within a single working day.
 
 ## Step 7: Check for cross-project connections
 
-If session produced knowledge applicable to OTHER projects:
-- Add entry to `$VAULT/00-system/connections.md`
-- Format: `[DATE] | [[$PROJECT/wiki/note]] → applicable in [other-project]`
+If this session produced knowledge applicable to OTHER projects, hand the entry to
+the command — do not edit the file:
+
+```bash
+bash "$BRAIN" connections-add "$VAULT/00-system/connections.md" "$(date +%F)" <<'ENTRY'
+[[<this-project>/wiki/<note>|short label]] → применимо в <other-project>: what carries over
+  the mechanism in one or two lines, in the vault's working language
+ENTRY
+```
+
+The delimiter is quoted (`<<'ENTRY'`) so the entry's own backticks, `$` and `[[...]]`
+reach the file as written — which also means **no variable expands inside it**: write
+the project and note names out, do not put `$PROJECT` in the body and expect it to
+resolve.
+
+It inserts the entry at the **top** of the knowledge-transfers section, refuses an
+empty entry, a missing section and an exact duplicate, and verifies the entry count
+grew by exactly one. Exit 0 added · 1 refused (the reason is on stderr — read it, do
+not fall back to editing the file by hand).
+
+**Why a command and not "add an entry".** This step used to name the format and not
+the address, and appending is never an error, so sessions appended to the end of the
+file — where the end sat inside a heading dated 2026-07-29. Measured 2026-08-17 on the
+live vault: **89 August entries, three of them written that day, under a July heading
+announcing a different topic**, while the section a reader opens carried nothing newer
+than 08-16. The heading was wrong about its date, its size and its subject at once, and
+every save made it wronger. Nothing could see it: the file grew, the entry was there,
+`git diff` looked normal.
+
+There is deliberately **no size threshold and no rotation** for this file. Its entries
+are techniques ("a conditional deadline needs an observer in the code"), and a
+technique does not spoil with age — the date records when it was noticed. An age
+window would archive what has been confirmed by time, which is the opposite of the
+selection anyone wants. `SKILL.md` states what the file is: an index for Claude,
+reached by grep, and grep is recursive — so moving old entries to an archive note
+would not even save a read. The one place size costs anything is a session opening the
+file to append, and calling this command removes that read entirely. What retires an
+entry is being **wrong**, not being old — which `/brain-lint` Step 4 already asks for.
 
 ## Step 8: Report what the save actually did
 

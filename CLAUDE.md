@@ -771,6 +771,36 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   keep `.venv/` in `.gitignore`. This is a dev-only dependency of the release gate and
   does not touch the package's "no external dependencies" claim — `install.sh` ships
   `SKILL.md` and `commands/` only, never `preflight.sh`.
+- **An instruction that names a record's FORMAT must also name its ADDRESS, and the
+  address belongs in code.** Prose can specify what a line looks like; it cannot specify
+  where the line goes, because "where" is re-derived by every session and appending is
+  never an error. Measured 2026-08-17 on the live vault: Step 7 said "add entry to
+  `connections.md`" and gave the format, so sessions appended to the end of the file —
+  and the end sat inside a heading dated `2026-07-29`, announcing a different topic. **89
+  August entries, three of them written that same day, under a July heading**, while the
+  section a reader opens held nothing newer than 08-16. The heading was wrong about its
+  date, its size and its subject at once; nothing could see it, because the file grew,
+  the entry was there and `git diff` looked normal. Placement is now `brain.sh
+  connections-add`, which inserts at the top of the section and **verifies the position
+  it claims** — the first draft printed "added at the top" while appending to the end
+  under a mutated insertion point, a true action carrying a false sentence, and only the
+  negative test on the check found it. Note what that test cost: the first mutation was
+  silently overwritten by the next line of code, so the check went green on unchanged
+  behaviour — a negative test whose mutation does not alter behaviour is a green that
+  cannot be spent.
+  **The second half is a refusal, recorded so it is not "fixed" later: this file gets no
+  size threshold and no age window.** Its entries are techniques ("a conditional deadline
+  needs an observer in the code"), and a technique does not spoil — the date records when
+  it was *noticed*, so an age window archives exactly what time has confirmed. Nor would
+  it save a read: `SKILL.md` calls the file an index reached by grep, and grep is
+  recursive, so an archive note in the vault is found identically. The one real cost of
+  size is a session opening the file to append, which the command removes by not reading
+  it. What retires an entry is being **wrong**, which `/brain-lint` Step 4 already asks
+  for. This is the fourth threshold in this package proposed against a number that was
+  not the problem, after `_PROJECT.md` total size, the taskboard total, and the summed
+  prose budget. Checked by preflight 46, including that no age threshold reappears in
+  `lib/`, and by a derived enumeration — any instruction file telling a session to add a
+  connection must name the command, which caught `brain-ingest.md` on its first run.
 
 ### Do not
 - Commit API keys, secrets, or vault content

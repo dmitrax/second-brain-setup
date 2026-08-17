@@ -192,7 +192,20 @@ Update $PROJECT section with list of new notes
 
 If knowledge from source is applicable to OTHER projects:
 - General principle → create in `$VAULT/00-shared/concepts/`
-- Add entry to `connections.md`
+- Add entry to `connections.md` **through the command, never by editing the file**:
+
+```bash
+bash "$BRAIN" connections-add "$VAULT/00-system/connections.md" "$(date +%F)" <<'ENTRY'
+[[<this-project>/wiki/<note>|short label]] → применимо в <other-project>: what carries over
+  the mechanism in one or two lines, in the vault's working language
+ENTRY
+```
+
+  It inserts at the **top** of the knowledge-transfers section and refuses an empty
+  entry, a missing section, a bad date and an exact duplicate. Editing the file instead
+  appends to its end, and the end sat inside a heading dated weeks earlier — measured
+  2026-08-17: 89 August entries under a July heading, invisible because appending is
+  never an error. No variable expands inside the quoted heredoc: write the names out.
 
 ## Result
 

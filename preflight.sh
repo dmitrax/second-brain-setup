@@ -2854,6 +2854,75 @@ else
     pass "stale-project measures the record against the work; non-active projects are skipped and named"
 fi
 
+# ─── 46. A cross-project entry is placed by code, because prose named no address ──
+# Step 7 gave the entry's FORMAT and never its PLACE, and appending to a file is never
+# an error — so sessions appended to the end, and the end of connections.md sat inside a
+# heading dated 2026-07-29. Measured 2026-08-17 on the live vault: 89 August entries,
+# three written that same day, under a July heading announcing a different topic, while
+# the section a reader opens held nothing newer than 08-16. Wrong about its date, its
+# size and its subject at once, and invisible: the file grew, the entry was there.
+#
+# So the check is positional, not merely "did it write" — a version that appends passes
+# every count and still reproduces the defect. And no age window is asserted anywhere on
+# purpose: these entries are techniques, which do not spoil, so `lint-collect` must not
+# grow a threshold for this file. That absence is asserted too, or it comes back.
+missing=""
+cf=$(mktemp -d)
+printf -- '# Connections\n\n## Shared knowledge\n\n## Knowledge transfers\n\n- 2026-08-10 | [[a/wiki/x]] → applicable in b\n  body\n' > "$cf/c.md"
+printf -- '# C\n\n## Перетоки знаний\n\n- 2026-08-01 | old → x\n' > "$cf/ru.md"
+printf -- '# nothing here\n' > "$cf/nosection.md"
+
+out=$(printf 'new one → applicable in q\nsecond line\n' | bash "$LIBSH" connections-add "$cf/c.md" 2026-08-17 2>&1)
+rc=$?
+[ "$rc" -eq 0 ] || missing+="a valid entry was refused (rc=$rc): $out"$'\n'
+# THE property: the new entry is the FIRST entry in the file, not the last.
+first_entry=$(grep -m1 -E '^- 20[0-9][0-9]-' "$cf/c.md")
+grep -qFe '2026-08-17' <<<"$first_entry" ||
+    missing+="the entry did not land at the top of the section — got: $first_entry"$'\n'
+# Its body must travel with it, indented, and the old entry must survive.
+grep -qFe '  second line' "$cf/c.md" || missing+="the entry body was lost or left unindented"$'\n'
+grep -qFe '- 2026-08-10 | [[a/wiki/x]] → applicable in b' "$cf/c.md" ||
+    missing+="the pre-existing entry did not survive the insert"$'\n'
+[ "$(grep -c -E '^- 20[0-9][0-9]-' "$cf/c.md")" -eq 2 ] ||
+    missing+="entry count is not exactly one more than before"$'\n'
+
+# The Russian spelling of the section is matched too — a live vault carries it.
+printf 'ru entry → применимо в z\n' | bash "$LIBSH" connections-add "$cf/ru.md" 2026-08-17 >/dev/null 2>&1
+grep -qFe '2026-08-17' <<<"$(grep -m1 -E '^- 20[0-9][0-9]-' "$cf/ru.md")" ||
+    missing+="the Russian section name is not matched — a live vault would be appended to blindly"$'\n'
+
+# Refusals. Each is a fact the caller must not be able to mistake for success.
+printf '' | bash "$LIBSH" connections-add "$cf/c.md" 2026-08-17 >/dev/null 2>&1 &&
+    missing+="an empty entry was accepted — a heredoc that never arrived reads as 'nothing to say'"$'\n'
+echo x | bash "$LIBSH" connections-add "$cf/c.md" 17-08-2026 >/dev/null 2>&1 &&
+    missing+="a malformed date was accepted"$'\n'
+echo x | bash "$LIBSH" connections-add "$cf/nosection.md" 2026-08-17 >/dev/null 2>&1 &&
+    missing+="a file with no knowledge-transfers section was written to anyway"$'\n'
+printf 'new one → applicable in q\n' | bash "$LIBSH" connections-add "$cf/c.md" 2026-08-17 >/dev/null 2>&1 &&
+    missing+="an exact duplicate was appended"$'\n'
+[ "$(grep -c -E '^- 20[0-9][0-9]-' "$cf/c.md")" -eq 2 ] ||
+    missing+="a refused call still changed the file"$'\n'
+
+# Derived, not a hand-written list: any instruction file telling a session to put an
+# entry into connections.md must hand it to the command. A fifth such file is caught by
+# the check that already exists, instead of by someone remembering to extend a list.
+for f in "$SCRIPT_DIR"/SKILL.md "$SCRIPT_DIR"/commands/*.md; do
+    grep -qFe 'connections.md' "$f" || continue
+    grep -qEe 'add (an )?entry|add connections|Add entry' "$f" || continue
+    grep -qFe 'connections-add' "$f" ||
+        missing+="$(basename "$f") tells a session to add a connection without naming connections-add"$'\n'
+done
+# No age threshold for this file, ever: a technique does not spoil with age, and the
+# entries are reached by grep, which is recursive — archiving would not even save a read.
+grep -qEe 'connections(\.md)?[^\n]*(older than|age|stale)' "$LIBSH" &&
+    missing+="lib/brain.sh has grown an age threshold for connections.md"$'\n'
+rm -rf "$cf"
+if [ -n "$missing" ]; then
+    fail "a cross-project entry is not placed by code, or an age window came back" "$missing"
+else
+    pass "connections-add puts the entry at the top, refuses four ways, and no age window exists"
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then

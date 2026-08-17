@@ -60,6 +60,16 @@ usage: brain.sh <command> [args]
                                A closed sub-item never moves alone: its text explains
                                the open parent above it. Dry-run unless --apply, and
                                the result must be a permutation of the input.
+  connections-add <connections.md> <YYYY-MM-DD>
+                               read one cross-project entry from stdin and insert it at
+                               the TOP of the knowledge-transfers section. The address is
+                               the point: Step 7 named the entry's format and not its
+                               place, so sessions appended to the end of the file, which
+                               sat inside a heading dated weeks earlier. Writes at once —
+                               an append has nothing to preview, and a default no-op
+                               would read as a recorded connection. Refuses an empty
+                               entry, a missing section, a bad date and an exact
+                               duplicate; verifies the count grew by exactly one.
   prose-budget <_PROJECT.md> [taskboard.md]
                                measure what /brain-lint measures, at the moment of
                                writing instead of a day later: the three prose sections
@@ -1612,6 +1622,112 @@ save_report() {
     return 0
 }
 
+# ── connections-add ──────────────────────────────────────────────────────────
+# Insert one cross-project entry at the TOP of the knowledge-transfers section.
+#
+# Why the address is code and not an instruction. Step 7 of /brain-save said "add
+# entry to connections.md" and gave the entry's format, but never said WHERE in the
+# file it goes — so a session appended to the end, and the end of that file was
+# inside a heading dated 2026-07-29. Measured 2026-08-17 on the live vault: 89
+# August entries, three written that same day, sat under a July heading announcing a
+# different topic, while the section a reader opens carried nothing newer than 08-16.
+# The heading was wrong about its date, its size and its subject at once, and every
+# save made it wronger. A format named in prose leaves "where" to be re-derived by
+# every session; this one was re-derived wrongly for three weeks and nothing saw it,
+# because appending to a file is never an error.
+#
+# It writes immediately, with NO --apply, deliberately unlike `archive`,
+# `sweep-closed` and `backfill-dates`. Those move existing content and a dry run
+# shows what would move; an append has nothing to preview but the line the caller
+# just wrote. And a default that does nothing would fail twice here: the session
+# reports the connection recorded, then `save-report` reads connections.md as
+# unchanged and prints ANSWER — which that same session explains away as "nothing
+# crossed into another project". That is the package's headline class, manufactured
+# by its own defaults. One appended entry is small and reversible; a silent no-op
+# that reads as success is not.
+#
+# Both section spellings are matched, never switched between: a live vault holds
+# `## Перетоки знаний` while install.sh seeds `## Knowledge transfers`, and one run
+# has to see both. A matched name is an identifier — new files write the English one.
+connections_add() {
+    file="${1:-}"; day="${2:-}"
+    [ -f "$file" ] || { echo "connections-add: no connections file at '${file:-}'" >&2; return 1; }
+    case "$day" in
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+        *) echo "connections-add: needs a date as YYYY-MM-DD, got '${day:-}'" >&2; return 1 ;;
+    esac
+
+    hdr=$(awk '/^## (Перетоки знаний|Knowledge transfers)/ { print FNR; exit }' "$file")
+    # Refuse rather than create the section: a file without it is either the wrong
+    # file or a vault whose registry was renamed, and appending a fresh heading to
+    # either one buries the entry exactly as the defect above did.
+    # The message names the English heading only: this file emits English data, and the
+    # Russian spelling is matched by the pattern above, not spoken about. Check 36 caught
+    # the first draft, which quoted both — a section name is an identifier, but a
+    # sentence built around it is speech, and lib/ does not speak.
+    [ -n "$hdr" ] ||
+        { echo "connections-add: no '## Knowledge transfers' section in $file" >&2; return 1; }
+
+    body=$(cat)
+    # An empty entry must fail loudly. "The author had nothing to say" and "the
+    # heredoc never reached the command" are different facts, and appending a bare
+    # date would record the second as the first.
+    [ -n "$(printf '%s' "$body" | tr -d '[:space:]')" ] ||
+        { echo "connections-add: empty entry on stdin — nothing to add" >&2; return 1; }
+
+    work="${TMPDIR:-/tmp}/brain-connadd.$$"
+    mkdir -p "$work" || return 1
+    printf '%s\n' "$body" | awk -v day="$day" '
+        NR == 1 { sub(/^[ \t]+/, ""); sub(/^-[ \t]*/, ""); print "- " day " | " $0; next }
+        { sub(/^[ \t]+/, ""); print ($0 == "" ? "" : "  " $0) }
+    ' > "$work/entry"
+    # A trailing blank inside the entry would double up against the file's own.
+    awk 'BEGIN{n=0} {l[n++]=$0} END{while (n>0 && l[n-1]=="") n--; for (i=0;i<n;i++) print l[i]}' \
+        "$work/entry" > "$work/entry.trim" && mv "$work/entry.trim" "$work/entry"
+
+    head1=$(sed -n '1p' "$work/entry")
+    # `-e` is load-bearing: the pattern starts with "- ", which grep reads as an option
+    # otherwise. Caught by the fixture on the first run — the duplicate check reported
+    # the error to stderr, added the duplicate anyway and exited 0.
+    if grep -qxFe "$head1" "$file"; then
+        echo "connections-add: refused — this exact entry is already in $(basename "$file")" >&2
+        rm -rf "$work"; return 1
+    fi
+
+    n_before=$(grep -c '^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] |' "$file" || true)
+    # Insert after the heading, and after the blank line that follows it if there is
+    # one, so the result reads the same whether or not the file keeps that blank.
+    nextline=$(sed -n "$((hdr + 1))p" "$file")
+    at="$hdr"
+    [ -z "$(printf '%s' "$nextline" | tr -d '[:space:]')" ] && at=$((hdr + 1))
+    awk -v at="$at" -v ins="$work/entry" '
+        { print }
+        FNR == at {
+            if (at == FNR && substr($0, 1, 3) == "## ") print ""
+            while ((getline l < ins) > 0) print l
+            print ""
+        }
+    ' "$file" > "$work/out" || { rm -rf "$work"; return 1; }
+
+    n_after=$(grep -c '^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] |' "$work/out" || true)
+    if [ "$n_after" -ne "$((n_before + 1))" ]; then
+        echo "connections-add: refused — entry count went $n_before -> $n_after, expected one more" >&2
+        rm -rf "$work"; return 1
+    fi
+    # Verify the POSITION, do not just claim it. Found by the negative test on check 46:
+    # with the insertion point mutated to the end of the file, this command still printed
+    # "added at the top of the section" — a true action carrying a false sentence, which
+    # is the one thing a report here must never do.
+    first_now=$(grep -m1 -Ee '^- [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] \|' "$work/out")
+    if [ "$first_now" != "$head1" ]; then
+        echo "connections-add: refused — the entry did not land first; top is: $first_now" >&2
+        rm -rf "$work"; return 1
+    fi
+    cat "$work/out" > "$file" || { rm -rf "$work"; return 1; }
+    rm -rf "$work"
+    echo "connections-add: added at the top of the section, $n_after entries"
+}
+
 # ── lint-collect ─────────────────────────────────────────────────────────────
 # Every check /brain-lint used to describe in prose, as code that actually runs.
 #
@@ -2069,6 +2185,7 @@ case "${1:-}" in
     save-report)        shift; save_report "${1:-}" "${2:-}" ;;
     backfill-dates)     shift; backfill_dates "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
+    connections-add)    shift; connections_add "${1:-}" "${2:-}" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
                         shift 2 2>/dev/null

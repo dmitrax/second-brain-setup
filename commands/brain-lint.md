@@ -171,9 +171,14 @@ holds and only one supporting fact was disproved, mark it `corrected-by:` and le
   *content* those numbers point at.
 - taskboard: tasks in progress with no movement for 14+ days → move to stalled with a
   reason. Stalled for 30+ days → ask the user: still relevant?
-- `00-system/connections.md`: add connections this run revealed, drop ones no longer true,
-  update `## Last updated: [TODAY] lint`. Only if something actually changed — an
-  unchanged file is a legitimate outcome, not a missed step.
+- `00-system/connections.md`: add connections this run revealed with
+  `brain.sh connections-add <file> <YYYY-MM-DD>` (entry on stdin — it puts the entry at
+  the top of the knowledge-transfers section; never edit the file to append, that is how
+  89 entries ended up under a heading dated weeks earlier). Drop the ones no longer true
+  — **being wrong is what retires an entry, never being old**: there is no age window and
+  no size threshold here on purpose, because these entries are techniques and a technique
+  does not spoil with age. Update `## Last updated: [TODAY] lint`. Only if something
+  actually changed — an unchanged file is a legitimate outcome, not a missed step.
 
 ## Step 5: Report the delta, not the backlog
 
