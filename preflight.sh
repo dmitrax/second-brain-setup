@@ -3157,7 +3157,15 @@ printf -- '# index\n- [[p/_PROJECT]]\n' > "$rv/00-system/index.md"
   printf -- '- another long one, but sourced\n  second line\n  third line [[some-note]]\n'
 } > "$rv/p/_PROJECT.md"
 printf -- '# board\n## In progress\n' > "$rv/p/taskboard.md"
+# A decision note outside wiki/ must still be schema-checked: the report claims "entire
+# vault", and until 2026-08-17 the filter was the PATH `/wiki/decision-`, so a note in
+# 00-shared/concepts/ was read by the vault-wide sweeps and skipped by the schema check.
+mkdir -p "$rv/00-shared/concepts"
+printf -- '---\nstatus: partially-bogus\ndate: %s\n---\nx\n' "$PF_ANCIENT" \
+    > "$rv/00-shared/concepts/decision-outside-wiki.md"
 rout=$(bash "$LIBSH" lint-collect "$rv" 2>&1)
+grep -qFe 'decision-schema:00-shared/concepts/decision-outside-wiki.md' <<<"$rout" ||
+    missing+="a decision note outside wiki/ is not schema-checked, while the report says entire vault"$'\n'
 grep -qEe '^retelling-no-source:p	1 bullet' <<<"$rout" ||
     missing+="expected exactly 1 unsourced long bullet, got: $(grep retelling <<<"$rout" || echo none)"$'\n'
 # The short bullet must NOT count: that is what keeps this off every ordinary status line.

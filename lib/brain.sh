@@ -2209,7 +2209,14 @@ EOF
     # `~` is YAML null, not a filename; a value may be a relative path; and the
     # legacy form is quoted inside the note that documents it. All three produced
     # false positives on the 2026-08-04 soak run — the whole reason this is code.
-    printf '%s\n' "$SCOPED_MD" | grep -F '/wiki/decision-' | while read -r p; do
+    # Matched by FILENAME, not by folder: a decision note is a decision note wherever it
+    # lives. Measured 2026-08-17 on a fixture — with the old `/wiki/decision-` filter, a
+    # note in `00-shared/concepts/` carrying an off-schema status was invisible, while
+    # `frontmatter` and `ambiguous-link` (vault-wide sweeps) saw the same folder fine. Zero
+    # live instances today (no decision-* outside wiki/), so this closes a gap between the
+    # report's claim of "entire vault" and what part of it was actually read, rather than
+    # fixing a present defect. `raw/` stays excluded: it is untrusted input, not our record.
+    printf '%s\n' "$SCOPED_MD" | grep -Ee '/decision-[^/]*\.md$' | grep -v '/raw/' | while read -r p; do
         st=$(_lc_fm "$p" status)
         case "$st" in
             accepted|superseded|deprecated) ;;
