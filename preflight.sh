@@ -2385,8 +2385,12 @@ else
     # did not run. Caught by the differentiating negative test — a fallback rewritten to
     # read the clock stayed green here while the static half was satisfied. So where a BSD
     # date exists, run the shipped chain again with a PATH that offers only that one.
+    # The confession belongs in the branch where the test did NOT run. Stated
+    # unconditionally it was false on the machine that could answer it: measured
+    # 2026-08-18 on Darwin, this check printed "both branches, BSD included" while
+    # the summary declared the same branch unverified. A claim about coverage is a
+    # claim, and it is verified where it is made — or it is decoration.
     mode="GNU branch only (this machine has no BSD date)"
-    gap "the BSD branch of the date fallback (check 38) — no BSD \`date\` on this machine; run on macOS with PATH=/usr/bin:/bin"
     if /bin/date -j -f "%Y-%m-%d %H:%M:%S" "2026-07-20 00:00:00" +%s >/dev/null 2>&1; then
         mode="both branches, BSD included"
         pf_ed=$(mktemp -d); pf_bsd="$pf_ed/epoch_bsd.sh"
@@ -2398,6 +2402,8 @@ else
             missing+="the two branches disagree for one date: GNU $e1, BSD $b1 — the age in days differs by machine"$'\n'
         fi
         rm -rf "$pf_ed"
+    else
+        gap "the BSD branch of the date fallback (check 38) — no BSD \`date\` on this machine; run on macOS, where /bin/date is BSD"
     fi
 fi
 if [ "$scanned" -eq 0 ]; then
@@ -3115,8 +3121,18 @@ else
     nested_out=$(PF_NESTED=1 bash "$0" --fast 2>&1); nested_rc=$?
     grep -qFe 'not verified by this run' <<<"$nested_out" ||
         missing+="the run does not print a coverage-gap block at all"$'\n'
-    grep -qFe 'BSD branch of the date fallback' <<<"$nested_out" ||
-        missing+="check 38's admission that it could not test the BSD branch is not collected"$'\n'
+    # Which gaps exist is a fact about THIS machine, so the assertion asks for the one
+    # this machine should have — and on a machine that can test the BSD branch it asks
+    # for the opposite. A confession is as wrong as a silence when it is untrue.
+    if /bin/date -j -f "%Y-%m-%d %H:%M:%S" "2026-07-20 00:00:00" +%s >/dev/null 2>&1; then
+        min_gaps=1
+        ! grep -qFe 'BSD branch of the date fallback' <<<"$nested_out" ||
+            missing+="the gate confesses a BSD gap on a machine whose /bin/date is BSD — the admission is false"$'\n'
+    else
+        min_gaps=2
+        grep -qFe 'BSD branch of the date fallback' <<<"$nested_out" ||
+            missing+="check 38's admission that it could not test the BSD branch is not collected"$'\n'
+    fi
     grep -qFe 'the install into a clean' <<<"$nested_out" ||
         missing+="--fast does not report the skipped install as a gap"$'\n'
     [ "$nested_rc" -eq 0 ] ||
@@ -3126,8 +3142,8 @@ else
     # The gap list must not be silently empty on a machine that has real gaps: an empty
     # block would read as full coverage, the very confusion this check exists to remove.
     n_gaps=$(grep -cEe '^  · ' <<<"$nested_out")
-    [ "$n_gaps" -ge 2 ] ||
-        missing+="expected at least two gaps in a --fast run, got $n_gaps"$'\n'
+    [ "$n_gaps" -ge "$min_gaps" ] ||
+        missing+="expected at least $min_gaps gap(s) in a --fast run, got $n_gaps"$'\n'
     if [ -n "$missing" ]; then
         fail "the gate does not state its own coverage gaps, or turns them into failures" "$missing"
     else
@@ -3313,6 +3329,55 @@ if [ -n "$missing" ]; then
     fail "live documentation restates a number the code owns" "$missing"
 else
     pass "live docs cite no check count and no threshold the code lacks; changelogs untouched"
+fi
+
+# ─── 53. A multibyte character never touches an unbraced expansion ────────────
+# `state="$state→x"` reads as the variable `state\xe2` and dies under `set -u`, because
+# the leading byte of the multibyte character is taken as part of the NAME. Measured
+# 2026-08-18 on Darwin: `catalog` printed 51 of 63 notes with exit 0 — the loop sits on
+# the left of a pipe, so the subshell died at the first superseded note, `sort` received
+# a truncated list and nothing said so. The standing column, the one thing the catalogue
+# adds over `ls`, never rendered at all.
+#
+# This is NOT the bash 3.2 class, and reading it as that is how it would recur: it
+# reproduces on 3.2 and on 5.3 alike, and disappears under `LC_ALL=C` on both. What
+# decides it is whether the C library calls the high byte a name character in a UTF-8
+# locale — Darwin does, glibc does not — so the same line is correct on one working
+# machine and truncating on the other, which is exactly the shape the gate exists to
+# catch. Braces cost one character and remove the judgement entirely.
+missing=""
+scanned=0
+# Space to tilde is printable ASCII; a tab is legal after an expansion and is spared.
+nb_pat='\$[A-Za-z_][A-Za-z0-9_]*[^'"$(printf '\t')"' -~]'
+for f in "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/lib/*.sh; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    # Comment lines are stripped: this rule is explained in prose that has to quote the
+    # broken form, and a comment must never fail — or satisfy — a check about code.
+    h=$(LC_ALL=C grep -nEe "$nb_pat" "$f" | grep -vEe '^[0-9]+:[[:space:]]*#' || true)
+    [ -n "$h" ] && missing+="$(basename "$f") — a multibyte character abuts an unbraced expansion:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+done
+# Prompt blocks are executed by a session's shell, so they carry the same defect.
+for f in "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR/SKILL.md"; do
+    [ -f "$f" ] || continue
+    scanned=$((scanned + 1))
+    h=$(exec_blocks "$f" | LC_ALL=C grep -nEe "$nb_pat" || true)
+    [ -n "$h" ] && missing+="$(basename "$f") — a multibyte character abuts an unbraced expansion in a prompt block:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
+done
+# The premise, verified where it is claimed rather than trusted from a comment: two of
+# this project's rationales read as authoritative and were refuted within the hour.
+nb_probe=$(bash -c 'set -u; v=x; printf "%s" "$v'"$(printf '\342\206\222')"'y"' 2>&1)
+nb_mode="the parse was reproduced here"
+if [ "$nb_probe" = "x$(printf '\342\206\222')y" ]; then
+    nb_mode="defensive only — this libc does not fold the high byte into the name"
+    gap "the multibyte name-parse (check 53) — it does not reproduce on this machine; the rule is defensive here and load-bearing on Darwin"
+fi
+if [ "$scanned" -eq 0 ]; then
+    fail "check 53 opened no files — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a multibyte character abuts an unbraced expansion (truncates silently under set -u)" "$missing"
+else
+    pass "no multibyte character touches a bare \$var — $nb_mode ($scanned files)"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

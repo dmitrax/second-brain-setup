@@ -757,6 +757,36 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   which the general rule: a check must fail hard when its input is empty. Green means
   "ran and found nothing", never "did not run" — a check that cannot tell those apart
   is worse than an absent one, because its green is trusted. Checked by preflight 14.
+- **A multibyte character never touches an unbraced expansion, and this is NOT the bash
+  3.2 class above — reading it as that is how it would recur.** `state="$state→x"` reads
+  as the variable `state\xe2`: the leading byte of the multibyte character is taken as part
+  of the NAME, and under `set -u` the shell dies. Measured 2026-08-18 on Darwin — it
+  reproduces on bash 3.2 **and** on 5.3, and disappears under `LC_ALL=C` on both, so what
+  decides it is whether the C library calls a high byte a name character in a UTF-8 locale.
+  Darwin does, glibc does not; the same line is therefore correct on one working machine
+  and broken on the other, which no version floor can express. The failure is this
+  project's headline shape: `catalog` printed **51 of 63 notes with exit 0**, because the
+  loop sits on the left of a pipe, so the subshell died at the first superseded note and
+  `sort` received a truncated list with nothing said — and the standing column, the one
+  thing the catalogue adds over `ls`, never rendered at all. Braces cost one character and
+  remove the judgement entirely, so the rule is "is it braced", never "does this string
+  need it". Checked by preflight 53, over `*.sh`, `lib/*.sh` and the executable blocks of
+  the prompts, with the premise re-run rather than trusted: where the parse does not
+  reproduce the check says so as a coverage gap instead of claiming a green it did not earn.
+- **A claim about coverage is a claim, and it is verified where it is made.** The gate's
+  own `gap()` — one day old — confessed "no BSD `date` on this machine" unconditionally,
+  called one line **above** the test that decides it, so on Darwin check 38 printed "both
+  branches, BSD included" while the summary of the same run declared that branch
+  unverified. Both sentences in one output, one of them false. The cost is not cosmetic:
+  the taskboard carried "check 41 has never run under BSD `date`" as open work while the
+  ordinary Mac run had been closing it, and the recipe written inside the confession
+  (`PATH=/usr/bin:/bin`) did not clear it either, because the confession never depended on
+  anything. A gap is emitted from the branch where the work did **not** happen, and the
+  check that reads it asks for the gap **this** machine should have — on a machine whose
+  `/bin/date` is BSD, the presence of that confession is itself the failure. Note why the
+  check needed both directions: asserting only "the admission is collected" hardcoded one
+  machine's coverage into a universal assertion, and it was that assertion which would have
+  had to be weakened rather than the code fixed. Checked by preflight 49, both ways.
 - The empty-input rule above binds every check that depends on a tool, not just the
   ones that read a file list. A check whose tool is missing must fail, never skip:
   "the tool is absent" and "the repo is clean" are different facts, and only one of
