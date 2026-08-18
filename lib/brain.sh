@@ -1211,7 +1211,11 @@ claude_md_audit() {
     # one of them is worth a zero exit.
     [ -f "$f" ] || { echo "claude-md-audit: no such file: $f" >&2; return 1; }
 
-    dir=$(cd "$(dirname "$f")" && pwd) || return 1
+    # Canonicalise before comparing: `git rev-parse --show-toplevel` resolves symlinks,
+    # so where /tmp and /var are symlinks (macOS) the given path and the path git prints
+    # name one file in two spellings, and the string compare below counts it twice.
+    dir=$(cd "$(dirname "$f")" && pwd -P) || return 1
+    f="$dir/$(basename "$f")"
     files="$f"
     if git -C "$dir" rev-parse --show-toplevel >/dev/null 2>&1; then
         top=$(git -C "$dir" rev-parse --show-toplevel)
@@ -1751,7 +1755,7 @@ EOF
                 # marker says "trust it, but read the correction" and must not be lost in
                 # a listing, or the reader is misled by exactly the note that was fixed.
                 [ -n "$cb" ] && [ "$cb" != "~" ] && state="$state+corrected"
-                [ -n "$sb" ] && [ "$sb" != "~" ] && state="$state→$(basename "$sb" .md)"
+                [ -n "$sb" ] && [ "$sb" != "~" ] && state="${state}→$(basename "$sb" .md)"
                 ;;
             *) [ -n "$s" ] && state="$s" ;;
         esac
