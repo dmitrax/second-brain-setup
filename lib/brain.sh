@@ -136,7 +136,19 @@ USAGE
 # compared; the detail may carry changing numbers and is only displayed. Putting a
 # number in the key would report a known problem as new every time it moves.
 lint_diff() {
-    base="${1:-}"; seal="${2:-}"
+    base=""; seal=""; allow_empty=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --seal)        seal="--seal" ;;
+            --allow-empty) allow_empty=1 ;;
+            -*)            echo "lint-diff: unknown option '$1'" >&2; return 64 ;;
+            *)             if [ -n "$base" ]; then
+                               echo "lint-diff: one baseline path, got a second: '$1'" >&2; return 64
+                           fi
+                           base="$1" ;;
+        esac
+        shift
+    done
     [ -n "$base" ] || { echo "lint-diff: need a baseline path" >&2; return 1; }
 
     cur="${TMPDIR:-/tmp}/brain-lint-cur.$$"
@@ -152,6 +164,22 @@ lint_diff() {
         rm -f "$cur"; return 1
     fi
 
+    # An empty stdin against a POPULATED baseline is the dangerous case, and it was
+    # unguarded until 2026-08-19: every finding was reported GONE, exit 0, and --seal
+    # wrote a zero-byte baseline into the vault — so the next run on any machine reports
+    # the lot as NEW. That is exactly the fabricated delta the baseline exists to prevent,
+    # produced by the baseline's own tool. Measured: `lint-collect /nonexistent | lint-diff
+    # base --seal` emptied a 3-key baseline and returned 0, because the collector's
+    # non-zero exit is invisible here (this file runs under `set -u`, NOT `pipefail` — a
+    # pipeline reports its LAST command). "The producer broke" and "the vault went clean"
+    # are the same observation from inside, so the tie is broken by refusing and saying so.
+    if [ ! -s "$cur" ] && [ -s "$base" ] && [ -z "$allow_empty" ]; then
+        echo "lint-diff: no findings on stdin, but the baseline holds $(grep -c . "$base")" >&2
+        echo "  A broken producer and a vault that went clean are indistinguishable here." >&2
+        echo "  Check the collector's exit code first. When the vault really is clean," >&2
+        echo "  pass --allow-empty; only then will --seal empty the baseline." >&2
+        rm -f "$cur"; return 1
+    fi
     if [ ! -s "$cur" ] && [ ! -f "$base" ]; then
         # No findings and no baseline is a legitimate first clean run, but an empty
         # stdin usually means the caller's pipeline broke. Say which one it is.
@@ -247,6 +275,21 @@ archive_done() {
         }
         part != "done" { print > (w "/" part); next }
         {
+            # A `###` sub-heading inside Done belongs to the BOARD, not to the entry above
+            # it. Until 2026-08-19 it fell through to `dest` and travelled with whichever
+            # entry came before: a fixture with `### July` / two July entries / `### August`
+            # / two August entries archived `### August` into the archive note, leaving the
+            # August entries under `### July` — the board then asserting that August work
+            # closed in July, and the archive note ending on a heading with nothing under it.
+            # Both balance checks passed by construction: no entry and no line was lost,
+            # they were merely filed under a heading that now lies. `sweep-closed` states
+            # the rule for its own direction ("a heading is not moved — only items are");
+            # `archive` moved them, into a different file.
+            # The heading and any prose following it stay in the board. An entry under it
+            # still moves when it is due — only the heading stops travelling.
+            if ($0 ~ /^###+[[:space:]]/) {
+                print > (w "/kept"); dest = "kept"; cur_undated = 0; next
+            }
             # New entry? `- [x] 2026-08-03` / `- ✅ 2026-08-03`, at column 0 only.
             # An INDENTED closed item is a sub-item of the entry above it, not an entry:
             # it is one line of the body of that entry and must travel with it. Anchoring this
@@ -804,6 +847,17 @@ stamp_field() {
     esac
     [ "$(head -1 "$file")" = "---" ] || {
         echo "stamp-field: $file has no frontmatter block" >&2; return 1; }
+    # And the block must CLOSE. Without a closing `---` the awk below never sets
+    # `done_fm`, so its "a line starting with `key:`" rule applies to the WHOLE file and
+    # every body line beginning with the key is replaced by the stamp. Measured
+    # 2026-08-19 on a fixture: a note whose body carried `updated: this is prose` lost
+    # that line, exit 0, with the expected `updated: <date>` printed as if all was well.
+    # This input class is not hypothetical — `lint-collect` reports `frontmatter: block
+    # not terminated`, so the vault is known to contain it. The `[ ! -s "$tmp" ]` guard
+    # below cannot see it: the result is not empty, only wrong.
+    awk 'NR > 1 && /^---[[:space:]]*$/ { found = 1; exit } END { exit !found }' "$file" || {
+        echo "stamp-field: $file has an unterminated frontmatter block — refusing" >&2
+        return 1; }
 
     tmp="$file.brain-tmp.$$"
     awk -v k="$key" -v d="$val" '
@@ -875,7 +929,21 @@ sweep_closed() {
         # inside In progress: classify top-level items only (column 0)
         /^- \[x\]|^- ✅/ { state = "moved"; n_moved++; print > (w "/moved"); next }
         /^- \[ \]/       { state = "keep";  n_kept++;  print > (w "/keep");  next }
-        /^### /          { flush(); print > (w "/keep"); next }
+        /^#+[[:space:]]/ { flush(); print > (w "/keep"); next }
+        # A column-0 list marker that is NOT one of the two recognised checkbox forms
+        # starts a NEW top-level item, and nothing here proves it closed — so it stays,
+        # and the previous state stops leaking into it. Until 2026-08-19 such a line fell
+        # through to the inheritance rule below: a fixture whose board carried
+        # `- Note: an open reminder with no checkbox` after a closed entry filed that
+        # reminder under `## Done`, exit 0, reporting "1 closed items -> Done". The
+        # permutation and line-count safeties cannot see it — the result IS a permutation,
+        # only of the wrong partition. Not counted as a kept ENTRY: the numbers in the
+        # report are about checkbox items, and inflating them would trade one wrong number
+        # for another.
+        # NOTE for editors: this awk program is single-quoted, so no apostrophes here.
+        /^[-*+][[:space:]]/ || /^[0-9]+[.)][[:space:]]/ {
+            state = "keep"; print > (w "/keep"); next
+        }
         { print > (w "/" (state == "moved" ? "moved" : "keep")) }
         END { print n_moved + 0 > (w "/n_moved"); print n_kept + 0 > (w "/n_kept") }
     ' "$tb" || { rm -rf "$work"; return 1; }
@@ -2386,7 +2454,7 @@ case "${1:-}" in
     vault-sync)         shift; vault_sync "${1:-}" ;;
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
-    lint-diff)          shift; lint_diff "${1:-}" "${2:-}" ;;
+    lint-diff)          shift; lint_diff "$@" ;;
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
     vault-language)     shift; vault_language "${1:-}" ;;
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
