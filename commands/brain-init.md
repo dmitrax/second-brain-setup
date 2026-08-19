@@ -160,7 +160,11 @@ List active ones here as [[wikilinks]]. If none yet — write "No major decision
 ```
 
 `updated:` is bumped by `/brain-save` on every session that changes project state.
-`/brain-lint` flags the project as stale when `updated` is more than 14 days old.
+`/brain-lint` does not count days since `updated` — that would measure priorities, not
+health, and the owner works by need rather than by schedule. It reports the actionable
+direction instead: a session log that `_PROJECT.md` does not reflect. `status:` other
+than `active` (`reference` / `paused` / `archived`) exempts a project from freshness,
+and the exemption is named in the report.
 
 ## Step 3b: Create project taskboard.md
 

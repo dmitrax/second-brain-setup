@@ -258,7 +258,9 @@ External reference materials are in `raw/` — process with `/brain-ingest` befo
 ```
 
 `updated` is bumped by `/brain-save` on every session that changes project state.
-`/brain-lint` flags a project as stale when `updated` is more than 14 days old.
+`/brain-lint` does not count days since `updated` — that measures priorities, not health.
+It reports the opposite direction: a session log the `_PROJECT.md` does not reflect. A
+project carrying `status: reference` / `paused` / `archived` is exempt from freshness.
 
 `brain-version` above is only a starting value — this skill runs in a chat and cannot read
 the installed system. The first `/brain-save` inside Claude Code re-stamps it with the
