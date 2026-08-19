@@ -1827,10 +1827,19 @@ LANG_SINCE="2026-07-23"
 # it replaced — but a quote may WRAP, and a line-based sed then sees only half of it and
 # reports the commit as prose. Flatten the message first, strip, then test; report the
 # commit rather than the line, which is the more useful unit anyway.
+#
+# ORDER of the three strips is load-bearing, and getting it wrong cost a false red on
+# 2026-08-19. With `.md` first, the pattern `[^[:space:]]+\.md` consumed `` `_PROJECT.md` ``
+# INCLUDING its opening backtick — leaving the closing one — so backtick pairing shifted by
+# one and the next span, `` `## Последняя сессия` ``, lost its delimiter and survived the
+# strip. A correct commit was reported as "Russian where the repo speaks to strangers" and
+# blocked the tag. Measured on 763b5a7: two matches in the old order, zero when the
+# delimited spans are removed first. So: delimited spans (backticks, then quotes) before
+# any bare-token pattern, always — a bare pattern cannot be allowed to eat a delimiter.
 bad_msgs=""
 for c in $(cd "$SCRIPT_DIR" && git log --since="$LANG_SINCE" --format='%H' 2>/dev/null); do
     body=$(cd "$SCRIPT_DIR" && git log -1 --format='%s %b' "$c" | tr '\n' ' ' |
-           sed -E 's@[^[:space:]]+\.md@@g; s@"[^"]*"@@g; s@`[^`]*`@@g')
+           sed -E 's@`[^`]*`@@g; s@"[^"]*"@@g; s@[^[:space:]]+\.md@@g')
     case "$body" in
         *[А-Яа-яЁё]*) bad_msgs="$bad_msgs$(cd "$SCRIPT_DIR" && git log -1 --format='%h %s' "$c")"$'\n' ;;
     esac
@@ -3135,10 +3144,25 @@ else
     fi
     grep -qFe 'the install into a clean' <<<"$nested_out" ||
         missing+="--fast does not report the skipped install as a gap"$'\n'
-    [ "$nested_rc" -eq 0 ] ||
-        missing+="a coverage gap changed the exit code (got $nested_rc) — a gap is not a failure"$'\n'
-    grep -qFe 'preflight passed' <<<"$nested_out" ||
-        missing+="the gap block replaced the pass line instead of preceding it"$'\n'
+    # The two assertions below can only be read when the nested run is otherwise CLEAN.
+    # Until 2026-08-19 they were unconditional, so any unrelated red downstairs produced a
+    # red up here carrying two fabricated causes — measured that day: check 32 failed on a
+    # false positive, and 49 announced "a coverage gap changed the exit code" and "the gap
+    # block replaced the pass line", both untrue, inflating one failure into two. A red
+    # that names the wrong cause is this project's headline class, occurring inside the
+    # gate; and the same cascade had been observed on 2026-08-17 without being fixed.
+    # So: when the nested run reports failures of its own, this check cannot answer its
+    # question and says so as a coverage gap, which is precisely the mechanism it tests.
+    nested_fails=$(sed -nE 's/.*preflight failed: ([0-9]+) of.*/\1/p' <<<"$nested_out" | tail -1)
+    : "${nested_fails:=0}"
+    if [ "$nested_fails" -eq 0 ]; then
+        [ "$nested_rc" -eq 0 ] ||
+            missing+="a coverage gap changed the exit code (got $nested_rc) with no failing check — a gap is not a failure"$'\n'
+        grep -qFe 'preflight passed' <<<"$nested_out" ||
+            missing+="the gap block replaced the pass line instead of preceding it"$'\n'
+    else
+        gap "whether a coverage gap leaves the exit code alone (check 49) — the nested run had $nested_fails failing check(s) of its own, so the exit code says nothing about gaps; re-run once the gate is green"
+    fi
     # The gap list must not be silently empty on a machine that has real gaps: an empty
     # block would read as full coverage, the very confusion this check exists to remove.
     n_gaps=$(grep -cEe '^  · ' <<<"$nested_out")
