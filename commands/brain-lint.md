@@ -136,7 +136,11 @@ What the keys mean and what each is worth:
 | `wiki-no-backlink:<project>` | Missing the `[[../_PROJECT]]` backlink. A real violation, one line to fix — but fix it on the next edit of each note, not as one sweep of unrelated vault writes. |
 | `wiki-no-sibling:<project>` | Only the backlink. **Advisory, never a defect on its own** — a note first on its topic has nothing honest to link to. Report the count; never add a link to clear the line. |
 | `decision-schema/-ref/-legacy:<path>` | Off-schema `status:`, a reference to a note that does not exist, or the legacy one-line supersession form (invalid YAML — Obsidian drops that note from every property query). Fix on sight. |
-| `frontmatter:<path>` | Unterminated frontmatter block. |
+| `frontmatter:<path>` | Unterminated frontmatter block. Fix it before anything else touches the file: `stamp-field` refuses such a file outright, and until 2026-08-19 it did not — it rewrote every body line beginning with the key instead. |
+| `missing-updated:<project>` | `_PROJECT.md` carries no `updated:` field, so nothing can compare the record against the work. Stamp it with `brain.sh stamp-field <_PROJECT.md> updated <date>`. |
+| `project-missing:<project>` | A directory that looks like a project has no `_PROJECT.md`. Either it is not a project (move it out of the vault root) or the manifest was never written. |
+| `retelling-no-source:<project>` | A bullet of three or more lines carrying no `[[link]]` — an account with no owner elsewhere. Either the full version exists in a note and this should be one line plus a link, or it exists nowhere and needs a note. |
+| `scope-note:lifecycle-docs` | Not a finding — the inventory of documents that have a state (briefs, audit requests, verification plans) with the state each carries. Verify each against the work, not against its age: a brief legitimately stays open for weeks, which is why there is no threshold here. A final one takes `closed: <date>` next to its status. |
 | `project-unregistered:<project>` / `registry-stale:<entry>` | The registry `00-system/index.md` and the filesystem disagree. Both directions matter: a project no per-project check knows about, or an entry pointing at nothing. |
 
 ## Step 2: What only the Obsidian CLI can see

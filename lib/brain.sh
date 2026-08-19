@@ -271,7 +271,25 @@ lint_diff() {
 archive_done() {
     tb="${1:-}"; ar="${2:-}"; before="${3:-}"; apply="${4:-}"
     [ -f "$tb" ] || { echo "archive: no taskboard at '${tb:-}'" >&2; return 1; }
-    [ -f "$ar" ] || { echo "archive: no archive note at '${ar:-}'" >&2; return 1; }
+    # The archive note is CREATED when it does not exist, under --apply. Refusing was a
+    # dead end: nothing in the package ever created one — not /brain-init, not install.sh —
+    # and no prompt named its path, so the remedy prescribed for `taskboard-done` failed on
+    # its first use in every project, with a message naming a file the user had no way to
+    # know they were supposed to make. Measured 2026-08-19. A dry run says it would create
+    # rather than creating, so the default stays a no-op.
+    if [ ! -f "$ar" ]; then
+        case "$ar" in
+            "") echo "archive: need an archive-note path as the second argument" >&2; return 1 ;;
+        esac
+        if [ "$apply" = "--apply" ]; then
+            [ -d "$(dirname "$ar")" ] || { echo "archive: no directory for '$ar'" >&2; return 1; }
+            printf '# Archive — closed tasks\n\nMoved out of the taskboard by `brain.sh archive`.\nThe taskboard keeps what is open; this file keeps what is done and dated.\n' > "$ar" ||
+                { echo "archive: could not create '$ar'" >&2; return 1; }
+            echo "archive: created $ar"
+        else
+            echo "archive: $ar does not exist yet — --apply would create it"
+        fi
+    fi
     case "$before" in
         [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;;
         *) echo "archive: --before needs YYYY-MM-DD, got '${before:-}'" >&2; return 1 ;;
@@ -1603,10 +1621,24 @@ save_report() {
     w_new=$(_sr_sel "$sr_new" "$project/wiki/" <<<"$changes")
     w_mod=$(_sr_sel mod "$project/wiki/" <<<"$changes")
     n_wnew=$(_sr_count "$w_new"); n_wmod=$(_sr_count "$w_mod")
+    # Conditional, so zero is ANSWER and not ok. Until 2026-08-19 the verdict was `ok` in
+    # both branches — a green line, in the one command written to make a skipped step
+    # visible, for the step whose own numbers say nothing happened. Its sibling below
+    # (decision notes) already answered zero with ANSWER, and an asymmetry between two
+    # conditional steps means one of them is wrong; the rule says which — a conditional
+    # step with no trace is usually legitimate and must be answered in words. Answering
+    # costs a sentence ("no note was worth writing this session") and buys the difference
+    # between that and Step 2 never running.
     if [ "$sr_mode" = mtime ]; then
-        verdict ok "wiki" "$((n_wnew + n_wmod)) notes touched"
-    else
+        if [ "$((n_wnew + n_wmod))" -gt 0 ]; then
+            verdict ok "wiki" "$((n_wnew + n_wmod)) notes touched"
+        else
+            verdict ANSWER "wiki" "no note created or updated — say why in one line"
+        fi
+    elif [ "$((n_wnew + n_wmod))" -gt 0 ]; then
         verdict ok "wiki" "$n_wnew created, $n_wmod updated"
+    else
+        verdict ANSWER "wiki" "no note created or updated — say why in one line"
     fi
 
     # ── 3. decision notes (Step 2b) — conditional, and the one most often skipped ──

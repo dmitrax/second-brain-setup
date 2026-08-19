@@ -373,11 +373,20 @@ Inform the user:
 
 ## Step 6: Update vault system files
 
-**00-system/index.md** — add a line under the registry's projects heading. That heading
-is vault content, not a matched section, so it carries whatever the vault already uses —
-here `## Проекты`. Find it, do not assume its spelling:
+**00-system/index.md** — add a line under the registry's projects heading. That heading is
+vault content, not a matched section, so it carries whatever the vault already uses:
+`install.sh` writes `## Projects`, older vaults carry `## Проекты`. Find it, do not assume
+its spelling.
+
+The link must point at the project's `_PROJECT.md` **by path, with an alias** — that is
+the form `lint-collect` reads the registry with (`[[…_PROJECT…]]`), so a bare `[[name]]`
+is invisible to it: every project created by this step would be reported
+`project-unregistered` forever, and because the registered set would stay empty the
+reciprocal `registry-stale` check could never fire at all. A bare link to a FOLDER name
+is also permanently unresolved in Obsidian, against the explicit-path rule in `SKILL.md`.
+Substitute the real project name for `$PROJECT`:
 ```
-- [[PROJECT]] — [short description from question 1], [PROJECT_TYPE], active
+- [[$PROJECT/_PROJECT|$PROJECT]] — [short description from question 1], [PROJECT_TYPE], active
 ```
 
 ## Step 7: Report result

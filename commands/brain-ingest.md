@@ -97,8 +97,20 @@ status: draft
 
 # [Note name]
 
-[note content in Russian]
+[note content, in the vault's working language]
+
+## Links
+[[../_PROJECT|_PROJECT]] · [[wiki/<sibling>|<sibling>]]
 ```
+
+The frontmatter above is a MINIMUM — Step 0b named this project's own keys, and any it
+returned go in too. The `[[../_PROJECT|_PROJECT]]` backlink is mandatory: without it the
+note is unreachable from above, and `/brain-lint` reports it under `wiki-no-links`, which
+its own key table calls "the finding to act on". This template omitted the whole `## Links`
+line until 2026-08-19, so it manufactured that finding on every note it produced. Add a
+sibling link when a genuinely related note exists, and delete the placeholder — label and
+all — when this note is first on its topic: a fabricated relation costs more than a missing
+one, because the graph is read as evidence that the relation holds.
 
 ## Step 5: If a decision is found → create in wiki/ (flat, decision- prefix)
 

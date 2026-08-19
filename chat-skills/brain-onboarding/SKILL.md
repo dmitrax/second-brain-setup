@@ -46,7 +46,7 @@ Two separate spaces connected by CLAUDE.md:
   a count
 - Synthesis wiki notes follow rewrite-not-append (rewrite instead of duplicating)
 - Decision notes are the exception: immutable, superseded — never rewritten (see below)
-- Language: Russian for user-facing content, English for file names, machine-facing files, code comments and commit messages
+- Language: file names, machine-facing files, code comments and commit messages are English; everything said TO the user is in the working language recorded in the vault's `00-shared/CRITICAL_FACTS.md` (`brain.sh vault-language` reads it). Do not assume a language here — read the profile
 - Every session ends with `/brain-save`
 
 **Two scenarios:**
@@ -182,7 +182,7 @@ Run `/brain-save` — updates wiki, taskboard, session log, and (for code projec
 - Synthesis notes: rewrite in place instead of creating duplicates
 - Decision notes (`decision-*.md`): immutable — supersede with a new note, never rewrite
 - Code projects: after any structural change, update `architecture-map.md` in place
-- Language: Russian for user-facing content, English for code, code comments, commit messages and file names
+- Language: English for code, code comments, commit messages and file names; user-facing text in the working language from `00-shared/CRITICAL_FACTS.md`
 
 ## Critical thinking & safety
 - Do not flatter or auto-agree. If an approach is weak, unrealistic, or suboptimal,
@@ -194,14 +194,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and (for code projec
   (refactor, formatting).
 ```
 
-**Part 2 — Project (filled from conversation context):**
+**Part 2 — Project (filled from conversation context).** No status section here, ever:
+this file is read IN FULL at the start of every session, before the topic is known, so it
+holds only what cannot expire — rules, prohibitions, resolved gotchas. Status lives in
+`_PROJECT.md` and `taskboard.md`, which are read when the topic IS known. A `## Current
+state` here is reported by `brain.sh claude-md-audit` on the very first `/brain-save`,
+and this template carried one until 2026-08-19 — so every project onboarded from a chat
+began life with a guaranteed finding.
 
 ```markdown
 ## Project
 [Concrete description: what this project is, what it produces, why it exists]
-
-## Current state
-[What has been done, key decisions already made, what is in progress]
 
 ## Goals in Claude Code
 [Specific next actions — what we will do in Claude Code sessions]

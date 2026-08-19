@@ -169,7 +169,10 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 | `WORKFLOW.md` | Russian | User guide (human) |
 | `ВТОРОЙ_МОЗГ_v1.7.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
+| `README_RU.md` | Russian | GitHub (same content, Russian readers) |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
+| `chat-skills/README.md` / `README_RU.md` | English / Russian | GitHub |
+| `lib/brain.sh` output | English | data a session reads, then writes the sentence around it in the owner's language |
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide

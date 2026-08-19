@@ -411,7 +411,7 @@ command, the explanation of a finding, recommendations, questions, warnings.
 
 **Identifiers are never translated**, and the boundary matters more than it looks:
 
-- finding keys (`prose-budget:goprofi-voronka`), because `lint-diff` compares them and a
+- finding keys (`current-state:goprofi-voronka`), because `lint-diff` compares them and a
   translated key reads as a finding that appeared and one that vanished, in the same run;
 - file and section names (`_PROJECT.md`, `## Current state`), because they are searched
   for literally;
@@ -423,7 +423,7 @@ around it is language. The package's own files stay English regardless (see the 
 rule in `CLAUDE.md`): that is what the repo publishes, this is what one person reads.
 
 **`lib/brain.sh` is not a speaker — it is a source of data, and everything it prints is
-English.** Finding details (`66 lines against a budget of ~60`), budget lines, refusals,
+English.** Finding details (`Current state 41 lines against ~30`), budget lines, refusals,
 warnings: a session reads them and writes the sentence around them in the owner's
 language. Two reasons, and the second is the load-bearing one:
 

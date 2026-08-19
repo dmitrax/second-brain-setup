@@ -915,7 +915,32 @@ if [ -z "$CLAUDE_TPL" ]; then
 elif grep -qE '^#{2,3} +(Current state|Статус)' <<<"$CLAUDE_TPL"; then
     fail "the CLAUDE.md template in brain-init.md opened a state section — that belongs to _PROJECT.md"
 else
-    pass "the CLAUDE.md template opens no state section"
+    # The chat skill writes a project CLAUDE.md too, and was outside this check until
+    # 2026-08-19 — its template carried `## Current state`, so every project onboarded from
+    # a chat started with a finding `claude-md-audit` reports on the first save. Same rule,
+    # same defect, a different file: the scope was the whole gap. Fifth such scope gap found
+    # in one day, which is why it is worth widening rather than patching the one template.
+    cs_state=""
+    for csf in "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
+        [ -f "$csf" ] || continue
+        # Scoped to the CLAUDE.md artifact. A chat skill emits several files from one
+        # document, and `## Current state` is CORRECT in the _PROJECT.md one — the first
+        # draft of this widening reported that legitimate template, the same mistake
+        # check 10 avoids for brain-init by reading one fenced block by name.
+        h=$(awk '
+            /^### Artifact .* — CLAUDE\.md/ { want = 1; next }
+            /^### Artifact /               { want = 0 }
+            !want { next }
+            /^[[:space:]]*```/ { inb = !inb; next }
+            inb && /^#{2,3} +(Current state|Статус)/ { print FNR ": " $0 }
+        ' "$csf")
+        [ -n "$h" ] && cs_state+="  $(basename "$(dirname "$csf")")/SKILL.md: $h"$'\n'
+    done
+    if [ -n "$cs_state" ]; then
+        fail "a chat skill writes a state section into the CLAUDE.md it generates" "$cs_state"
+    else
+        pass "the CLAUDE.md template opens no state section (brain-init and the chat skills)"
+    fi
 fi
 
 # ─── 10b. The CLAUDE.md template opens no third copy of the inventory ────────
@@ -3743,6 +3768,40 @@ else
         fail "a subcommand exists in the code and nowhere in the reference" "$missing"
     else
         pass "the reference documents every subcommand brain.sh names ($n_sub compared)"
+    fi
+fi
+
+# ─── 57. Every finding key the collector emits is documented where it is read ──
+# The key table in /brain-lint is the only place a session learns what a finding is worth
+# and what to do about it — a key printed by the collector and absent from the table
+# arrives with no instructions at all. Measured 2026-08-19: `missing-updated`,
+# `project-missing`, `retelling-no-source` and `scope-note:lifecycle-docs` were emitted and
+# undocumented, the last one being the output of a mechanism SKILL.md devotes a section to.
+#
+# Derived from the emitters, so the twenty-third key is caught by this check rather than by
+# someone remembering to extend a list. A combined row is legitimate — `decision-schema/
+# -ref/-legacy` documents three keys in one line — so the suffix form counts as coverage.
+keys=$(awk '/^lint_collect\(\)/,/^}/' "$LIBSH" |
+    grep -oE "printf '[a-z-]+:" | sed "s/printf '//; s/:$//" | LC_ALL=C sort -u)
+scopes=$(awk '/^lint_collect\(\)/,/^}/' "$LIBSH" | grep -oE 'scope-note:[a-z-]+' | LC_ALL=C sort -u)
+LINTMD="$SCRIPT_DIR/commands/brain-lint.md"
+missing=""
+n_keys=0
+if [ -z "$keys" ] || [ ! -f "$LINTMD" ]; then
+    fail "check 57 read no finding key, or no /brain-lint command — empty input, not a clean repo"
+else
+    for k in $keys $scopes; do
+        [ "$k" = "scope-note" ] && continue    # covered by its two concrete forms below
+        n_keys=$((n_keys + 1))
+        if grep -qF "$k" "$LINTMD"; then continue; fi
+        # A combined row documents several keys by their differing tails.
+        if grep -qF "/-${k#*-}" "$LINTMD"; then continue; fi
+        missing+="  lint-collect emits \`$k\` and the key table never names it"$'\n'
+    done
+    if [ -n "$missing" ]; then
+        fail "a finding key exists in the code and nowhere in the command that reads it" "$missing"
+    else
+        pass "every finding key the collector emits is documented in /brain-lint ($n_keys keys)"
     fi
 fi
 
