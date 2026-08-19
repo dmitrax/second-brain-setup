@@ -3380,6 +3380,152 @@ else
     pass "no multibyte character touches a bare \$var — $nb_mode ($scanned files)"
 fi
 
+# ─── 54. A shipped file states no rule the code has retired ───────────────────
+# Two rules were dropped by measurement and left standing in files that ship, found
+# 2026-08-19 while reviewing 1.8.0 for a tag. Both had the same shape: the file stated
+# the retired form as the definition and its replacement further down the same file.
+#
+#   · the "≥2 [[wikilinks]]" floor (retired 2026-08-04) — SKILL.md line 215 against 344,
+#     the chat skill, and the Russian reference. SKILL.md loads on every session, so the
+#     contradiction reached every note written since. The way out a session takes is to
+#     invent a link, which the graph then reads as evidence that a relation holds.
+#   · `stale-project` at 14 days (retired 2026-08-16) — `/brain-init` and the chat skill
+#     both write a `_PROJECT.md` and both told its reader the lint fires on a calendar,
+#     leaving the `status:` exemption that answers exactly that case unmentioned.
+#
+# preflight 52 was built for this class and could not see either: it compares live docs
+# against the thresholds the code holds, and its file list is the four documentation
+# files. A number stated inside a command or a skill was checked by nobody. So this check
+# reads what SHIPS — SKILL.md, the commands, the chat skills — and it is anchored to the
+# code rather than to a literal: each half first asserts the marker that proves the
+# current design is in force, so a green cannot outlive the design it describes.
+missing=""
+scanned=0
+SHIPPED=""
+for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
+    [ -f "$f" ] && SHIPPED="$SHIPPED$f"$'\n'
+done
+# (a) The link requirement. Anchor: the lint reports the backlink and the sibling as two
+# separate classes and holds no count — if those keys ever go, this half must be rewritten
+# rather than left passing.
+if ! grep -qF 'wiki-no-backlink' "$LIBSH" || ! grep -qF 'wiki-no-sibling' "$LIBSH"; then
+    missing+="  lib/brain.sh no longer reports wiki-no-backlink / wiki-no-sibling — check 54(a) has lost its anchor"$'\n'
+fi
+# (b) Project freshness. Anchor: the exemption that only the post-2026-08-16 design has.
+grep -qF 'scope-note:not-active' "$LIBSH" ||
+    missing+="  lib/brain.sh no longer names the not-active exemption — check 54(b) has lost its anchor"$'\n'
+# A retired rule is allowed to be NAMED as history — "until 2026-08-16 it fired at 14
+# days" is a record of what changed and is the reason the reader can trust the rest. This
+# is the trap check 52 documents, hit here on the first run: `brain-lint.md` line 129
+# explains the retirement and was reported as committing it. The discriminator is the
+# disclaimer on the same line, so a sentence that states the threshold and says it is gone
+# passes, and one that merely states it does not.
+past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|больше не|Раньше|Прежде|до 2026'
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    scanned=$((scanned + 1))
+    # A floor is a NUMBER attached to the link requirement. "at least one link to a
+    # sibling" and "two or more is the target, not a floor" are the current rule and must
+    # stay green, so the pattern demands a digit.
+    h=$(grep -nEe '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|\[\[|ссыл)' "$f" | grep -vEe "$past" || true)
+    [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
+    # A day threshold on `updated:` is the retired freshness rule. Both words on one line:
+    # "no movement for 14+ days" is about taskboard items and is a different, live rule.
+    h=$(grep -nEe 'updated' "$f" | grep -Ee '[0-9]+[+]?[[:space:]]*(days|дней|дня)' | grep -vEe "$past" || true)
+    [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
+done <<EOF
+$SHIPPED
+EOF
+if [ "$scanned" -eq 0 ]; then
+    fail "check 54 opened no shipped file — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a shipped file states a rule the code retired" "$missing"
+else
+    pass "no shipped file states a retired rule (link floor, freshness threshold — $scanned files)"
+fi
+
+# ─── 55. A Russian matched section is never named alone in a shipped file ─────
+# Check 37 says a NEW file writes a matched name in English, and reads headings inside
+# fenced blocks — templates. It cannot see the two places this actually broke:
+#
+#   · `/brain-save` Step 3 carried the PROSE heading `### Последняя сессия` with "create
+#     it if it does not exist yet". That is the step which runs on every save, so a
+#     project created in English lost the English heading at its first save. Measured on
+#     `dev-producer` (created 2026-08-18): the creating commit has `## Last session`,
+#     commit c961406 the same day has `## Последняя сессия`.
+#   · the chat skill's template was outside check 37's file list entirely.
+#
+# The assertion is one-directional on purpose: naming a Russian matched section obliges
+# the file to name its English counterpart, and not the reverse. English alone is the
+# target for a new file, so requiring the pair both ways would forbid the very thing the
+# rule asks for. `lib/` is not in scope — check 33 already governs it, and there the
+# pairing must hold in both directions because it matches an existing vault.
+missing=""
+scanned=0
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    scanned=$((scanned + 1))
+    for pair in 'Статус|Current state' 'Последняя сессия|Last session' \
+                'В работе|In progress' 'Завершено|Done' 'Бэклог|Backlog'; do
+        ru="${pair%%|*}"; en="${pair##*|}"
+        grep -qF "$ru" "$f" || continue
+        grep -qF "$en" "$f" ||
+            missing+="  $(basename "$(dirname "$f")")/$(basename "$f") names \"$ru\" and never \"$en\""$'\n'
+    done
+done <<EOF
+$SHIPPED
+EOF
+# And the template scan of check 37, extended to the file list it never had.
+for f in "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
+    [ -f "$f" ] || continue
+    h=$(awk '
+        /^[[:space:]]*```/ { inb = !inb; next }
+        inb && /^#{2,3} +(Статус|Последняя сессия|В работе|Завершено|Бэклог)/ {
+            print FNR ": " $0 }
+    ' "$f")
+    [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") writes a matched section in Russian INSIDE a template:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/      /')"$'\n'
+done
+if [ "$scanned" -eq 0 ]; then
+    fail "check 55 opened no shipped file — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a shipped file names a matched section in one spelling only" "$missing"
+else
+    pass "every Russian matched section is paired with its English name ($scanned files)"
+fi
+
+# ─── 56. The reference documents every subcommand, and the list is derived ────
+# `lib/brain.sh` went from 7 subcommands to 17 across the 1.8.0 cycle and the table in
+# the Russian reference — the only place a reader can find them — was never extended.
+# The ten missing were the visible face of the release: catalog, save-report,
+# connections-add, prose-budget, claude-md-audit, local-conventions, vault-language,
+# backfill-dates, sweep-closed, lint-collect.
+#
+# The enumeration is DERIVED from the usage text rather than written out here, which is
+# this repo's standing preference for a rule that spans files: the eighteenth subcommand
+# is caught by the check that already exists, with nobody remembering to extend a list.
+usage=$(bash "$LIBSH" 2>&1 | grep -oE '^  [a-z][a-z-]+' | sed 's/^  //' | LC_ALL=C sort -u)
+missing=""
+n_sub=0
+if [ -z "$usage" ]; then
+    fail "check 56 read no subcommand from brain.sh usage — empty input, not a clean repo"
+else
+    for _r in "$SCRIPT_DIR"/ВТОРОЙ_МОЗГ_*.md; do
+        [ -f "$_r" ] || continue
+        for sub in $usage; do
+            n_sub=$((n_sub + 1))
+            grep -qF "\`$sub" "$_r" ||
+                missing+="  $(basename "$_r") does not document \`$sub\`"$'\n'
+        done
+    done
+    if [ "$n_sub" -eq 0 ]; then
+        fail "check 56 found no architecture reference to compare against"
+    elif [ -n "$missing" ]; then
+        fail "a subcommand exists in the code and nowhere in the reference" "$missing"
+    else
+        pass "the reference documents every subcommand brain.sh names ($n_sub compared)"
+    fi
+fi
+
 echo -e "${BLUE}[2/3] Scripts${NC}"
 for s in "$SCRIPT_DIR"/*.sh; do
     if bash -n "$s" 2>/dev/null; then
