@@ -118,6 +118,19 @@ usage: brain.sh <command> [args]
                                read findings on stdin (one per line, `key<TAB>detail`),
                                print what is NEW and what is GONE against the baseline,
                                and how many are unchanged. --seal rewrites the baseline.
+                               An empty stdin against a populated baseline is refused:
+                               a broken producer and a clean vault look the same from
+                               here. --allow-empty is the deliberate way through.
+  rename <vault> <old-rel-path> <new-rel-path> [--apply]
+                               rename a wiki note and repoint every link form to it —
+                               bare, path-qualified, aliased, #heading, ^block, ![[embed]].
+                               The Obsidian CLI is never used for this: it wrote settings
+                               into the vault and let the GUI splice links into unrelated
+                               sentences from a stale cache. Refuses a basename already
+                               taken elsewhere in the vault. A pointer is repointed, a
+                               QUOTATION is not — `wiki/name.md` in prose records what was
+                               created that day — and the run prints how many quoted
+                               mentions it left. Dry-run unless --apply.
 USAGE
 }
 

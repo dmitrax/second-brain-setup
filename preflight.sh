@@ -264,7 +264,10 @@ for f in "${TARGETS[@]}"; do
     # Real calls are counted inside code blocks only: a grep cannot tell prose that
     # PRESCRIBES a call from prose that FORBIDS one ("Do not use obsidian property:set").
     calls=$(code_blocks "$f" | grep -cE "^[[:space:]]*(if |\[|.*\$\()?[[:space:]]*obsidian " || true)
-    mentions=$(grep -c "obsidian-available" "$f" || true)
+    # Counted inside executable blocks only — a sentence about the guard is not a guard.
+    # Proved 2026-08-19 by replacing the invocation in /brain-lint with a comment: the file
+    # then prescribed three bare CLI calls and the check still passed on the prose mention.
+    mentions=$(exec_blocks "$f" | grep -cF "obsidian-available" || true)
     # A file that touches the CLI nowhere is a legitimate outcome, but it is SAID rather
     # than skipped. `continue` here made the number of emitted checks depend on the text
     # of the files: measured 2026-08-04, rewriting SKILL.md's rename section dropped its
@@ -860,6 +863,18 @@ if [ -f "$ZIP" ] && [ -f "$ZIP_SRC" ] && command -v unzip >/dev/null 2>&1; then
     else
         fail "brain-onboard.zip has drifted from chat-skills/brain-onboarding/SKILL.md — rebuild it"
     fi
+else
+    # No `else` until 2026-08-19: a missing `unzip`, or a deleted archive, produced no pass,
+    # no fail and no gap — the check simply ceased to exist, and the only trace was a
+    # summary total that nothing states in advance. Proved by removing the zip (74 checks
+    # became 73, no new red) and by running with `unzip` off the PATH (same). That is the
+    # rule from the PyYAML incident, broken two functions below where it is written down:
+    # a check whose tool is missing must fail, never skip.
+    zipwhy=""
+    [ -f "$ZIP" ]     || zipwhy="the archive is missing"
+    [ -f "$ZIP_SRC" ] || zipwhy="${zipwhy:+$zipwhy; }the source SKILL.md is missing"
+    command -v unzip >/dev/null 2>&1 || zipwhy="${zipwhy:+$zipwhy; }unzip is not installed"
+    fail "the zip check could not run, so it proves nothing" "  $zipwhy"
 fi
 
 # ─── 9. Conventional Commits since the rule was adopted ──────────────────────
@@ -987,7 +1002,11 @@ for pair in \
         missing+="$cmd_name is missing — the sync check did not run"$'\n'
         continue
     fi
-    sync_ln=$(grep -n 'vault-sync' "$cf" | head -1 | cut -d: -f1)
+    # The call must be EXECUTABLE, not a sentence about the call. Until 2026-08-19 this
+    # grepped the whole file, so prose satisfied it: proved by deleting the invocation from
+    # /brain-save entirely and leaving one English line — the check stayed green. This is
+    # the rule whose absence conflicted three shared registries in a single day.
+    sync_ln=$(exec_blocks "$cf" | grep -F 'vault-sync' | head -1 | cut -d: -f1)
     write_ln=$(grep -n "$write_marker" "$cf" | head -1 | cut -d: -f1)
     if [ -z "$sync_ln" ]; then
         missing+="$cmd_name: does not call vault-sync"$'\n'
@@ -1105,14 +1124,25 @@ fi
 # match itself, the same reason TARGETS excludes preflight.sh (see the header).
 B4="(map""file|read""array|declare -""A|local -""A|\\\$\\{[A-Za-z_][A-Za-z0-9_]*(\\^\\^|,,)\\})"
 hits=""
-for s in "$SCRIPT_DIR"/*.sh; do
+# lib/*.sh is in scope, and its absence was the whole point: until 2026-08-19 this loop
+# read the three repo scripts and NOT lib/brain.sh — 2400+ lines that are the entire
+# implementation and the one file that actually runs on the Mac's /bin/bash 3.2. Proved by
+# mutation: `declare -A` plus `mapfile` inserted into vault_sync left the gate unchanged
+# and this check printed its pass. That is the incident it was written from, recurring in
+# the file it was written to protect. Check 53 already scans both; this one had not been
+# widened with it.
+n_b4=0
+for s in "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/lib/*.sh; do
+    [ -f "$s" ] || continue
+    n_b4=$((n_b4 + 1))
     h=$(grep -nE "$B4" "$s" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
     [ -n "$h" ] && hits+="$(basename "$s"): $h"$'\n'
 done
+[ "$n_b4" -gt 0 ] || hits+="check 14 opened no script — empty input, not a clean repo"$'\n'
 if [ -n "$hits" ]; then
     fail "a bash 4+ construct in a script (macOS /bin/bash is 3.2)" "$hits"
 else
-    pass "the scripts are bash 3.2 compatible (4 bash 4+ constructs absent)"
+    pass "the scripts are bash 3.2 compatible (4 bash 4+ constructs absent, $n_b4 files)"
 fi
 
 # ─── 15. /brain-lint sweeps the whole vault for ambiguous links ──────────────
@@ -1165,6 +1195,27 @@ if [ -z "$c_ln" ] || [ -z "$s1_ln" ]; then
 elif [ "$c_ln" -ge "$s1_ln" ]; then
     missing+="brain-save.md: the lookup step sits after the first template (line $c_ln against $s1_ln)"$'\n'
 fi
+# Everything above asserts PRESENCE — the words "Step 0c" and a line number. Nothing in
+# the gate ran the step. Proved 2026-08-19 by replacing the whole body of
+# `local_conventions()` with `return 0`: the gate did not move, and a session would then
+# write template-only frontmatter and lose the project's own key, which is the original
+# defect restored in full. So the step is now EXECUTED against a fixture carrying one
+# extra key, and the key must appear in the output.
+lc=$(mktemp -d)
+mkdir -p "$lc/pj/sessions" "$lc/pj/wiki"
+printf -- '---\nproject: pj\nupdated: %s\nstatus: active\n---\n## Current state\nx\n' "$PF_ANCIENT" > "$lc/pj/_PROJECT.md"
+printf -- '---\ndate: %s\nzone: backend\n---\nlog\n' "$PF_ANCIENT" > "$lc/pj/sessions/${PF_ANCIENT}_1000_session.md"
+printf -- '---\nstatus: accepted\ndate: %s\nzone: backend\n---\n[[../_PROJECT|_PROJECT]]\n' "$PF_ANCIENT" > "$lc/pj/wiki/decision-x.md"
+printf -- '# CLAUDE.md\n\nEvery session log carries `zone:` in its frontmatter.\n' > "$lc/CLAUDE.md"
+lc_out=$(bash "$LIBSH" local-conventions "$lc" pj "$lc/CLAUDE.md" 2>&1); lc_rc=$?
+grep -qF 'zone' <<<"$lc_out" ||
+    missing+="local-conventions did not name the project's own key on a fixture that carries it (rc $lc_rc): ${lc_out:-<no output>}"$'\n'
+# And it must FAIL rather than print silence when it could read none of its three sources —
+# "this project has no local conventions" and "I read nothing" are different facts.
+lc_out=$(bash "$LIBSH" local-conventions "$lc" nosuchproject 2>&1); lc_rc=$?
+[ "$lc_rc" -ne 0 ] ||
+    missing+="local-conventions returned 0 for a project it could not read at all"$'\n'
+rm -rf "$lc"
 # Both templates — the log and the decision note — must call themselves a minimum.
 grep -qiE 'minimum, not the full list' "$BS" ||
     missing+="brain-save.md: the session-log template is not declared a minimum"$'\n'
@@ -1342,7 +1393,41 @@ for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/lib/*.
     # it could never match anything, so the exclusion was dead from the first line it was
     # meant to skip, and `\s` is a GNU extension besides. Found 2026-08-04, when a comment
     # explaining check 38's defect became the first comment this check ever saw.
-    h=$(grep -nE "$NONPORTABLE" "$f" | grep -v '||' | grep -vE '^[0-9]+:[[:space:]]*#')
+    # A line is exempt only when its `||` leads to a REAL second form. Until 2026-08-19
+    # the exemption was any line containing `||`, so `stat -c … || true` and
+    # `date -d … || echo` announced themselves as portable — on BSD they produce exactly
+    # the shape this check exists to prevent: the command ran, the output is empty, the
+    # green is printed. Proved by inserting both into vault_sync and watching it pass.
+    # A line is exempt only when its `||` leads to a REAL second form. Until 2026-08-19 the
+    # exemption was any line containing `||`, so `stat -c … || true` and `date -d … || echo`
+    # announced themselves as portable — on BSD they produce exactly the shape this check
+    # exists to prevent: the command ran, the output is empty, the green is printed. Proved
+    # by inserting both into vault_sync and watching it pass.
+    #
+    # The unit is the STATEMENT, not the line, and the first strict draft learned that by
+    # going red on the correct chain it was meant to bless: `_lc_epoch` spells its GNU form,
+    # ends the line with `||`, and puts the BSD form on the next line ending in `|| true`.
+    # Both halves looked like violations read one line at a time. So a trailing `||` counts
+    # as a fallback (it is on the next line), and a line whose predecessor ended in `||` is
+    # itself that fallback.
+    h=$(awk -v pat="$NONPORTABLE" '
+        { line = $0 }
+        # Track continuation on the RAW file, before filtering, or the state is lost.
+        {
+            hit = (line ~ pat)
+            is_comment = (line ~ /^[[:space:]]*#/)
+            cont_here = (line ~ /\|\|[[:space:]]*$/)
+            if (hit && !is_comment && !prev_cont && !cont_here) {
+                i = index(line, "||")
+                if (i == 0) { print FNR ": " line }
+                else {
+                    rest = substr(line, i + 2)
+                    sub(/^[[:space:]]+/, "", rest)
+                    if (rest ~ /^(true|:|echo|exit|return|continue|fi|\}|$)/) print FNR ": " line
+                }
+            }
+            prev_cont = cont_here
+        }' "$f")
     [ -n "$h" ] && missing+="$(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
 done
 # The second half of the same class, and it is about the name rather than a flag: `ls` in
@@ -1694,6 +1779,23 @@ fi
 # Every command that prints a Result block must therefore say both halves.
 missing=""
 scanned=0
+# The mechanism, not only the prose about it. Proved 2026-08-19 by replacing the body of
+# `vault_language()` with `return 0`: the gate did not move, and every command would then
+# pick a language by accident — the state this rule was written to end. Three outcomes are
+# exercised, because the middle one is what makes the answer trustworthy: a profile that
+# answers, a profile whose key is present but unanswered, and no profile at all.
+vl=$(mktemp -d)
+mkdir -p "$vl/answered/00-shared" "$vl/unanswered/00-shared" "$vl/none"
+printf -- '# Critical Facts\n\nWorking language: Russian\n' > "$vl/answered/00-shared/CRITICAL_FACTS.md"
+printf -- '# Critical Facts\n\nWorking language: (fill in)\n' > "$vl/unanswered/00-shared/CRITICAL_FACTS.md"
+vl_out=$(bash "$LIBSH" vault-language "$vl/answered" 2>&1); vl_rc=$?
+{ [ "$vl_rc" -eq 0 ] && grep -qF 'Russian' <<<"$vl_out"; } ||
+    missing+="  vault-language did not return the recorded language (rc $vl_rc): ${vl_out:-<no output>}"$'\n'
+bash "$LIBSH" vault-language "$vl/unanswered" >/dev/null 2>&1
+[ $? -eq 2 ] || missing+="  vault-language did not report an unanswered key as exit 2"$'\n'
+bash "$LIBSH" vault-language "$vl/none" >/dev/null 2>&1
+[ $? -eq 1 ] || missing+="  vault-language did not report a missing profile as exit 1"$'\n'
+rm -rf "$vl"
 grep -qF 'Language of everything you say to the user' "$SCRIPT_DIR/SKILL.md" ||
     missing+="  SKILL.md: нет общего правила о языке обращения"$'\n'
 grep -qF 'Identifiers are never translated' "$SCRIPT_DIR/SKILL.md" ||
@@ -1943,7 +2045,17 @@ fi
 missing=""
 scanned=0
 PD_U=$(basename "$HOME")
-PD_HN=$(hostname 2>/dev/null | sed 's/\..*//')
+# The machine name comes from whichever source this system HAS. `hostname` is not a given:
+# measured 2026-08-19 on Arch, there is no `hostname` binary at all — PD_HN came out empty,
+# the guard below skipped the machine-name scan, and the check still printed "no personal
+# data in the tracked files". A leak scanner that silently drops one of its four patterns
+# is the same defect class as the PyYAML skip this repo already fixed once, and the rule
+# it broke is in Block 2: a check whose tool is missing must fail, never skip.
+PD_HN=$(hostname 2>/dev/null || uname -n 2>/dev/null || cat /etc/hostname 2>/dev/null)
+PD_HN=$(printf '%s' "$PD_HN" | head -1 | sed 's/\..*//')
+[ -n "$PD_HN" ] ||
+    fail "check 29 could not determine this machine's name — the leak scan would run one pattern short" \
+         "  tried hostname, uname -n and /etc/hostname; name the source explicitly rather than scanning blind"
 # The key patterns are assembled from pieces, or the check would match itself.
 PD_KEY="sk-""[A-Za-z0-9]{20,}|ghp_""[A-Za-z0-9]{20,}|AKIA""[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY"
 PD_FILES=$(cd "$SCRIPT_DIR" && git ls-files 2>/dev/null | grep -v '^preflight\.sh$')
@@ -3257,8 +3369,16 @@ printf -- '# CLAUDE.md\n\nProject: proj\n' > "$cw/CLAUDE.md"
 : > "$cw/baseline.txt"
 
 # Each row: the form as prescribed, with placeholders bound to the fixture.
+# Which subcommand each form actually exercised, so the derived set below can be compared
+# against what ran rather than against the labels someone typed.
+FORMS_RUN=""
 run_form() {
     _label="$1"; shift
+    _seen_lib=0
+    for _a in "$@"; do
+        if [ "$_seen_lib" = "1" ]; then FORMS_RUN="$FORMS_RUN$_a"$'\n'; _seen_lib=2; fi
+        [ "$_a" = "$LIBSH" ] && [ "$_seen_lib" = "0" ] && _seen_lib=1
+    done
     _out=$("$@" 2>&1); _rc=$?
     case "$_out" in
         *"unknown option"*|*"unknown command"*|*"unknown argument"*|*"needs "*|*"no vault at '--"*|*"no taskboard at ''"*|*"no connections file at ''"*)
@@ -3282,6 +3402,30 @@ run_form "archive with both flags"        bash "$LIBSH" archive "$cw/proj/taskbo
 run_form "vault-language <vault>"         bash "$LIBSH" vault-language "$cw"
 run_form "version"                        bash "$LIBSH" version
 run_form "obsidian-available <vault>"     bash "$LIBSH" obsidian-available "$cw"
+# The two forms that read stdin get it from a here-string on the CALL, so the invocation
+# still reaches run_form as a plain argument list and stays visible to the coverage
+# comparison below. Wrapping them in `sh -c` hides `$LIBSH` from that comparison, which
+# would restore the very blindness this is fixing.
+run_form "connections-add <file> <date>"  bash "$LIBSH" connections-add "$cw/00-system/connections.md" "$PF_ANCIENT" <<<"[[a]] -> b"
+run_form "rename dry-run"                 bash "$LIBSH" rename "$cw" proj/wiki/decision-x.md proj/wiki/decision-y.md
+run_form "lint-diff <baseline>"           bash "$LIBSH" lint-diff "$cw/baseline.txt" <<<"$(printf 'k:o\tdetail')"
+run_form "vault-sync <vault>"             bash "$LIBSH" vault-sync "$cw"
+
+# The list above is written out, and a written list cannot see a form that a prompt starts
+# prescribing tomorrow — the recurrence this check was created for, in the check itself.
+# So the SET of subcommands the prompts invoke is DERIVED from their executable blocks and
+# every member must appear in the list. Proved needed 2026-08-19: a new form added to
+# SKILL.md, broken exactly as the two historical defects were, left this check green while
+# it announced "all 16 prescribed invocation forms run as written".
+prescribed=$(for pf in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md; do
+        [ -f "$pf" ] || continue
+        exec_blocks "$pf"
+    done | grep -oE '\$(BRAIN|LIBSH)" [a-z][a-z-]+' | awk '{print $2}' | LC_ALL=C sort -u)
+for sub in $prescribed; do
+    if ! grep -qxFe "$sub" <<<"$FORMS_RUN"; then
+        missing+="  a prompt prescribes \`brain.sh $sub\` and no form here runs it"$'\n'
+    fi
+done
 # connections-add reads the entry from stdin, so it needs its own invocation
 ca_out=$(printf 'x → y\n' | bash "$LIBSH" connections-add "$cw/00-system/connections.md" "$PF_ANCIENT" 2>&1)
 case "$ca_out" in *"unknown option"*|*"needs "*) missing+="connections-add is not executable as written: $ca_out"$'\n' ;; esac
@@ -3289,7 +3433,17 @@ rm -rf "$cw"
 if [ -n "$missing" ]; then
     fail "a call prescribed in a prompt does not run as written" "$missing"
 else
-    pass "all 16 prescribed invocation forms run as written (usage, not semantics)"
+    # The count is computed, not typed. It read "16" while nineteen forms ran — a number in
+    # a pass line is a claim like any other, and this one was stale the day the list grew.
+    #
+    # And the wording says what the check PROVES. The derived half covers subcommands: a
+    # prompt prescribing one that no form exercises goes red. It does NOT cover argument
+    # SHAPES — a new form of a subcommand already in the list is still invisible, which is
+    # how `catalog --project <p>` shipped without its vault argument. Negative test run
+    # 2026-08-19: adding that exact line to SKILL.md leaves this check green, because
+    # `catalog` is covered. Closing it means running the prescribed LINES rather than a
+    # parallel list, and that is the next step, not a claim to make now.
+    pass "$(grep -c . <<<"$FORMS_RUN") invocation forms run; every subcommand a prompt prescribes is among them"
 fi
 
 # ─── 52. Live docs do not restate a number the code owns; history is left alone ──
@@ -3527,11 +3681,24 @@ fi
 # The enumeration is DERIVED from the usage text rather than written out here, which is
 # this repo's standing preference for a rule that spans files: the eighteenth subcommand
 # is caught by the check that already exists, with nobody remembering to extend a list.
+# Derived from the DISPATCHER, not from the usage text — because the usage text is itself
+# a document and can be incomplete. Measured 2026-08-19, the day after this check was
+# written: `rename` is dispatched, is named by SKILL.md as the ONLY sanctioned way to move
+# a wiki note, and appears in the usage output zero times — so a check reading the usage
+# could not see it, and neither could a session running the script with no arguments. The
+# usage is now compared against the same derived list, so the two documents are checked
+# against the code rather than against each other.
+subs=$(sed -nE 's/^[[:space:]]+([a-z][a-z-]+)\)[[:space:]]+shift;.*/\1/p' "$LIBSH" | LC_ALL=C sort -u)
 usage=$(bash "$LIBSH" 2>&1 | grep -oE '^  [a-z][a-z-]+' | sed 's/^  //' | LC_ALL=C sort -u)
+for sub in $subs; do
+    grep -qxFe "$sub" <<<"$usage" ||
+        missing_usage="${missing_usage:-}  brain.sh dispatches \`$sub\` and its usage text never names it"$'\n'
+done
+usage="$subs"
 missing=""
 n_sub=0
 if [ -z "$usage" ]; then
-    fail "check 56 read no subcommand from brain.sh usage — empty input, not a clean repo"
+    fail "check 56 read no subcommand from the brain.sh dispatcher — empty input, not a clean repo"
 else
     for _r in "$SCRIPT_DIR"/ВТОРОЙ_МОЗГ_*.md; do
         [ -f "$_r" ] || continue
@@ -3541,6 +3708,7 @@ else
                 missing+="  $(basename "$_r") does not document \`$sub\`"$'\n'
         done
     done
+    missing="${missing_usage:-}$missing"
     if [ "$n_sub" -eq 0 ]; then
         fail "check 56 found no architecture reference to compare against"
     elif [ -n "$missing" ]; then
