@@ -428,9 +428,12 @@ something already lives (or was just written this session) in a wiki note,
 plus `[[wikilink]]`. Target ~10 lines. See
 [[decision-project-md-links-not-duplicates-wiki-because-recaps-belong-in-one-place]].
 
-### Последняя сессия
-Always maintain this section — create it if it does not exist yet. Do not let
-session summaries default into "Current state" because this section is missing.
+### Last session
+The session list — `## Last session` in projects created since the language rule,
+`## Последняя сессия` in older ones. One section matched under both spellings: never
+rename an existing heading to match, and when the section is missing create it in
+English, the spelling every matched name takes in a new file. Always maintain it — do
+not let session summaries default into "Current state" because this section is absent.
 
 Append one line, newest first:
 ```

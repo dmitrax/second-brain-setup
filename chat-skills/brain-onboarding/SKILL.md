@@ -251,9 +251,10 @@ Check `taskboard.md` for current priorities.
 For code work, read `architecture-map.md` before touching the codebase.
 External reference materials are in `raw/` — process with `/brain-ingest` before using.
 
-## Последняя сессия
-(a matched section: keep this spelling or `Last session`, never a third one — see the
-`vault-language` note in /brain-init)
+## Last session
+(a matched section — `prose-budget` and the lint search for this heading literally, so
+it is an identifier: a NEW file writes it in English. An existing project spelling it
+`## Последняя сессия` keeps that heading; never rename one, and never invent a third)
 [YYYY-MM-DD] — project initialised
 ```
 
