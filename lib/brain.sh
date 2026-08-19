@@ -772,7 +772,7 @@ obsidian_available() {
     command -v obsidian >/dev/null 2>&1 || return 1
     { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] ||
       [ -L "$HOME/.config/obsidian/SingletonLock" ]; } || return 1
-    [ "$(timeout 2 obsidian vault info=name 2>/dev/null)" = "$(basename "$vault")" ]
+    [ "$(_timeout 2 obsidian vault info=name 2>/dev/null)" = "$(basename "$vault")" ]
 }
 
 # ── vault-sync ───────────────────────────────────────────────────────────────
@@ -795,7 +795,7 @@ vault_sync() {
     [ -n "$remotes" ] || {
         echo "sync skipped: no remote"; return 0; }
 
-    out=$(timeout 30 git -C "$vault" pull --rebase --autostash 2>&1)
+    out=$(_timeout 30 git -C "$vault" pull --rebase --autostash 2>&1)
     rc=$?
 
     # Last *non-empty* line: git pads its output, and a warning whose reason is a
@@ -823,6 +823,44 @@ vault_sync() {
     # end surfaces the divergence anyway.
     echo "WARN: vault sync failed, proceeding unsynced — $last" >&2
     return 2
+}
+
+# ── _timeout: the tool is not guaranteed to exist ────────────────────────────
+# `timeout` is GNU coreutils. Stock macOS does not ship it — one of the two declared
+# target machines, and every stranger who installs this package. Measured 2026-08-19 on a
+# PATH without it: `vault-sync` never ran `git pull` at all, rc=127 fell into the
+# catch-all branch, and the command reported "remote unreachable → warn and keep going".
+# So every save, lint and init on such a machine works from a stale checkout forever,
+# blaming the network — the exact failure the sync step exists to prevent, wearing the
+# costume of a handled error.
+#
+# This is the class CLAUDE.md already records for `date`, `stat` and `sed`: a command name
+# does not guarantee the tool. `date` got a fallback; `timeout` had none, and no check was
+# looking, because check 20 scans for non-portable FLAGS and `timeout` is a whole command.
+#
+# Order: coreutils `timeout`, Homebrew's `gtimeout`, then a shell implementation — the
+# watchdog is a background subshell that TERMs the job, which is all we need here (kill
+# the pull, keep the session). The shell branch returns the job's own status, or 124 when
+# it was killed, matching coreutils so the callers need no special case.
+_timeout() {
+    _to_secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$_to_secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout "$_to_secs" "$@"
+    else
+        "$@" &
+        _to_job=$!
+        ( sleep "$_to_secs"; kill -TERM "$_to_job" 2>/dev/null ) &
+        _to_watch=$!
+        wait "$_to_job" 2>/dev/null; _to_rc=$?
+        kill -TERM "$_to_watch" 2>/dev/null
+        wait "$_to_watch" 2>/dev/null
+        # 143 = TERM. coreutils reports a timed-out command as 124; match that, so a
+        # caller cannot tell the branches apart by exit code alone.
+        [ "$_to_rc" -eq 143 ] && _to_rc=124
+        return "$_to_rc"
+    fi
 }
 
 # ── stamp-updated ────────────────────────────────────────────────────────────
@@ -2103,14 +2141,30 @@ lint_collect() {
         echo "lint-collect: no _PROJECT.md anywhere — refusing to report a clean vault" >&2
         return 1
     fi
-    for p in $FS_P; do
+    # These lists come from the FILESYSTEM, one path per line, so they are read line by
+    # line and never word-split. `for p in $FS_P` split them on spaces and expanded globs:
+    # measured 2026-08-19, a project directory named `my project` produced six fabricated
+    # keys — project-unregistered, registry-stale and project-missing, twice each, for the
+    # halves `my` and `project` — while the vault-wide sweeps in the same run named it
+    # correctly, so the report contradicted itself; and a directory named `pj-*` beside
+    # `pj-a` emitted the same key twice, which makes `lint-diff` refuse the whole run with
+    # "keys are not unique", blaming the key design rather than the filename. The rule
+    # about unquoted word-splitting was already written for prompt blocks (preflight 18);
+    # nothing was checking `lib/`, where the input is untrusted vault content.
+    while IFS= read -r p <&3; do
+        [ -n "$p" ] || continue
         grep -qxF "$p" <<<"$REG_P" || \
             printf 'project-unregistered:%s\tin the vault, absent from %s\n' "$p" "$REG"
-    done
-    for p in $REG_P; do
+    done 3<<EOF
+$FS_P
+EOF
+    while IFS= read -r p <&3; do
+        [ -n "$p" ] || continue
         [ -f "$p/_PROJECT.md" ] || \
             printf 'registry-stale:%s\tlisted in %s, no such file\n' "$p" "$REG"
-    done
+    done 3<<EOF
+$REG_P
+EOF
     PROJECTS="$FS_P"
     [ -n "$only" ] && PROJECTS="$only"
 
@@ -2126,13 +2180,16 @@ lint_collect() {
     # goprofi-voronka and is deliberately not developed — reporting it as stale every run
     # is noise that cannot be acted on.
     NOT_ACTIVE=""
-    for P in $PROJECTS; do
+    while IFS= read -r P <&3; do
+        [ -n "$P" ] || continue
         st=$(_lc_fm "$P/_PROJECT.md" status)
         case "$st" in
             ""|active) : ;;
             *) NOT_ACTIVE="$NOT_ACTIVE $P($st)" ;;
         esac
-    done
+    done 3<<EOF
+$PROJECTS
+EOF
     [ -n "$NOT_ACTIVE" ] &&
         printf 'scope-note:not-active\tfreshness checks skipped for:%s\n' "$NOT_ACTIVE"
 
@@ -2152,7 +2209,8 @@ lint_collect() {
     # lint makes "open while the work is done" visible without inventing a deadline.
     # `scope-note:`-shaped key so the detail can change without a fake NEW/GONE.
     LIFECYCLE=""
-    for P in $PROJECTS; do
+    while IFS= read -r P <&3; do
+        [ -n "$P" ] || continue
         while IFS= read -r lf; do
             [ -n "$lf" ] || continue
             case "$(basename "$lf")" in
@@ -2168,11 +2226,14 @@ lint_collect() {
         done <<EOF
 $(find "$P" -maxdepth 2 -name '*.md' -not -path "*/wiki/*" -not -path "*/sessions/*" 2>/dev/null)
 EOF
-    done
+    done 3<<EOF
+$PROJECTS
+EOF
     [ -n "$LIFECYCLE" ] &&
         printf 'scope-note:lifecycle-docs\tstate is a field, not a location — verify each against the work:%s\n' "$LIFECYCLE"
 
-    for P in $PROJECTS; do
+    while IFS= read -r P <&3; do
+        [ -n "$P" ] || continue
         f="$P/_PROJECT.md"
         [ -f "$f" ] || { printf 'project-missing:%s\tno _PROJECT.md\n' "$P"; continue; }
         p_status=$(_lc_fm "$f" status)
@@ -2270,7 +2331,9 @@ EOF
 
         _lc_keys "$P/sessions" '*.md' "$P/sessions"
         _lc_keys "$P/wiki" 'decision-*.md' "$P/decisions"
-    done
+    done 3<<EOF
+$PROJECTS
+EOF
 
     # ── stale drafts ─────────────────────────────────────────────────────────
     printf '%s\n' "$SCOPED_MD" | grep -v '/raw/' | while read -r p; do
@@ -2300,7 +2363,7 @@ EOF
             *)  printf 'decision-schema:%s\tstatus off-schema: %s\n' "${p#./}" "$st" ;;
         esac
         # legacy one-line form, frontmatter only (a fenced quote of it is not one)
-        awk '/^---$/ { c++; next } c == 1 && /^status:[[:space:]]*superseded-by:/ { found = 1 }
+        awk '/^---[[:space:]]*$/ { c++; next } c == 1 && /^status:[[:space:]]*superseded-by:/ { found = 1 }
              END { exit !found }' "$p" && \
             printf 'decision-legacy:%s\tone-line status: superseded-by: — invalid YAML\n' "${p#./}"
         for k in supersedes superseded-by corrected-by; do
@@ -2322,7 +2385,7 @@ EOF
     # ── frontmatter structure (no parser needed) ─────────────────────────────
     printf '%s\n' "$SCOPED_MD" | while read -r p; do
         [ "$(head -1 "$p")" = "---" ] || continue
-        awk 'NR == 1 { next } /^---$/ { ok = 1; exit } END { exit ok }' "$p" && \
+        awk 'NR == 1 { next } /^---[[:space:]]*$/ { ok = 1; exit } END { exit ok }' "$p" && \
             printf 'frontmatter:%s\tblock not terminated\n' "${p#./}"
     done
 
@@ -2393,7 +2456,18 @@ EOF
 # lint_collect: save-report reads the same fields, and a helper reachable from one caller
 # only is how prose-budget once printed "ok" for a measurement that never ran.
 _lc_fm() {     # <file> <key>
-    awk -v k="$2" '/^---$/ { c++; next }
+    # The delimiter is matched with trailing whitespace allowed, everywhere. Until
+    # 2026-08-19 five readers used a strict /^---$/ while stamp_field and _fm_keys used the
+    # tolerant form, so a CRLF file or a `--- ` line made the strict half see an EMPTY
+    # frontmatter. Measured on a fixture: two notes carrying `status: accepted` were
+    # reported `decision-schema … no status:` — fabricated keys that go into the shared
+    # baseline, and acting on one adds a SECOND status: key to a live note; a genuinely
+    # off-schema note (`partially-superseded-by`) was reported as "no status" instead of
+    # its real violation; a CRLF note with an unterminated block produced no
+    # `frontmatter: block not terminated` finding while its byte-identical LF twin did;
+    # and `catalog` listed both as `0000-00-00 ?`, sorting them below everything in an
+    # index whose whole claim is "newest first".
+    awk -v k="$2" '/^---[[:space:]]*$/ { c++; next }
          c == 1 && index($0, k ":") == 1 {
              sub(/^[^:]*:[[:space:]]*/, ""); gsub(/"/, "")
              gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }' "$1"
@@ -2403,7 +2477,7 @@ _lc_fm() {     # <file> <key>
 # (_lc_keys twice, save-report once): a second copy of "what counts as a filled key"
 # would let the lint and the save disagree about the same file.
 _fm_keys_valued() {
-    awk '/^---$/ { c++; next }
+    awk '/^---[[:space:]]*$/ { c++; next }
          c == 1 && /^[A-Za-z_-]+:/ {
              k = $0; sub(/:.*/, "", k)
              v = $0; sub(/^[A-Za-z_-]+:[[:space:]]*/, "", v)
@@ -2449,7 +2523,7 @@ _lc_keys() {
 
 case "${1:-}" in
     obsidian-available) shift; obsidian_available "${1:-}" ;;
-    vault-name)         timeout 2 obsidian vault info=name 2>/dev/null || true ;;
+    vault-name)         _timeout 2 obsidian vault info=name 2>/dev/null || true ;;
     rename)             shift; rename_note "${1:-}" "${2:-}" "${3:-}" "${4:-}" ;;
     vault-sync)         shift; vault_sync "${1:-}" ;;
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
