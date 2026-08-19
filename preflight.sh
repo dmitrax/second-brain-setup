@@ -9,12 +9,18 @@
 # Usage:
 #   bash preflight.sh          # every check
 #   bash preflight.sh --fast   # skip the install into a temp $HOME (quick loop while editing)
+#   bash preflight.sh --mutate # ask which checks have force: gut each function in lib/,
+#                              # run the gate, and name every function no check defends
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FAST=0
-[ "${1:-}" = "--fast" ] && FAST=1
+MUTATE=0
+case "${1:-}" in
+    --fast)   FAST=1 ;;
+    --mutate) MUTATE=1; FAST=1 ;;
+esac
 # Guard for check 49, which runs this script against itself to prove the coverage
 # block actually prints. One level only: the nested run sees 1 and skips the check.
 PF_NESTED="${PF_NESTED:-0}"
@@ -27,6 +33,115 @@ NC='\033[0m'
 
 FAILED=0
 PASSED=0
+
+# ─── --mutate: which checks actually have force ──────────────────────────────
+# A green total counts checks; it does not measure them. Measured 2026-08-19 on this very
+# file: 74 checks were green, and an adversarial pass then gutted what each one guards and
+# re-ran the whole gate — NINE mutations changed nothing. Among them the check written
+# after `mapfile` blinded this gate for ten days, which had never been widened to cover the
+# file the incident was about.
+#
+# So this mode asks the only question a count cannot answer: remove the thing, does anything
+# go red? Each function in `lib/` is reduced to `return 0` on a COPY of the repository, the
+# gate runs against that copy, and the failing set is compared with the copy's own baseline.
+# A function that no check defends is named. It is not part of an ordinary run — 37
+# functions at ~8s is about five minutes — and belongs before a release, which is exactly
+# where the need surfaced.
+#
+# What this mode CANNOT see, said out loud so the green is not overread: it finds weak
+# checks and nothing else. Of 34 findings in the pass that prompted it, mutation accounts
+# for 8 — it cannot see a retired rule still stated as current, a document contradicting the
+# code, or a template that manufactures the findings the lint reports. Those need a reader.
+if [ "$MUTATE" = "1" ]; then
+    command -v mktemp >/dev/null 2>&1 || { echo "--mutate needs mktemp"; exit 1; }
+    mut_root=$(mktemp -d)
+    trap 'rm -rf "$mut_root"' EXIT
+    cp -a "$SCRIPT_DIR" "$mut_root/repo" || { echo "--mutate could not copy the repository"; exit 1; }
+    mut_repo="$mut_root/repo"
+    cp "$mut_repo/lib/brain.sh" "$mut_root/brain.orig"
+
+    # Failing check labels of a run, ANSI stripped, one per line.
+    _mut_fails() {
+        PF_NESTED=1 bash "$mut_repo/preflight.sh" --fast 2>&1 |
+            sed 's/\x1b\[[0-9;]*m//g' | grep -E '^  ✗ ' | sed 's/^  ✗ //'
+    }
+
+    echo -e "${BLUE}━━━ mutation pass: does removing the guarded thing turn anything red? ━━━${NC}"
+    echo ""
+    base_fails=$(_mut_fails)
+    n_base=$(grep -c . <<<"$base_fails" || true)
+    if [ "$n_base" -gt 0 ]; then
+        echo -e "  ${YELLOW}note${NC}: the unmutated copy already fails $n_base check(s); those are subtracted."
+        printf '%s\n' "$base_fails" | sed 's/^/         /'
+        echo ""
+    fi
+
+    fns=$(grep -oE '^[a-z_][a-z0-9_]*\(\)' "$mut_root/brain.orig" | tr -d '()' | LC_ALL=C sort -u)
+    [ -n "$fns" ] || { echo "--mutate found no function in lib/brain.sh — empty input, not a clean repo"; exit 1; }
+
+    mut_unguarded=""
+    n_fn=0
+    for fn in $fns; do
+        # `usage` prints the help text; several checks read it deliberately, so it is
+        # mutated like the rest — an exemption here would be the same "trust me" this
+        # mode exists to remove.
+        n_fn=$((n_fn + 1))
+        # Two definition shapes, and the one-liner is why this is not a two-line awk.
+        # First draft matched `fn() {` and skipped to the next line starting with `}` —
+        # for a one-liner the closing brace is on the SAME line, already consumed, so it
+        # skipped on to the NEXT function\'s brace and deleted that function too. The run
+        # then went red for the wrong reason and reported "caught by 3". The mutation had
+        # applied, `bash -n` passed, the file differed from the original: every guard I had
+        # written said yes. Hence the definition COUNT check below — over-mutation is
+        # indistinguishable from mutation by any property of the mutated file alone.
+        awk -v f="$fn" '
+            $0 ~ "^" f "\\(\\)[[:space:]]*\\{" && $0 ~ /\}[[:space:]]*$/ {
+                print f "() { return 0; }"; next
+            }
+            $0 ~ "^" f "\\(\\)[[:space:]]*\\{" { print f "() {"; print "    return 0"; skip = 1; next }
+            skip && /^\}/          { print "}"; skip = 0; next }
+            skip                    { next }
+            { print }
+        ' "$mut_root/brain.orig" > "$mut_repo/lib/brain.sh"
+        # The mutation must actually apply, or the run tests a typo. Learned 2026-08-03 on
+        # the archive safety test, where a broken `sed` produced an EMPTY script — and an
+        # empty script does nothing and exits 0, which read as "the safety let it through".
+        n_def_before=$(grep -cE '^[a-z_][a-z0-9_]*\(\)' "$mut_root/brain.orig")
+        n_def_after=$(grep -cE '^[a-z_][a-z0-9_]*\(\)' "$mut_repo/lib/brain.sh")
+        if ! bash -n "$mut_repo/lib/brain.sh" 2>/dev/null ||
+           cmp -s "$mut_repo/lib/brain.sh" "$mut_root/brain.orig"; then
+            printf '  %-22s %s\n' "$fn" "SKIPPED — the mutation did not apply cleanly"
+            continue
+        fi
+        if [ "$n_def_after" -ne "$n_def_before" ]; then
+            printf '  %-22s %s\n' "$fn" "SKIPPED — the mutation removed $((n_def_before - n_def_after)) other function(s) as well"
+            continue
+        fi
+        new_fails=$(_mut_fails)
+        caught=$(LC_ALL=C comm -13 <(printf '%s\n' "$base_fails" | LC_ALL=C sort) \
+                                   <(printf '%s\n' "$new_fails"  | LC_ALL=C sort) | grep -c . || true)
+        if [ "$caught" -eq 0 ]; then
+            printf "  %-22s ${RED}%s${NC}\n" "$fn" "no check defends this"
+            mut_unguarded="$mut_unguarded  $fn"$'\n'
+        else
+            printf '  %-22s caught by %s check(s)\n' "$fn" "$caught"
+        fi
+    done
+    cp "$mut_root/brain.orig" "$mut_repo/lib/brain.sh"
+
+    echo ""
+    if [ -n "$mut_unguarded" ]; then
+        echo -e "${RED}━━━ $(grep -c . <<<"$mut_unguarded") of $n_fn functions are defended by no check ━━━${NC}"
+        printf '%s' "$mut_unguarded"
+        echo ""
+        echo "  Each line is a function whose complete removal the gate does not notice."
+        echo "  That is not automatically a defect — a private helper may be covered"
+        echo "  through its caller — but it is a claim to make deliberately, not by default."
+        exit 1
+    fi
+    echo -e "${GREEN}━━━ all $n_fn functions in lib/ are defended by at least one check ━━━${NC}"
+    exit 0
+fi
 
 # ─── Locale self-test, before any check that uses a Cyrillic character class ─────
 # Checks 32 and 33 match `[А-Яа-яЁё]`, and that class is only a class in a UTF-8
@@ -1233,8 +1348,15 @@ printf -- '---\ndate: %s\nzone: backend\n---\nlog\n' "$PF_ANCIENT" > "$lc/pj/ses
 printf -- '---\nstatus: accepted\ndate: %s\nzone: backend\n---\n[[../_PROJECT|_PROJECT]]\n' "$PF_ANCIENT" > "$lc/pj/wiki/decision-x.md"
 printf -- '# CLAUDE.md\n\nEvery session log carries `zone:` in its frontmatter.\n' > "$lc/CLAUDE.md"
 lc_out=$(bash "$LIBSH" local-conventions "$lc" pj "$lc/CLAUDE.md" 2>&1); lc_rc=$?
-grep -qF 'zone' <<<"$lc_out" ||
-    missing+="local-conventions did not name the project's own key on a fixture that carries it (rc $lc_rc): ${lc_out:-<no output>}"$'\n'
+# The key must be named BY THE SOURCE THAT READS THE ENTRIES, not merely present somewhere
+# in the output. The first version asked for `zone` anywhere, and the fixture's CLAUDE.md
+# quotes a rule about `zone:` — so the frontmatter reader could be removed entirely and this
+# stayed green. Found 2026-08-19 by `--mutate`: gutting `_fm_keys` turned nothing red, and
+# the hole was in this assertion rather than in the code. Both entry sources are pinned.
+grep -qE '^session-log[[:space:]].*zone' <<<"$lc_out" ||
+    missing+="local-conventions did not name the key on the session-log line (rc $lc_rc): ${lc_out:-<no output>}"$'\n'
+grep -qE '^decision-note[[:space:]].*zone' <<<"$lc_out" ||
+    missing+="local-conventions did not name the key on the decision-note line (rc $lc_rc): ${lc_out:-<no output>}"$'\n'
 # And it must FAIL rather than print silence when it could read none of its three sources —
 # "this project has no local conventions" and "I read nothing" are different facts.
 lc_out=$(bash "$LIBSH" local-conventions "$lc" nosuchproject 2>&1); lc_rc=$?
@@ -3995,6 +4117,41 @@ elif [ -n "$missing" ]; then
     fail "a rule of the Block has no machine check, or lost the one it had" "$missing"
 else
     pass "semver holds for $n_tags tags, the conflict rule is stated, the release rule names its command"
+fi
+
+# ─── 61. release-check answers gates 2 and 3, and answers them honestly ───────
+# Added the same day as the command, because `--mutate` immediately named it: reducing
+# `release_check` to `return 0` turned nothing red. The rule NAMES the command (check 60)
+# and nothing ran it — a measurement available and unexercised, which is the exact shape of
+# the miss it was written to prevent: on 2026-08-18 gate 3 was declared closed by the
+# session that wrote the code, because nothing looked.
+#
+# Both outcomes are run on fixtures. The one that matters is the negative: a vault with no
+# session log on this code must NOT read as a pass, or the command becomes a rubber stamp.
+rc_tmp=$(mktemp -d)
+missing=""
+mkdir -p "$rc_tmp/nolog/00-system" "$rc_tmp/nolog/proj/sessions" "$rc_tmp/nolog/proj/wiki"
+printf -- '# Index\n\n## Projects\n- [[proj/_PROJECT|proj]] — x, code, active\n' > "$rc_tmp/nolog/00-system/index.md"
+printf -- '---\nproject: proj\nupdated: %s\nstatus: active\nbrain-version: "v9.9.9"\n---\n## Current state\nx\n' \
+    "$PF_ANCIENT" > "$rc_tmp/nolog/proj/_PROJECT.md"
+: > "$rc_tmp/nolog/00-system/lint-baseline.txt"
+rc_out=$(cd "$SCRIPT_DIR" && bash "$LIBSH" release-check "$rc_tmp/nolog" 2>&1); rc_rc=$?
+grep -qEe '^gate 3[[:space:]]+MISSING' <<<"$rc_out" ||
+    missing+="  a vault with no session log on this version did not fail gate 3: ${rc_out:-<no output>}"$'\n'
+[ "$rc_rc" -eq 2 ] ||
+    missing+="  gate 3 unmet returned $rc_rc, and the contract says 2"$'\n'
+# It must also refuse what it cannot read, rather than passing over it.
+bash "$LIBSH" release-check "$rc_tmp/does-not-exist" >/dev/null 2>&1
+[ $? -eq 1 ] || missing+="  release-check did not return 1 for a vault it cannot read"$'\n'
+# And gate 2 must actually run the lint rather than assert it: an unreadable vault cannot
+# produce a gate-2 ok.
+grep -qEe '^gate 2[[:space:]]+(ok|ANSWER|MISSING)' <<<"$rc_out" ||
+    missing+="  gate 2 produced no verdict at all"$'\n'
+rm -rf "$rc_tmp"
+if [ -n "$missing" ]; then
+    fail "release-check does not measure the two gates it claims to" "$missing"
+else
+    pass "release-check measures gates 2 and 3, and an unmet gate 3 is exit 2"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"
