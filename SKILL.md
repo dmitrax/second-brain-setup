@@ -212,7 +212,8 @@ The vault stays flat — no fixed folder taxonomy. Knowledge is shaped by note *
 expressed through the assertive file name.
 
 **Synthesis notes** — the default. Compiled knowledge about the project.
-Assertive name, ≥2 `[[wikilinks]]`, a `## For future Claude` section.
+Assertive name, the mandatory `[[../_PROJECT|_PROJECT]]` backlink plus a link to a
+sibling note whenever a related one exists, a `## For future Claude` section.
 Rewritten in place when understanding changes (rewrite-not-append).
 
 **Decision notes (ADR-lite)** — a record of a decision that future Claude must not
