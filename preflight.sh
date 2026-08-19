@@ -3579,8 +3579,14 @@ fi
 # current design is in force, so a green cannot outlive the design it describes.
 missing=""
 scanned=0
+# CLAUDE.md is in scope even though it does not ship: it is loaded IN FULL at the start of
+# every session, before the topic is known, which gives a retired rule in it a wider reach
+# than one in any shipped file. Measured 2026-08-19 — it prescribed the summed ~60-line
+# prose budget for four weeks after the same file retired it, and neither check 52 (four
+# documentation files) nor this one (what ships) was looking.
 SHIPPED=""
-for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
+for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR/CLAUDE.md" "$SCRIPT_DIR"/commands/*.md \
+         "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
     [ -f "$f" ] && SHIPPED="$SHIPPED$f"$'\n'
 done
 # (a) The link requirement. Anchor: the lint reports the backlink and the sibling as two
@@ -3598,18 +3604,35 @@ grep -qF 'scope-note:not-active' "$LIBSH" ||
 # explains the retirement and was reported as committing it. The discriminator is the
 # disclaimer on the same line, so a sentence that states the threshold and says it is gone
 # passes, and one that merely states it does not.
-past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|больше не|Раньше|Прежде|до 2026'
+past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|fired at|used to|which retired|больше не|Раньше|Прежде|до 2026'
+# The disclaimer is read over a WINDOW, not one line. Prose wraps: CLAUDE.md records the
+# retirement of the 14-day threshold across four lines, so a same-line test called the
+# record a violation — the second time this check has produced that false positive, and
+# exactly the trap check 52 documents. Two lines either side is enough for a wrapped
+# sentence and short enough that an unrelated paragraph cannot launder a live claim.
+_retired_hits() {
+    awk -v pat="$2" -v past="$past" '
+        { L[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                if (L[i] !~ pat) continue
+                excused = 0
+                for (j = i - 2; j <= i + 2; j++) if (j >= 1 && j <= NR && L[j] ~ past) excused = 1
+                if (!excused) print i ": " L[i]
+            }
+        }' "$1"
+}
 while IFS= read -r f; do
     [ -n "$f" ] || continue
     scanned=$((scanned + 1))
     # A floor is a NUMBER attached to the link requirement. "at least one link to a
     # sibling" and "two or more is the target, not a floor" are the current rule and must
     # stay green, so the pattern demands a digit.
-    h=$(grep -nEe '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|\[\[|ссыл)' "$f" | grep -vEe "$past" || true)
+    h=$(_retired_hits "$f" '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|\[\[|ссыл)')
     [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
     # A day threshold on `updated:` is the retired freshness rule. Both words on one line:
     # "no movement for 14+ days" is about taskboard items and is a different, live rule.
-    h=$(grep -nEe 'updated' "$f" | grep -Ee '[0-9]+[+]?[[:space:]]*(days|дней|дня)' | grep -vEe "$past" || true)
+    h=$(_retired_hits "$f" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)')
     [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
 done <<EOF
 $SHIPPED
@@ -3688,7 +3711,12 @@ fi
 # could not see it, and neither could a session running the script with no arguments. The
 # usage is now compared against the same derived list, so the two documents are checked
 # against the code rather than against each other.
-subs=$(sed -nE 's/^[[:space:]]+([a-z][a-z-]+)\)[[:space:]]+shift;.*/\1/p' "$LIBSH" | LC_ALL=C sort -u)
+# The whole dispatcher region, not the branches that happen to say `shift;` on the same
+# line — that first draft silently dropped `vault-name`, `version` and `archive`, which is
+# the same undercount, one level down, as reading the usage text. The region is bounded by
+# its own `case`/`esac`, so an inner case (catalog's `--project`) cannot leak in.
+subs=$(awk '/^case "\$\{1:-\}"/ { d = 1; next } d && /^esac/ { exit } d' "$LIBSH" |
+    sed -nE 's/^[[:space:]]+([a-z][a-z-]+)\).*/\1/p' | LC_ALL=C sort -u)
 usage=$(bash "$LIBSH" 2>&1 | grep -oE '^  [a-z][a-z-]+' | sed 's/^  //' | LC_ALL=C sort -u)
 for sub in $subs; do
     grep -qxFe "$sub" <<<"$usage" ||

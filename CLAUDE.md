@@ -332,10 +332,23 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   execution. Only a real vector reddens it — `eval`, `sh -c`, `bash -c` — which is why the
   check also asserts statically that none of those appears in `lib/`. A dynamic test whose
   failure mode you have not identified is a green you cannot spend.
-- **`grep -q` never ends a pipeline — no producer is exempt.** The repo
-  scripts run under `set -uo pipefail`. `grep -q`/`-qv` exits at the first qualifying
-  line, the producer then dies of SIGPIPE with 141, and `pipefail` makes 141 the status
-  of the whole pipeline — so a *successful match* reads as a failure. Use a here-string,
+- **`grep -q` never ends a pipeline — no producer is exempt.** `grep -q`/`-qv` exits at
+  the first qualifying line and the producer then dies of SIGPIPE with 141; where
+  `pipefail` is on, 141 becomes the status of the whole pipeline, so a *successful match*
+  reads as a failure.
+  **Correction 2026-08-19, and it is the more useful half: only `preflight.sh` sets
+  `pipefail`.** `lib/brain.sh` is `set -u`, `install.sh` and `update.sh` are `set -e`.
+  This bullet said "the repo scripts run under `set -uo pipefail`" and was wrong about
+  three files of four, which makes the rule *defensive* in `lib/` rather than a repair,
+  and means the live defect it cites (`find … | grep -q .` in `decision-ref`) could not
+  have manifested the way it is written here. Third instance of the class this Block
+  already names twice — a rationale is the part of a fix that no check can hold.
+  What the missing `pipefail` DOES cost is worse and was found the same day: a pipeline
+  reports its LAST command, so `lint-collect <broken> | lint-diff --seal` returned 0 and
+  emptied the shared baseline while the collector was exiting non-zero. The lesson is not
+  "turn pipefail on" — that would change the status of every existing pipeline at once,
+  unmeasured — it is that **a consumer must not treat an empty producer as a clean
+  result**, which is where the guard now lives. Use a here-string,
   `grep -qF PATTERN <<<"$var"`: that is not a pipeline at all, so `pipefail` has nothing
   to observe and the producer cannot be signalled.
   **This rule shipped with a false exemption, and the correction is the point.** Until
@@ -706,9 +719,16 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   still in force. The marker must sit in the note being corrected, not only as a
   backlink from the new note: a backlink is invisible to a reader who has not yet
   found the correction, which is precisely the reader being misled
-- `/brain-lint`'s `_PROJECT.md` size check counts **prose sections only** (`Current
-  state`/`Статус`, `Последняя сессия`, `For future Claude`, ~60-line budget), never
-  total file length. The earlier ~120-line total-size threshold summed prose (which
+- `/brain-lint`'s `_PROJECT.md` size check counts **prose sections only**, never total
+  file length — and each section is limited **independently**, never as a sum: `Current
+  state` 30 lines, the session list 5 entries, `For future Claude` 20 lines, the numbers
+  living in `BUDGET_*` in `lib/brain.sh`. (This bullet prescribed the summed ~60-line
+  budget until 2026-08-19, four weeks after the rule below retired it for firing in two
+  runs out of three. Nothing could see the contradiction: check 52 compares live docs
+  against the code but its file list is the four documentation files, and check 54 reads
+  what ships — so the one file loaded in full at every session start, before the topic is
+  known, was audited for retired thresholds by nobody. Now it is: check 54's scope
+  includes this file.) The earlier ~120-line total-size threshold summed prose (which
   the rule forbids) together with link-list sections (`Key decisions` etc., which grow
   legitimately with a project's decision count) — a well-kept large project could rank
   as a worse violator than a small one hiding real duplication. Measured 2026-07-22:
