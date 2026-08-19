@@ -3442,15 +3442,52 @@ run_form "vault-sync <vault>"             bash "$LIBSH" vault-sync "$cw"
 # every member must appear in the list. Proved needed 2026-08-19: a new form added to
 # SKILL.md, broken exactly as the two historical defects were, left this check green while
 # it announced "all 16 prescribed invocation forms run as written".
-prescribed=$(for pf in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md; do
+# ── and the prescribed LINES themselves, run verbatim ────────────────────────
+# The list above is written here, and until 2026-08-19 that was the whole check while it
+# announced "all 16 prescribed invocation forms run as written". Its own negative test
+# showed the hole: `catalog --project <p>` with no vault — one of the two defects the check
+# was created for — stayed green, because `catalog` was covered by a DIFFERENT form. A
+# parallel list can only ever test the forms someone remembered to add to it.
+# So every line a prompt actually prescribes is extracted and executed, with the variables
+# a prompt introduces bound to the fixture. A line whose variables cannot all be bound is
+# not silently skipped: it is reported as a gap, because "did not run" and "ran clean" are
+# the distinction this whole file exists to keep.
+: > "$cw/lint-findings.txt"
+printf 'k:o\tdetail\n' > "$cw/lint-findings.txt"
+lines=$(for pf in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md; do
         [ -f "$pf" ] || continue
-        exec_blocks "$pf"
-    done | grep -oE '\$(BRAIN|LIBSH)" [a-z][a-z-]+' | awk '{print $2}' | LC_ALL=C sort -u)
-for sub in $prescribed; do
-    if ! grep -qxFe "$sub" <<<"$FORMS_RUN"; then
-        missing+="  a prompt prescribes \`brain.sh $sub\` and no form here runs it"$'\n'
+        exec_blocks "$pf" | sed "s|^|$(basename "$pf") |"
+    done | grep -Ee '^[^ ]+ [0-9]+:[[:space:]]*bash "\$(BRAIN|LIBSH)"')
+n_lines=0
+while IFS= read -r rec; do
+    [ -n "$rec" ] || continue
+    src=${rec%% *}; rest=${rec#* }; lno=${rest%%:*}; cmd=${rest#*:}
+    # Bind what a prompt introduces; anything else left unbound is a gap, not a pass.
+    cmd=${cmd//\$BRAIN/$LIBSH}
+    cmd=${cmd//\$\{BRAIN\}/$LIBSH}
+    cmd=${cmd//\$LIBSH/$LIBSH}
+    cmd=${cmd//\$VAULT/$cw}
+    cmd=${cmd//\$PROJECT/proj}
+    cmd=${cmd//\$PM/$cw/proj/_PROJECT.md}
+    cmd=${cmd//\$PWD/$cw}
+    cmd=${cmd//\/tmp\/lint-findings.txt/$cw/lint-findings.txt}
+    # A heredoc needs its body, or the line blocks forever waiting for one.
+    case "$cmd" in
+        *"<<'ENTRY'"*|*'<<ENTRY'*) cmd="${cmd%%<<*} <<'ENTRY'"$'\n'"[[a]] -> b"$'\n'"ENTRY" ;;
+    esac
+    if grep -qEe '\$[A-Za-z_{]' <<<"${cmd%%#*}"; then
+        gap "one prescribed line in $src:$lno could not be run — it names a variable this fixture cannot bind"
+        continue
     fi
-done
+    n_lines=$((n_lines + 1))
+    out=$(cd "$cw" && eval "$cmd" 2>&1 </dev/null); rc=$?
+    case "$out" in
+        *"unknown option"*|*"unknown command"*|*"needs "*|*"no vault at '--"*)
+            missing+="  $src:$lno does not run as written (rc $rc): ${out%%$'\n'*}"$'\n' ;;
+    esac
+done <<EOF
+$lines
+EOF
 # connections-add reads the entry from stdin, so it needs its own invocation
 ca_out=$(printf 'x → y\n' | bash "$LIBSH" connections-add "$cw/00-system/connections.md" "$PF_ANCIENT" 2>&1)
 case "$ca_out" in *"unknown option"*|*"needs "*) missing+="connections-add is not executable as written: $ca_out"$'\n' ;; esac
@@ -3468,7 +3505,13 @@ else
     # 2026-08-19: adding that exact line to SKILL.md leaves this check green, because
     # `catalog` is covered. Closing it means running the prescribed LINES rather than a
     # parallel list, and that is the next step, not a claim to make now.
-    pass "$(grep -c . <<<"$FORMS_RUN") invocation forms run; every subcommand a prompt prescribes is among them"
+    # Both numbers are computed. The first read "16" while nineteen forms ran, which is
+    # what a typed number in a pass line is worth; the second is the count of lines taken
+    # from the prompts and executed verbatim, and a zero there would mean the extraction
+    # broke rather than that the prompts prescribe nothing.
+    [ "$n_lines" -gt 0 ] ||
+        fail "check 51 extracted no prescribed line from any prompt — empty input, not a clean repo"
+    pass "$(grep -c . <<<"$FORMS_RUN") outcome forms + $n_lines prescribed lines run verbatim"
 fi
 
 # ─── 52. Live docs do not restate a number the code owns; history is left alone ──
@@ -3803,6 +3846,155 @@ else
     else
         pass "every finding key the collector emits is documented in /brain-lint ($n_keys keys)"
     fi
+fi
+
+# ─── 58. A scoped lint compares and seals only its own scope ──────────────────
+# The baseline is ONE file for the whole vault; /brain-lint is scoped to a project by
+# default. Until 2026-08-19 the two met without a scope, so a project run reported every
+# other project's finding as GONE — which the report glosses as "fixed, confirm it was
+# deliberate" — and a --seal then erased them from a file committed to the vault and read
+# on every machine, after which the next full run called them NEW. The command produced,
+# by its documented default, the fabricated delta it exists to expose.
+# Behavioural: the four properties are RUN, because "the flag is mentioned" is exactly the
+# presence-not-behaviour trap that nine checks fell into the same day.
+sc=$(mktemp -d)
+missing=""
+printf 'wiki-no-links:demo\t1 notes\nstale-draft:demo/wiki/x\t20 days\ncurrent-state:_arch/dimarch\t35 lines\ntaskboard-inprogress:other\t99 open\n' > "$sc/base.txt"
+sc_out=$(printf 'wiki-no-links:demo\t1 notes\n' | bash "$LIBSH" lint-diff "$sc/base.txt" --scope demo 2>&1)
+grep -qF 'current-state:_arch/dimarch' <<<"$sc_out" &&
+    missing+="  a scoped diff reported another project's finding as GONE"$'\n'
+grep -qF 'stale-draft:demo/wiki/x' <<<"$sc_out" ||
+    missing+="  a scoped diff missed a GONE inside its own scope (a path key under the project)"$'\n'
+# Sealing preserves what it did not compare.
+printf 'wiki-no-links:demo\t1 notes\n' | bash "$LIBSH" lint-diff "$sc/base.txt" --scope demo --seal >/dev/null 2>&1
+for k in current-state:_arch/dimarch taskboard-inprogress:other; do
+    grep -qF "$k" "$sc/base.txt" ||
+        missing+="  --seal on a scoped run dropped the out-of-scope key $k from the baseline"$'\n'
+done
+grep -qF 'stale-draft:demo/wiki/x' "$sc/base.txt" &&
+    missing+="  --seal on a scoped run kept an in-scope key the run no longer reports"$'\n'
+# An out-of-scope finding produced by a scoped run is named, never silently counted NEW.
+sc_out=$(printf 'wiki-no-links:demo\t1 notes\nambiguous-link:someothername\t3\n' |
+    bash "$LIBSH" lint-diff "$sc/base.txt" --scope demo 2>&1)
+grep -qF 'outside the scope' <<<"$sc_out" ||
+    missing+="  a finding outside the scope was not named as reported-but-not-compared"$'\n'
+grep -qEe '\+ ambiguous-link' <<<"$sc_out" &&
+    missing+="  a finding outside the scope was counted as NEW against a baseline that never held it"$'\n'
+rm -rf "$sc"
+# And the command must actually pass the flag on its project run, in an executable block.
+lint_exec=$(exec_blocks "$SCRIPT_DIR/commands/brain-lint.md")
+if ! grep -qF -- '--scope' <<<"$lint_exec"; then
+    missing+="  /brain-lint never passes --scope, so its default run diffs against the whole vault"$'\n'
+fi
+# Step 5 re-collects: a snapshot from Step 1 predates the fixing done in Steps 3-4, so
+# sealing it writes findings back that this very run repaired.
+s5=$(awk '/^## Step 5/ { s = 1 } s' "$SCRIPT_DIR/commands/brain-lint.md")
+grep -qF 'lint-collect' <<<"$s5" ||
+    missing+="  /brain-lint Step 5 diffs the Step 1 snapshot without re-collecting after the fixes"$'\n'
+if [ -n "$missing" ]; then
+    fail "a scoped lint can still corrupt the shared baseline" "$missing"
+else
+    pass "a scoped lint compares and seals only its own scope, and Step 5 re-collects"
+fi
+
+# ─── 59. A shipped file invokes no tool that a target machine may lack ────────
+# "No external dependencies: whatever install.sh ships must run with nothing the user has
+# to install first" has been rule one of this Block since v1.0 and had no check. It is not
+# theoretical: measured 2026-08-19, `timeout` — GNU coreutils, absent from stock macOS —
+# was invoked bare in three places, so `vault-sync` never ran `git pull` on such a machine
+# and reported "remote unreachable" forever. One of the two declared target platforms, and
+# every stranger who installs the package.
+#
+# The list is what the two targets DIFFER on, not a general inventory of the userland: a
+# generic first-word extractor drowns in variables, awk internals and prose, and a check
+# nobody can read is a check nobody maintains. Adding a tool here is deliberate, and so is
+# adding one to the code — which is the point.
+#
+# A tool is allowed when the same file reaches it through a guard: `command -v <tool>`,
+# which is how `_timeout` picks between coreutils, Homebrew's gtimeout and a shell
+# watchdog. Guarded means "the absence is handled", which is the actual requirement.
+NOT_EVERYWHERE='timeout|gtimeout|realpath|shuf|tac|sponge|jq|rg|fd|wget|nproc|flock|stdbuf|truncate|md5sum|sha1sum|sha256sum|gsed|gawk|gdate|gstat|gfind|lsb_release|readlink -f|xargs -r|python3|python'
+missing=""
+n_dep=0
+for f in "$SCRIPT_DIR/lib/brain.sh" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh" \
+         "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR"/commands/*.md; do
+    [ -f "$f" ] || continue
+    n_dep=$((n_dep + 1))
+    case "$f" in
+        *.md) body=$(exec_blocks "$f") ;;
+        *)    body=$(grep -vE '^[[:space:]]*#' "$f") ;;
+    esac
+    # The guard is per INVOCATION, within a window, not per file. The first draft asked
+    # whether the file contained `command -v <tool>` anywhere — so the moment `_timeout`
+    # existed, a bare `timeout` anywhere else in the same file was excused, and the
+    # negative test (restoring exactly the call that caused the incident) stayed green.
+    # A guard excuses the branches it selects between, which sit within a line or two of
+    # it; anything further away is an unguarded call wearing the wrapper as an alibi.
+    h=$(awk -v pat="$NOT_EVERYWHERE" '
+        { L[NR] = $0 }
+        END {
+            split(pat, tools, "|")
+            for (i = 1; i <= NR; i++) {
+                for (t in tools) {
+                    tool = tools[t]
+                    # COMMAND POSITION only: after a separator, and followed by an
+                    # argument. Matching the bare word reported the usage text ("every
+                    # call is under timeout.") and a message string ("(timeout?)") — prose
+                    # about a tool is not an invocation of it, and a check that cannot tell
+                    # them apart gets switched off by whoever reads it next.
+                    if (L[i] !~ "(^|[|;&`]|\\$\\()[[:space:]]*" tool "[[:space:]]+[-A-Za-z0-9_\"'"'"'$/]") continue
+                    guarded = 0
+                    for (j = i - 3; j <= i; j++)
+                        if (j >= 1 && index(L[j], "command -v " tool) > 0) guarded = 1
+                    if (!guarded) print tool " at line " i ": " L[i]
+                }
+            }
+        }' <<<"$body")
+    [ -n "$h" ] && missing+="  $(basename "$f"):"$'\n'"$(printf '%s\n' "$h" | cut -c1-110 | sed 's/^/      /')"$'\n'
+done
+if [ "$n_dep" -eq 0 ]; then
+    fail "check 59 opened no shipped file — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a shipped file needs a tool the user may have to install" "$missing"
+else
+    pass "no shipped file invokes an unguarded non-universal tool ($n_dep files)"
+fi
+
+# ─── 60. Three rules that were prose only, in a Block that forbids prose only ─
+# Found 2026-08-19 by auditing the rulebook against the gate in both directions. Each is
+# checkable, and each was checked by nobody.
+missing=""
+# (a) Semver, adopted 2026-07-20. Tags before it are under the older coarse scheme and are
+# explicitly not retro-fitted, so the assertion starts there rather than at the first tag.
+n_tags=0
+for t in $(git -C "$SCRIPT_DIR" tag 2>/dev/null); do
+    tday=$(git -C "$SCRIPT_DIR" log -1 --format=%cI "$t" 2>/dev/null); tday=${tday%%T*}
+    [ -n "$tday" ] || continue
+    [ "$tday" \< "2026-07-20" ] && continue
+    n_tags=$((n_tags + 1))
+    case "$t" in
+        v[0-9]*.[0-9]*.[0-9]*) : ;;
+        *) missing+="  tag $t ($tday) is not MAJOR.MINOR.PATCH, and semver was adopted 2026-07-20"$'\n' ;;
+    esac
+done
+# (b) "The newer note wins" — adopted from nf-content 2026-08-17 because we had nothing at
+# all for a conflict nobody had noticed yet. Three of that borrowing's four mechanisms got
+# a check (47, 48, 49); this one, living in a single sentence of a shipped file, got none.
+grep -qFe 'the fresher record' "$SCRIPT_DIR/SKILL.md" ||
+    grep -qFe 'newer' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="  SKILL.md no longer states which note wins when two disagree"$'\n'
+# (c) Gates 2 and 3 are measurable and now measured — by `release-check`, deliberately not
+# by this script (a repo-only gate must run where no vault exists). The rule has to NAME
+# the command, or the measurement is available and unused, which is how gate 3 came to be
+# declared closed on 2026-08-18 by the session that wrote the code it was judging.
+grep -qFe 'release-check' "$SCRIPT_DIR/CLAUDE.md" ||
+    missing+="  the release rule does not name \`brain.sh release-check\`, so gates 2 and 3 stay a protocol"$'\n'
+if [ "$n_tags" -eq 0 ]; then
+    fail "check 60 found no tag dated after semver was adopted — empty input, not a clean repo"
+elif [ -n "$missing" ]; then
+    fail "a rule of the Block has no machine check, or lost the one it had" "$missing"
+else
+    pass "semver holds for $n_tags tags, the conflict rule is stated, the release rule names its command"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

@@ -204,9 +204,32 @@ holds and only one supporting fact was disproved, mark it `corrected-by:` and le
 
 ## Step 5: Report the delta, not the backlog
 
+**Re-collect first.** Steps 3-4 edit what they find, and the file from Step 1 is a snapshot
+taken before any of that — diffing it reports findings this run has already fixed, and
+`--seal` writes them back into the baseline, so the next run shows them GONE with nobody
+having touched anything. A fabricated delta, produced by the run that did the work:
+
 ```bash
-bash "$BRAIN" lint-diff "$VAULT/00-system/lint-baseline.txt" < /tmp/lint-findings.txt
+bash "$BRAIN" lint-collect "$VAULT" > /tmp/lint-findings.txt      # or --project "$PROJECT"
 ```
+
+Then diff. **A scoped run must say so**, or the baseline pays for it — see below:
+
+```bash
+# whole vault (--all):
+bash "$BRAIN" lint-diff "$VAULT/00-system/lint-baseline.txt" < /tmp/lint-findings.txt
+# one project (the default scope):
+bash "$BRAIN" lint-diff "$VAULT/00-system/lint-baseline.txt" --scope "$PROJECT" < /tmp/lint-findings.txt
+```
+
+**`--scope` is not optional on a project run.** The baseline is one file for the whole
+vault; a scoped run without it reports every OTHER project's finding as GONE — which the
+report calls "fixed, confirm it was deliberate" — and a `--seal` then erases them from a
+file committed to the vault and read on every machine, after which the next full run calls
+them NEW. With `--scope` the comparison and the seal touch only the keys belonging to that
+project, out-of-scope baseline lines are carried through untouched, and any out-of-scope
+finding the run does produce (two sweeps stay vault-wide by design) is listed separately as
+reported-but-not-compared.
 
 Report in this order: **NEW first** — this session's regression and the only part that
 usually needs action; then GONE (something was fixed — confirm it was deliberate); then

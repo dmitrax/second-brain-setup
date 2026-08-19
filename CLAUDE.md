@@ -74,6 +74,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
      2026-07-22, the second fixing what the first missed; five tags in three days, each
      patching its predecessor. Writing a rule is not evidence the rule works — using it
      is. Version numbers are cheap, but a released defect propagates into every vault.
+  **Conditions 2 and 3 are measured, not attested: `bash lib/brain.sh release-check
+  "$VAULT"`.** It runs the lint against the live vault and reports the delta, then looks
+  for a session log dated on or after the HEAD commit in a project stamped with the
+  version HEAD describes — both halves, because a log alone says a session happened while
+  the stamp says it happened ON THIS CODE. Exit 0 both answered, 2 one is not met. It is
+  deliberately NOT part of `preflight.sh`: that gate is repo-only and installs into a
+  clean temporary `$HOME`, so it must run on a machine that has no vault, and a check
+  silently needing one would be a green meaning "did not run". Added 2026-08-19 after
+  gate 3 was declared closed on 08-18 by the session that had written the code it was
+  judging — the one thing condition 3 forbids in so many words, and nothing could see it
+  because nothing was looking. Checked by preflight 60.
   Rationale: preflight catches mechanical violations, lint catches vault-level ones, and
   the waiting period catches design errors, which neither script can see. Three of the
   four bugs in v1.4.3/v1.5.0 were one-line greps that no one had written; the fourth was
@@ -607,6 +618,38 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   decision note has no executable form, so it survives on the authority of whoever wrote
   it. Both of these read as authoritative for a day and were wrong within an hour of being
   run. When a fix is defensive, say so in the fix.
+- **Rules the gate enforced before this Block named them.** Written down 2026-08-19, when
+  an audit ran the mapping in both directions and found ten checks with no rule. That is
+  the same rule failing the other way round: a check whose reason lives only in its own
+  header is one nobody can weigh when it goes red, and "delete the check" then looks as
+  reasonable as "fix the code". Each line below is the obligation, not the mechanism.
+  - A wiki note carries the `[[../_PROJECT|_PROJECT]]` backlink, plus a sibling link when
+    a genuinely related note exists — never a link invented to reach a count (22).
+  - `--project` scopes every per-project check; the two sweeps that stay vault-wide are
+    named in the command, because a scope that quietly covers less than it claims is this
+    package's headline defect (23).
+  - `sweep-closed` moves items and never sections, spares a closed sub-item under an open
+    parent, and its result is a permutation of its input or it refuses (28).
+  - A taskboard counter measures open items and only advises `archive` for what `archive`
+    can actually reach — advice that cannot be acted on is noise with a number on it (44).
+  - A bullet three lines or longer carries a `[[link]]`: an account needs an owner
+    elsewhere. And a status change owes a named diagnosis in the same breath (50).
+  - Every invocation a prompt prescribes is executed as written against a fixture, from
+    the prompts themselves rather than from a list kept beside them (51).
+  - No file that ships — nor `CLAUDE.md`, which loads in full before the topic is known —
+    states a rule the code has retired; a sentence that names a retired rule AS retired is
+    a record and is left alone (54).
+  - A Russian matched section name is never written alone in a shipped file: both
+    spellings, because `lib/` matches both and a new file writes the English one (55).
+  - Every subcommand the dispatcher accepts appears in the usage text and in the
+    architecture reference, derived from the dispatcher rather than from either document
+    (56); every finding key the collector emits is documented in the command that reads
+    it (57).
+  - A scoped lint compares and seals only its own scope, and `/brain-lint` re-collects
+    before the diff so it does not seal findings the same run repaired (58).
+  - No shipped file invokes a tool that stock macOS or stock Linux may lack without a
+    `command -v` guard — the rule "no external dependencies" made checkable (59).
+
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

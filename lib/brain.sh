@@ -121,6 +121,15 @@ usage: brain.sh <command> [args]
                                An empty stdin against a populated baseline is refused:
                                a broken producer and a clean vault look the same from
                                here. --allow-empty is the deliberate way through.
+  release-check <vault>        answer gates 2 and 3 of the release rule by measuring them:
+                               run the lint against this vault and report the delta, and
+                               look for a session log dated on or after the HEAD commit in
+                               a project stamped with the version HEAD describes. Both were
+                               a protocol nothing checked — and on 2026-08-18 gate 3 was
+                               declared closed by the session that wrote the code. Not part
+                               of preflight.sh on purpose: that stays repo-only and must
+                               run where no vault exists.
+                               exit 0 both gates answered · 2 one is not met · 1 cannot read
   rename <vault> <old-rel-path> <new-rel-path> [--apply]
                                rename a wiki note and repoint every link form to it —
                                bare, path-qualified, aliased, #heading, ^block, ![[embed]].
@@ -132,6 +141,98 @@ usage: brain.sh <command> [args]
                                created that day — and the run prints how many quoted
                                mentions it left. Dry-run unless --apply.
 USAGE
+}
+
+# ── release-check ────────────────────────────────────────────────────────────
+# Gates 2 and 3 of the release rule were the only two nothing measured, and they are the
+# two that decide a tag. Gate 1 (preflight) is a script; these were a protocol, kept in a
+# person's head — and on 2026-08-18 gate 3 was declared closed by a session that had
+# written the code it was judging, which is the one thing the rule forbids in so many words.
+#
+# It lives here and NOT in `preflight.sh` on purpose: the gate is repo-only and installs
+# into a clean temporary $HOME, so it can run on a machine that has no vault, and a check
+# that silently needs one would be a green meaning "did not run". This reads the vault; the
+# release rule names both commands and their order.
+#
+# Gate 2 is EXECUTED rather than attested — collect and diff, right here, and report.
+# Gate 3 is inferred from what a foreign session leaves behind: a session log dated after
+# the commit under test, in a project stamped with that same version. Neither half is a
+# judgement, so neither is left to memory.
+release_check() {
+    vault="${1:-}"
+    [ -d "$vault" ] || { echo "release-check: no vault at '${vault:-}'" >&2; return 1; }
+    repo=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
+    [ -d "$repo/.git" ] || repo=""
+    rc_status=0
+
+    # ── gate 2: the lint has actually been run on this vault, by running it ──
+    rc_tmp="${TMPDIR:-/tmp}/brain-release.$$"
+    if lint_collect "$vault" > "$rc_tmp" 2>/dev/null; then
+        n_find=$(grep -c . "$rc_tmp" || true)
+        base="$vault/00-system/lint-baseline.txt"
+        if [ -f "$base" ]; then
+            delta=$(lint_diff "$base" < "$rc_tmp" 2>&1)
+            n_new=$(printf '%s' "$delta" | sed -nE 's/^NEW since last lint \(([0-9]+)\).*/\1/p')
+            : "${n_new:=0}"
+            if [ "$n_new" -eq 0 ]; then
+                echo "gate 2  ok        lint run here: $n_find findings, 0 NEW against the baseline"
+            else
+                echo "gate 2  ANSWER    lint run here: $n_find findings, $n_new NEW — say whether each is this release"
+            fi
+        else
+            echo "gate 2  MISSING   no baseline at $base — a delta cannot be read, so nothing was ever sealed"
+            rc_status=2
+        fi
+    else
+        echo "gate 2  MISSING   lint-collect could not run against $vault"
+        rc_status=2
+    fi
+    rm -f "$rc_tmp"
+
+    # ── gate 3: a session other than the one that wrote the code has used it ──
+    if [ -z "$repo" ]; then
+        echo "gate 3  MISSING   not inside the package repository — the commit under test is unknown"
+        rm -f "$rc_tmp"; return 2
+    fi
+    head_sha=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)
+    head_when=$(git -C "$repo" log -1 --format=%cI HEAD 2>/dev/null)
+    ver=$(git -C "$repo" describe --tags --always 2>/dev/null)
+    head_day=${head_when%%T*}
+    if [ -z "$head_day" ] || [ -z "$ver" ]; then
+        echo "gate 3  MISSING   could not read HEAD or its version — nothing to compare a session against"
+        return 2
+    fi
+    # A session that counts: its log is dated on or after the commit day, and the project it
+    # belongs to is stamped with this version. Both halves matter — a log alone says a
+    # session happened, the stamp says it happened ON THIS CODE.
+    witnesses=""
+    while IFS= read -r pm <&3; do
+        [ -n "$pm" ] || continue
+        pdir=$(dirname "$pm")
+        pver=$(sed -nE 's/^brain-version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$pm" | head -1)
+        [ "$pver" = "$ver" ] || continue
+        while IFS= read -r log <&4; do
+            [ -n "$log" ] || continue
+            lday=$(basename "$log" | cut -c1-10)
+            case "$lday" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;; *) continue ;; esac
+            if ! [ "$lday" \< "$head_day" ]; then
+                witnesses="$witnesses  $(basename "$pdir")/$(basename "$log")"$'\n'
+            fi
+        done 4<<EOF4
+$(find "$pdir/sessions" -name '*_session.md' 2>/dev/null | LC_ALL=C sort)
+EOF4
+    done 3<<EOF3
+$(find "$vault" -name '_PROJECT.md' -not -path '*/.git/*' 2>/dev/null | LC_ALL=C sort)
+EOF3
+    if [ -n "$witnesses" ]; then
+        echo "gate 3  ok        $ver has been used by a session after $head_sha ($head_day):"
+        printf '%s' "$witnesses"
+    else
+        echo "gate 3  MISSING   no session log dated $head_day or later in any project stamped $ver"
+        echo "          the soak is not a waiting period, it is evidence — use the package, then re-run"
+        rc_status=2
+    fi
+    return $rc_status
 }
 
 # ── lint-diff ────────────────────────────────────────────────────────────────
@@ -149,11 +250,13 @@ USAGE
 # compared; the detail may carry changing numbers and is only displayed. Putting a
 # number in the key would report a known problem as new every time it moves.
 lint_diff() {
-    base=""; seal=""; allow_empty=""
+    base=""; seal=""; allow_empty=""; scope=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --seal)        seal="--seal" ;;
             --allow-empty) allow_empty=1 ;;
+            --scope)       shift; scope="${1:-}"
+                           [ -n "$scope" ] || { echo "lint-diff: --scope needs a project" >&2; return 64; } ;;
             -*)            echo "lint-diff: unknown option '$1'" >&2; return 64 ;;
             *)             if [ -n "$base" ]; then
                                echo "lint-diff: one baseline path, got a second: '$1'" >&2; return 64
@@ -229,11 +332,56 @@ lint_diff() {
     # break. Still not exported globally: over-matching classes are the reason now.
     # Anything asserting an equivalent of `[А-Яа-яЁё]` must state the locale it needs
     # instead of assuming one; preflight self-tests exactly that before using the class.
+    # ── scope ────────────────────────────────────────────────────────────────
+    # The baseline is ONE file for the whole vault while a lint run is scoped to a project
+    # by default. Until 2026-08-19 the two were compared regardless: a scoped run reported
+    # every other project's finding as GONE — which the report glosses as "fixed, confirm it
+    # was deliberate" — and `--seal` then erased them from a file that is committed to the
+    # vault and read on every machine, so the next full run reported the lot as NEW. The
+    # command manufactured, by its own documented default, exactly the fabricated delta it
+    # exists to expose.
+    #
+    # So a scope splits BOTH sides. Baseline lines outside the scope are carried through a
+    # seal untouched; current findings outside it are named and not compared — a scoped run
+    # legitimately produces some, because two sweeps stay vault-wide by design, and silently
+    # counting them as NEW would be the same fabrication in the other direction.
+    #
+    # Attribution is by prefix against the scope given, not by parsing the key: the object
+    # is `demo`, `_arch/dimarch`, `goprofi-voronka/wiki/note.md` — one, two or many segments
+    # — and "does it start with P, at a segment boundary" needs no grammar for any of them.
+    base_cmp="$base"
+    if [ -n "$scope" ]; then
+        base_in="${TMPDIR:-/tmp}/brain-lint-basein.$$"
+        base_out="${TMPDIR:-/tmp}/brain-lint-baseout.$$"
+        cur_out="${TMPDIR:-/tmp}/brain-lint-curout.$$"
+        cur_in="${TMPDIR:-/tmp}/brain-lint-curin.$$"
+        : > "$base_in"; : > "$base_out"; : > "$cur_in"; : > "$cur_out"
+        _scope_split() {
+            while IFS= read -r line; do
+                [ -n "$line" ] || continue
+                obj=${line%%	*}; obj=${obj#*:}
+                case "$obj" in
+                    "$scope"|"$scope"/*) printf '%s\n' "$line" >> "$2" ;;
+                    *)                   printf '%s\n' "$line" >> "$3" ;;
+                esac
+            done < "$1"
+        }
+        _scope_split "$base" "$base_in" "$base_out"
+        _scope_split "$cur"  "$cur_in"  "$cur_out"
+        n_out=$(grep -c . "$cur_out" || true)
+        if [ "$n_out" -gt 0 ]; then
+            echo "outside the scope '$scope', reported but not compared ($n_out):"
+            cut -f1 "$cur_out" | sed 's/^/  · /'
+        fi
+        mv "$cur_in" "$cur"
+        base_cmp="$base_in"
+    fi
+
     cut_keys() { cut -f1 "$1" | LC_ALL=C sort -u; }
     new_keys="${TMPDIR:-/tmp}/brain-lint-new.$$"
     gone_keys="${TMPDIR:-/tmp}/brain-lint-gone.$$"
-    LC_ALL=C comm -23 <(cut_keys "$cur") <(cut_keys "$base") > "$new_keys"
-    LC_ALL=C comm -13 <(cut_keys "$cur") <(cut_keys "$base") > "$gone_keys"
+    LC_ALL=C comm -23 <(cut_keys "$cur") <(cut_keys "$base_cmp") > "$new_keys"
+    LC_ALL=C comm -13 <(cut_keys "$cur") <(cut_keys "$base_cmp") > "$gone_keys"
 
     n_new=$(grep -c . "$new_keys"); n_gone=$(grep -c . "$gone_keys")
     n_same=$(( $(cut_keys "$cur" | grep -c .) - n_new ))
@@ -252,9 +400,16 @@ lint_diff() {
     echo "known and unchanged: $n_same (parked debt, not this session's regression)"
 
     if [ "$seal" = "--seal" ]; then
-        cp "$cur" "$base"
-        echo "baseline updated: $base"
+        if [ -n "$scope" ]; then
+            # In-scope lines are replaced, everything else is carried through verbatim.
+            cat "$cur" "$base_out" "$cur_out" | LC_ALL=C sort -u > "$base"
+            echo "baseline updated: $base ($(grep -c . "$cur") in scope, $(grep -c . "$base_out" || true) preserved)"
+        else
+            cp "$cur" "$base"
+            echo "baseline updated: $base"
+        fi
     fi
+    [ -n "$scope" ] && rm -f "$base_in" "$base_out" "$cur_out"
     rm -f "$cur" "$new_keys" "$gone_keys"
 }
 
@@ -2574,6 +2729,7 @@ case "${1:-}" in
     stamp-field)        shift; stamp_field "${1:-}" "${2:-}" "${3:-}" ;;
     version)            brain_version ;;
     lint-diff)          shift; lint_diff "$@" ;;
+    release-check)      shift; release_check "${1:-}" ;;
     local-conventions)  shift; local_conventions "${1:-}" "${2:-}" "${3:-./CLAUDE.md}" ;;
     vault-language)     shift; vault_language "${1:-}" ;;
     prose-budget)       shift; prose_budget "${1:-}" "${2:-}" ;;
