@@ -167,7 +167,7 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.7.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.8.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `README_RU.md` | Russian | GitHub (same content, Russian readers) |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
@@ -176,10 +176,82 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.7.0.md](ВТОРОЙ_МОЗГ_v1.7.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.8.0.md](ВТОРОЙ_МОЗГ_v1.8.0.md) — full architecture
 
 
 ## Changelog
+
+### v1.8.0 — 2026-08-20
+
+- **The gate now asks whether its own checks have force.** `preflight.sh --mutate` guts
+  each function in `lib/` in turn, runs the whole gate, and names every function no check
+  defends. It was written because a gate of 74 checks was green that same morning while
+  mutation removed the guarded behaviour from **8 of them and not one went red** — the
+  count was measuring the presence of checks, not their strength. All 38 functions are
+  now defended; the mode is 38 gate runs and takes minutes, deliberately.
+- **Release gates 2 and 3 are measured, not attested.** `brain.sh release-check` runs the
+  lint against the live vault and reports the delta, then looks for a session log dated on
+  or after HEAD in a project stamped with the version HEAD describes — both halves,
+  because a log alone says a session happened while the stamp says it happened *on this
+  code*. Added after gate 3 was declared closed by the session that had written the code it
+  was judging, which is the one thing that condition forbids in so many words.
+- **The Obsidian CLI no longer writes to the vault at all.** A single guarded `obsidian
+  move`, addressed by `path=` and verified clean by `git status` right after, wrote
+  `"alwaysUpdateLinks": true` into the vault's own settings and then let the GUI splice
+  links from a stale cache into the middle of unrelated sentences — **8 places across 6
+  files**, exit 0. A verification placed *after* a call cannot see damage that arrives
+  after it, so the rule is absolute. Renames go through `brain.sh rename`, which repoints
+  every link form itself, refuses a basename already taken elsewhere, and prints how many
+  quoted mentions it deliberately left alone.
+- **`/brain-save` reports what it actually did, measured from the vault's working tree.**
+  Before this, a save ran **eight steps of twelve and reported success** — the four that
+  vanished were exactly the ones that leave no visible output, and the miss was caught by
+  the user noticing the save felt fast. Each step now prints `ok`, `MISSING` (an owed step
+  with no trace — an error) or `ANSWER` (a conditional step that must be answered in words).
+- **The three prose sections of `_PROJECT.md` are limited independently**, not as one sum:
+  `Current state` 30 lines, the session list 5 entries, `For future Claude` 20 lines. The
+  summed budget re-regulated what other rules already governed and therefore fired
+  constantly — measured across every revision since it was introduced, one project was
+  OVER in **66 of 96** revisions. A warning that fires two runs out of three is not a
+  warning.
+- **Project freshness measures the record against the work, never the calendar.** The old
+  "14 days since `updated:`" reported how recently the owner chose to work on something —
+  a fact about priorities. Measured on the live vault: **7 findings, all noise**. It now
+  reports the opposite and rare direction: a session log that `_PROJECT.md` does not
+  reflect. A project carrying `status: reference` / `paused` / `archived` is exempt, and
+  the exemption is named in the output.
+- **Decision notes got a short form.** Measured across the vault: 286 notes, median **68
+  lines, not one under 20**, and 29 carrying an empty `Alternatives rejected`. One weight
+  for decisions of every size means a one-sentence decision either inflates to fill the
+  sections or invents content for them — and the worst outcome is the note nobody wrote.
+  One question chooses the form: were there alternatives worth recording?
+- **The lint scopes and seals per project.** `--project` / `--scope` mean a scoped run
+  compares and seals only its own scope, instead of erasing another project's findings from
+  a baseline that is shared across machines. `/brain-lint` also re-collects before the diff,
+  so it cannot seal findings the same run just repaired.
+- **New library commands**, each replacing a step that prose could describe but not place:
+  `catalog` generates a note index per call — never stored, because a stored index is a
+  second copy of the knowledge — and states each decision's standing; `connections-add`
+  inserts a registry entry at the top of its section and verifies the position it claims
+  (measured before: **89 August entries filed under a July heading**); `backfill-dates`
+  recovers closing dates from git history for entries that `archive` could otherwise never
+  move.
+- **The gate states what it did not verify.** Checks that could not exercise a branch on
+  this machine emit a coverage gap, collected and printed under "not verified by this run"
+  — deliberately **without** touching the exit code, because an uncovered branch is not a
+  failure and a warning that fires on every ordinary run stops being read.
+- **Language splits by audience, and identifiers are never translated.** Everything this
+  repo publishes is English, including `lib/` output, which is data a session reads before
+  writing the sentence around it in the vault owner's language. A finding key is what the
+  baseline compares, so a translated key would read as one finding appearing and another
+  vanishing in the same run.
+- **`preflight.sh` grew 37 → 79 checks.** Each encodes a live incident, and new checks are
+  negative-tested by breaking a copy and requiring the check to go red.
+
+**Upgrading from v1.7.0 → v1.8.0:** run `update.sh`. Nothing breaks — existing notes,
+headings and formats are untouched, and every new rule is additive. Two behaviour changes
+worth knowing: renames now go through `brain.sh rename` instead of the Obsidian CLI, and
+`/brain-save` ends with a report whose `MISSING` and `ANSWER` lines expect an answer.
 
 ### v1.7.0 — 2026-08-04
 
