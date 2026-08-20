@@ -3800,6 +3800,16 @@ past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|fired at|used to|which re
 # record a violation — the second time this check has produced that false positive, and
 # exactly the trap check 52 documents. Two lines either side is enough for a wrapped
 # sentence and short enough that an unrelated paragraph cannot launder a live claim.
+# A pattern reaches awk through `-v`, which interprets escape sequences in the VALUE
+# before the regex engine ever sees it — so `\[` arrives as a bare `[`. Written as
+# `\[\[`, the link pattern therefore compiled as `[[`, an unterminated bracket
+# expression: awk refused it, died on the first record, and this half of the check
+# produced nothing on every file for as long as it existed. Measured 2026-08-20 on
+# Darwin — 8 files, 8 `nonterminated character class` errors on stderr, `pass` printed.
+# Two consequences encoded below: a literal bracket is written as `[[]`, which carries
+# no backslash and so cannot be eaten, and awk's refusal is now a RED rather than an
+# empty result, because "the pattern did not compile" and "the repo is clean" were
+# indistinguishable — this package's headline defect, inside its own gate.
 _retired_hits() {
     awk -v pat="$2" -v past="$past" '
         { L[NR] = $0 }
@@ -3818,11 +3828,16 @@ while IFS= read -r f; do
     # A floor is a NUMBER attached to the link requirement. "at least one link to a
     # sibling" and "two or more is the target, not a floor" are the current rule and must
     # stay green, so the pattern demands a digit.
-    h=$(_retired_hits "$f" '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|\[\[|ссыл)')
+    h=$(_retired_hits "$f" '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|[[][[]|ссыл)') ||
+        missing+="  awk refused the link-floor pattern on $(basename "$f") — check 54(a) did not run"$'\n'
     [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
     # A day threshold on `updated:` is the retired freshness rule. Both words on one line:
     # "no movement for 14+ days" is about taskboard items and is a different, live rule.
-    h=$(_retired_hits "$f" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)')
+    # `[^\n]` survives only by luck: `-v` turns it into a bracket holding a real newline,
+    # which is still a valid class and still matches, because a record never contains one.
+    # Left as written rather than "fixed" — the same class as above, without the defect.
+    h=$(_retired_hits "$f" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)') ||
+        missing+="  awk refused the freshness pattern on $(basename "$f") — check 54(b) did not run"$'\n'
     [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
 done <<EOF
 $SHIPPED
