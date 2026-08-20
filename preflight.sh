@@ -3774,10 +3774,32 @@ scanned=0
 # than one in any shipped file. Measured 2026-08-19 — it prescribed the summed ~60-line
 # prose budget for four weeks after the same file retired it, and neither check 52 (four
 # documentation files) nor this one (what ships) was looking.
+# Scope extended 2026-08-20, and the measurement is why. The release of v1.8.0 required a
+# manual pre-tag sweep (the gate-3 decision makes it part of releasing), and it found FOUR
+# drifts that no check could see, three of them in the Russian architecture reference: live
+# prescriptions of `obsidian move` for renames — a rule retired after that very call
+# corrupted 8 places across 6 files with exit 0. This check could not see them because its
+# list was "what install.sh ships", and check 52 reads those files only for threshold
+# NUMBERS. A doc that instructs a human to do the thing the code forbids is the same defect
+# as a prompt that does, one audience over.
+#
+# Each record is `path<TAB>stop`, where a non-empty stop is the live/history boundary: only
+# the text ABOVE it is a claim about now. Below it is a record of what was true then, and
+# editing that destroys the only evidence of when something changed — the trap check 52
+# documents, hit for real in August when five "stale" numbers turned out to be changelog
+# entries and had to be restored with `git checkout`. The boundary is NOT "the first `### v`
+# heading": in both READMEs the live sections come BEFORE the changelog.
 SHIPPED=""
+AUDITED=""
 for f in "$SCRIPT_DIR/SKILL.md" "$SCRIPT_DIR/CLAUDE.md" "$SCRIPT_DIR"/commands/*.md \
          "$SCRIPT_DIR"/chat-skills/*/SKILL.md; do
-    [ -f "$f" ] && SHIPPED="$SHIPPED$f"$'\n'
+    [ -f "$f" ] && { SHIPPED="$SHIPPED$f"$'\n'; AUDITED="$AUDITED$f"$'\t'$'\n'; }
+done
+for f in "$SCRIPT_DIR/README.md" "$SCRIPT_DIR/README_RU.md" "$SCRIPT_DIR/WORKFLOW.md"; do
+    [ -f "$f" ] && AUDITED="$AUDITED$f"$'\t''^## Changelog'$'\n'
+done
+for f in "$SCRIPT_DIR"/ВТОРОЙ_МОЗГ_*.md; do
+    [ -f "$f" ] && AUDITED="$AUDITED$f"$'\t''^## Версионирование системы'$'\n'
 done
 # (a) The link requirement. Anchor: the lint reports the backlink and the sibling as two
 # separate classes and holds no count — if those keys ever go, this half must be rewritten
@@ -3785,6 +3807,10 @@ done
 if ! grep -qF 'wiki-no-backlink' "$LIBSH" || ! grep -qF 'wiki-no-sibling' "$LIBSH"; then
     missing+="  lib/brain.sh no longer reports wiki-no-backlink / wiki-no-sibling — check 54(a) has lost its anchor"$'\n'
 fi
+# (c) The CLI. Anchor: the rename that replaced it. If `rename` ever leaves lib/, this
+#     half is asserting against a rule that no longer exists and must be rewritten.
+grep -qFe 'rename <vault>' "$LIBSH" ||
+    missing+="  lib/brain.sh no longer offers `rename` — check 54(c) has lost its anchor"$'\n'
 # (b) Project freshness. Anchor: the exemption that only the post-2026-08-16 design has.
 grep -qF 'scope-note:not-active' "$LIBSH" ||
     missing+="  lib/brain.sh no longer names the not-active exemption — check 54(b) has lost its anchor"$'\n'
@@ -3794,7 +3820,7 @@ grep -qF 'scope-note:not-active' "$LIBSH" ||
 # explains the retirement and was reported as committing it. The discriminator is the
 # disclaimer on the same line, so a sentence that states the threshold and says it is gone
 # passes, and one that merely states it does not.
-past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|fired at|used to|which retired|больше не|Раньше|Прежде|до 2026'
+past='no longer|[Uu]ntil [0-9]{4}|[Uu]ntil v[0-9]|[Дд]о v[0-9]|retired|was replaced|fired at|used to|which retired|больше не|Раньше|Прежн|до 2026'
 # The disclaimer is read over a WINDOW, not one line. Prose wraps: CLAUDE.md records the
 # retirement of the 14-day threshold across four lines, so a same-line test called the
 # record a violation — the second time this check has produced that false positive, and
@@ -3810,44 +3836,125 @@ past='no longer|[Uu]ntil [0-9]{4}|retired|was replaced|fired at|used to|which re
 # no backslash and so cannot be eaten, and awk's refusal is now a RED rather than an
 # empty result, because "the pattern did not compile" and "the repo is clean" were
 # indistinguishable — this package's headline defect, inside its own gate.
+# A fourth argument is a SAME-LINE excuse, and the difference from the windowed one is not
+# stylistic. A negation excuses only the sentence it is in: measured 2026-08-20 by the
+# negative test for (c), the line «Для frontmatter CLI не использовать» sat two lines below
+# a live «используй `obsidian move`» and laundered it — the check went green on the exact
+# text removed that morning. History wraps across lines and keeps the window; a negation
+# does not.
 _retired_hits() {
-    awk -v pat="$2" -v past="$past" '
+    awk -v pat="$2" -v past="${3:-$past}" -v line_excuse="${4:-}" '
         { L[NR] = $0 }
         END {
             for (i = 1; i <= NR; i++) {
                 if (L[i] !~ pat) continue
+                if (line_excuse != "" && L[i] ~ line_excuse) continue
                 excused = 0
                 for (j = i - 2; j <= i + 2; j++) if (j >= 1 && j <= NR && L[j] ~ past) excused = 1
                 if (!excused) print i ": " L[i]
             }
         }' "$1"
 }
-while IFS= read -r f; do
+# A negation is an excuse of its own kind: "never use `obsidian move`" and "Почему не
+# `obsidian move`" both NAME the retired call in order to forbid it. Kept separate from
+# `past` so it applies only where a prohibition is the point — widening `past` itself would
+# let a negated sentence excuse an unrelated live claim two lines away.
+# Two excuse sets, applied differently: history (`past`) over a window of ±2 lines, because
+# prose wraps; a negation on the SAME LINE only, because a prohibition two lines away is
+# about a different sentence. Dropping history cost five false positives on the first run;
+# windowing the negation cost a false GREEN on the very text this half was written for.
+no_cli="never|Never|[Dd]o not|don't|не использовать|Почему не|не пишет|запрещ"
+rd_tmp=$(mktemp -d)
+while IFS=$'\t' read -r f stop; do
     [ -n "$f" ] || continue
     scanned=$((scanned + 1))
+    # Only the text above the boundary is a claim about now; below it is history.
+    src="$f"
+    if [ -n "$stop" ]; then
+        src="$rd_tmp/live"
+        awk -v stop="$stop" '$0 ~ stop { exit } { print }' "$f" > "$src"
+        [ -s "$src" ] || missing+="  $(basename "$f"): the live half above '$stop' is empty — the boundary moved or vanished"$'\n'
+    fi
     # A floor is a NUMBER attached to the link requirement. "at least one link to a
     # sibling" and "two or more is the target, not a floor" are the current rule and must
     # stay green, so the pattern demands a digit.
-    h=$(_retired_hits "$f" '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|[[][[]|ссыл)') ||
+    h=$(_retired_hits "$src" '(≥|>=|at least|минимум|не менее)[[:space:]]*[0-9]+[^.]{0,40}(wikilink|[[][[]|ссыл)') ||
         missing+="  awk refused the link-floor pattern on $(basename "$f") — check 54(a) did not run"$'\n'
-    [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
+    [ -n "$h" ] && missing+="  $(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
     # A day threshold on `updated:` is the retired freshness rule. Both words on one line:
     # "no movement for 14+ days" is about taskboard items and is a different, live rule.
     # `[^\n]` survives only by luck: `-v` turns it into a bracket holding a real newline,
     # which is still a valid class and still matches, because a record never contains one.
-    # Left as written rather than "fixed" — the same class as above, without the defect.
-    h=$(_retired_hits "$f" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)') ||
+    h=$(_retired_hits "$src" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)') ||
         missing+="  awk refused the freshness pattern on $(basename "$f") — check 54(b) did not run"$'\n'
-    [ -n "$h" ] && missing+="  $(basename "$(dirname "$f")")/$(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
+    [ -n "$h" ] && missing+="  $(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
+    # (c) A mutating Obsidian CLI call, PRESCRIBED rather than forbidden. The CLI stopped
+    # writing to the vault in v1.8.0 after one guarded `obsidian move`, verified clean by
+    # `git status` right after, corrupted 8 places across 6 files from the GUI cache —
+    # exit 0, damage arriving after the verification. Measured 2026-08-20: the Russian
+    # reference still prescribed it in three live places, and nothing was looking.
+    # The pattern matches a PRESCRIPTION, not a mention: «используй `obsidian move`», or the
+    # command with an argument (`obsidian move path=…`), which is how it appears in a table
+    # of capabilities. Matching every mention produced five false positives on the first
+    # run — every one of them a sentence naming the call in order to forbid it or to record
+    # what it once did, which is exactly the text a reader needs.
+    h=$(_retired_hits "$src" '(используй|Используй|use |through|через)[^.]{0,60}obsidian (move|property:set)|obsidian (move|property:set) [a-z]+=' "$past" "$no_cli") ||
+        missing+="  awk refused the CLI pattern on $(basename "$f") — check 54(c) did not run"$'\n'
+    [ -n "$h" ] && missing+="  $(basename "$f") prescribes a mutating Obsidian CLI call:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
 done <<EOF
-$SHIPPED
+$AUDITED
 EOF
+rm -rf "$rd_tmp"
 if [ "$scanned" -eq 0 ]; then
     fail "check 54 opened no shipped file — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
     fail "a shipped file states a rule the code retired" "$missing"
 else
-    pass "no shipped file states a retired rule (link floor, freshness threshold — $scanned files)"
+    pass "no shipped file states a retired rule (link floor, freshness, mutating CLI — $scanned files)"
+fi
+
+# ─── 62. A declared system version is the one this repo would install ────────
+# The class that has now shipped twice: the chat skill carried "System version: v1.5.0" at
+# the v1.7.0 tag, and "System version: v1.7.0" at the v1.8.0 tag — caught both times by a
+# person reading the file during the pre-tag sweep, never by a check. It is not a retired
+# RULE, so check 54 does not look for it even in the files it reads; it is a literal that
+# ages silently while every sentence around it stays true.
+#
+# A version NAMED AS HISTORY is left alone — "Until v1.7.0 this template carried a
+# hardcoded brain-version" is a record — which is why the same `past` disclaimer applies,
+# same line only: a declaration is one line, and a record two lines away is about
+# something else.
+cur_ver=$(git -C "$SCRIPT_DIR" describe --tags 2>/dev/null | grep -oEe '^v[0-9]+\.[0-9]+\.[0-9]+')
+missing=""
+n_ver=0
+if [ -z "$cur_ver" ]; then
+    fail "check 62 could not read a version from git describe — empty input, not a clean repo"
+else
+    while IFS= read -r rec; do
+        [ -n "$rec" ] || continue
+        vf=${rec%%:*}; vrest=${rec#*:}; vln=${vrest%%:*}; vline=${vrest#*:}
+        # A record of what a version once was, not a claim about now.
+        grep -qEe "$past" <<<"$vline" && continue
+        n_ver=$((n_ver + 1))
+        vv=$(grep -oEe '[0-9]+\.[0-9]+\.[0-9]+' <<<"$vline" | head -1)
+        [ "v$vv" = "$cur_ver" ] ||
+            missing+="  $(basename "$vf"):$vln declares $vv, but this repo installs $cur_ver"$'\n'
+    done <<EOF
+$(while IFS=$'\t' read -r vf _; do [ -n "$vf" ] || continue
+    grep -nEe '(System version|brain-version)[[:space:]]*:[[:space:]]*"?v?[0-9]+\.[0-9]+\.[0-9]+' "$vf" |
+        sed "s|^|$vf:|"
+  done <<EOF2
+$AUDITED
+EOF2
+)
+EOF
+    if [ "$n_ver" -eq 0 ]; then
+        fail "check 62 found no declared version anywhere — the chat skill stamps one, so this is a broken extraction"
+    elif [ -n "$missing" ]; then
+        fail "a shipped file declares a version this repo does not install" "$missing"
+    else
+        pass "every declared version is $cur_ver ($n_ver declarations)"
+    fi
 fi
 
 # ─── 55. A Russian matched section is never named alone in a shipped file ─────
