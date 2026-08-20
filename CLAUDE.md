@@ -649,6 +649,25 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
     before the diff so it does not seal findings the same run repaired (58).
   - No shipped file invokes a tool that stock macOS or stock Linux may lack without a
     `command -v` guard — the rule "no external dependencies" made checkable (59).
+  - What a doc TELLS A HUMAN is audited on the same terms as what a prompt tells the
+    model: a live prescription of a retired rule is one defect with two audiences.
+    Check 54 therefore reads the READMEs, `WORKFLOW.md` and the architecture reference
+    as well, each with its own live/history boundary — a changelog entry is a record of
+    what was true then and editing it destroys the only evidence of when it changed.
+    Its scope is deliberately NOT check 55's: Russian section names are legitimate in a
+    Russian user doc. Two lessons that only the negative test produced, and both
+    generalise past this check: match a PRESCRIPTION, never a mention — a sentence
+    naming a forbidden call in order to forbid it is the text a reader needs, and
+    matching mentions cost five false positives at once; and **an excuse has a shape,
+    and the shape decides its range** — history wraps across lines and is read over a
+    window, a negation is read on its own line only. Windowed, a prohibition two lines
+    below laundered a live prescription above it, and the check went green on the exact
+    text removed that morning (54).
+  - A version DECLARED as fact (`System version:`, `brain-version:`) equals the one this
+    repo installs. It is a literal, not a rule, so nothing looking for retired rules
+    finds it, and it ages while every sentence around it stays true — shipped twice,
+    v1.5.0 at the v1.7.0 tag and v1.7.0 at the v1.8.0 tag, caught both times by a person
+    reading the file. A version named as history is left alone (62).
 
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
