@@ -171,13 +171,27 @@ release_check() {
         n_find=$(grep -c . "$rc_tmp" || true)
         base="$vault/00-system/lint-baseline.txt"
         if [ -f "$base" ]; then
-            delta=$(lint_diff "$base" < "$rc_tmp" 2>&1)
+            # The status is read, not just the text. `lint_diff` refuses on a corrupt
+            # baseline and on an empty producer, and both refusals print no "NEW" line —
+            # so parsing the output alone turns a refusal into "0 NEW", which is this
+            # package's own headline defect appearing inside its release gate. Found
+            # 2026-08-26, minutes after the baseline guard above was added: gate 2 said
+            # `ok, 0 NEW` while a hand-run diff on the same vault said 3.
+            delta=$(lint_diff "$base" < "$rc_tmp" 2>&1); rc_delta=$?
             n_new=$(printf '%s' "$delta" | sed -nE 's/^NEW since last lint \(([0-9]+)\).*/\1/p')
-            : "${n_new:=0}"
-            if [ "$n_new" -eq 0 ]; then
-                echo "gate 2  ok        lint run here: $n_find findings, 0 NEW against the baseline"
+            # A finding that KEPT its key and grew is a regression too, and it is the one
+            # the delta was blind to until 2026-08-26. Asking about NEW alone would let a
+            # board go 184 -> 197 between two releases without a word.
+            n_worse=$(printf '%s' "$delta" | sed -nE 's/^WORSE since last lint \(([0-9]+)\).*/\1/p')
+            : "${n_new:=0}"; : "${n_worse:=0}"
+            if [ "$rc_delta" -ne 0 ]; then
+                echo "gate 2  MISSING   the delta could not be read — the baseline itself is the problem:"
+                printf '%s\n' "$delta" | sed 's/^/          /'
+                rc_status=2
+            elif [ "$n_new" -eq 0 ] && [ "$n_worse" -eq 0 ]; then
+                echo "gate 2  ok        lint run here: $n_find findings, nothing new and nothing worse"
             else
-                echo "gate 2  ANSWER    lint run here: $n_find findings, $n_new NEW — say whether each is this release"
+                echo "gate 2  ANSWER    lint run here: $n_find findings, $n_new NEW and $n_worse WORSE — say whether each is this release"
             fi
         else
             echo "gate 2  MISSING   no baseline at $base — a delta cannot be read, so nothing was ever sealed"
@@ -194,29 +208,95 @@ release_check() {
         echo "gate 3  MISSING   not inside the package repository — the commit under test is unknown"
         rm -f "$rc_tmp"; return 2
     fi
-    head_sha=$(git -C "$repo" rev-parse --short HEAD 2>/dev/null)
-    head_when=$(git -C "$repo" log -1 --format=%cI HEAD 2>/dev/null)
-    ver=$(git -C "$repo" describe --tags --always 2>/dev/null)
-    head_day=${head_when%%T*}
-    if [ -z "$head_day" ] || [ -z "$ver" ]; then
-        echo "gate 3  MISSING   could not read HEAD or its version — nothing to compare a session against"
+    # The code under test is what gets INSTALLED, never HEAD. A commit touching only
+    # `preflight.sh` or `CLAUDE.md` changes nothing a session can run, yet `git describe
+    # HEAD` renames the thing under judgement and no stamp in the vault can ever match it.
+    # Measured 2026-08-26: HEAD read `v1.8.0-2-g4319071` (two non-shipping commits past the
+    # tag), gate 3 reported MISSING, and the gate was in fact closed — the last shipping
+    # commit was `39f859f` of 08-19 and three foreign projects had used it since. A false
+    # red in the release gate is worse than none: it gets read as noise.
+    #
+    # Rejected, and worth writing down: recomputing VERSION from the shipping paths instead.
+    # The `release: vX` commit itself ships nothing, so `describe` over shipping paths would
+    # call v1.8.0's own code `v1.7.0-N-g39f859f` — the version would understate itself.
+    code_when=$(git -C "$repo" log -1 --format=%cI -- SKILL.md commands lib install.sh update.sh 2>/dev/null)
+    code_sha=$(git -C "$repo" log -1 --format=%h  -- SKILL.md commands lib install.sh update.sh 2>/dev/null)
+    if [ -z "$code_when" ]; then
+        echo "gate 3  MISSING   no commit touches the installed paths — nothing to judge"
         return 2
     fi
-    # A session that counts: its log is dated on or after the commit day, and the project it
-    # belongs to is stamped with this version. Both halves matter — a log alone says a
-    # session happened, the stamp says it happened ON THIS CODE.
+    code_min=$(printf '%s' "$code_when" | cut -c1-16)
+
+    # The version is read from the INSTALLED copy, because that is what a session ran and
+    # what `/brain-save` stamps into a project. Reading it here through brain_version()
+    # would resolve against this script's own directory — the repo, which carries no
+    # VERSION file — and answer "unknown" every time.
+    inst_dir="$HOME/.claude/skills/second-brain"
+    ver=""
+    [ -r "$inst_dir/lib/VERSION" ] && ver=$(head -1 "$inst_dir/lib/VERSION")
+    if [ -z "$ver" ] || [ "$ver" = "unknown" ]; then
+        echo "gate 3  ANSWER    nothing is installed here, so no session can have used this code"
+        echo "          run ./update.sh, then use the package from another project"
+        return $rc_status
+    fi
+    # "The installed copy is not this code" and "nobody has used this code" are different
+    # facts, and only the second is a red. Saying MISSING for the first would be a verdict
+    # about the soak drawn from a fact about the machine.
+    stale_files=""
+    for f in SKILL.md lib/brain.sh; do
+        cmp -s "$repo/$f" "$inst_dir/$f" || stale_files="$stale_files $f"
+    done
+    for f in "$repo"/commands/*.md; do
+        [ -f "$f" ] || continue
+        cmp -s "$f" "$HOME/.claude/commands/$(basename "$f")" || stale_files="$stale_files commands/$(basename "$f")"
+    done
+    if [ -n "$stale_files" ]; then
+        echo "gate 3  ANSWER    the installed copy ($ver) is not this code — run ./update.sh first"
+        echo "         differs:$stale_files"
+        return $rc_status
+    fi
+
+    # A `-dirty` stamp means the working tree is ahead of every commit, so the commit time
+    # bounds nothing and printing it as the code's age would be a true verdict carrying a
+    # false premise. The stamp is what binds there — a project can only carry `-dirty` if a
+    # session ran against exactly this uncommitted tree.
+    code_note=""
+    case "$ver" in
+        *-dirty) code_note=" — the working tree is ahead of $code_sha, so the stamp binds, not the date" ;;
+    esac
+
+    # A session that counts, on three conditions at once:
+    #   * it belongs to ANOTHER project. The session that writes the code saves into this
+    #     package's own project by construction — the project is decided by the repository
+    #     being worked in. Measured 2026-08-18: `b9e18a3` at 11:03:04 and this project's
+    #     `2026-08-18_1111_session.md` eight minutes later, which is the very session that
+    #     declared the gate closed on its own code.
+    #   * its log is stamped LATER than the commit. The log file is created by /brain-save,
+    #     i.e. at save time, so "later than the commit" alone would have passed that same
+    #     08-18 author — it is the project that separates them, and the time only closes
+    #     the cheap hole of a foreign save that happened earlier the same day.
+    #   * its project carries this version. A log alone says a session happened; the stamp
+    #     says it happened ON THIS CODE.
+    # Four logs of 350 carry no HHMM (June-July, two of them lint runs): time unknown reads
+    # as 00:00, so such a log counts only on a strictly later day.
+    own=$(basename "$repo")
     witnesses=""
     while IFS= read -r pm <&3; do
         [ -n "$pm" ] || continue
         pdir=$(dirname "$pm")
+        prel=${pdir#"$vault"/}
+        [ "$prel" != "$own" ] || continue
         pver=$(sed -nE 's/^brain-version:[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/p' "$pm" | head -1)
         [ "$pver" = "$ver" ] || continue
         while IFS= read -r log <&4; do
             [ -n "$log" ] || continue
-            lday=$(basename "$log" | cut -c1-10)
+            lbase=$(basename "$log")
+            lday=$(printf '%s' "$lbase" | cut -c1-10)
             case "$lday" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;; *) continue ;; esac
-            if ! [ "$lday" \< "$head_day" ]; then
-                witnesses="$witnesses  $(basename "$pdir")/$(basename "$log")"$'\n'
+            lhm=$(printf '%s' "$lbase" | sed -nE 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}_([0-9]{2})([0-9]{2})_.*/\1:\2/p')
+            [ -n "$lhm" ] || lhm="00:00"
+            if [ "${lday}T${lhm}" \> "$code_min" ]; then
+                witnesses="${witnesses}  ${prel}/${lbase}"$'\n'
             fi
         done 4<<EOF4
 $(find "$pdir/sessions" -name '*_session.md' 2>/dev/null | LC_ALL=C sort)
@@ -225,10 +305,10 @@ EOF4
 $(find "$vault" -name '_PROJECT.md' -not -path '*/.git/*' 2>/dev/null | LC_ALL=C sort)
 EOF3
     if [ -n "$witnesses" ]; then
-        echo "gate 3  ok        $ver has been used by a session after $head_sha ($head_day):"
+        echo "gate 3  ok        $ver ($code_sha, $code_min)$code_note has been used by a session in another project:"
         printf '%s' "$witnesses"
     else
-        echo "gate 3  MISSING   no session log dated $head_day or later in any project stamped $ver"
+        echo "gate 3  MISSING   no session in another project, stamped $ver, saved after $code_sha ($code_min)$code_note"
         echo "          the soak is not a waiting period, it is evidence — use the package, then re-run"
         rc_status=2
     fi
@@ -273,11 +353,29 @@ lint_diff() {
     # ("stale-draft" for three separate files) collapse into one, and fixing one of
     # them is invisible to the diff because the key stays put. Caught on the very
     # first live baseline, where the type had been written without the object.
-    dup=$(cut -f1 "$cur" | LC_ALL=C sort | uniq -d)
+    #
+    # Both inputs are checked, not just stdin. Until 2026-08-26 only stdin was, and the
+    # baseline was the input that could actually go bad on its own: a scoped `--seal`
+    # wrote out-of-scope CURRENT findings next to the baseline's own line for the same
+    # key (see the seal branch below), so the file grew a second line per key whose
+    # detail had moved. Measured that day in the live vault — two `scope-note:lifecycle-docs`
+    # lines. Nothing noticed, because `cut_keys` runs `sort -u` and a duplicate key
+    # collapses there silently: the comparison stays correct while the file rots.
+    _dup_keys() { cut -f1 "$1" | LC_ALL=C sort | uniq -d; }
+    dup=$(_dup_keys "$cur")
     if [ -n "$dup" ]; then
         echo "lint-diff: keys are not unique — add the object to the key:" >&2
         printf '%s\n' "$dup" | sed 's/^/  /' >&2
         rm -f "$cur"; return 1
+    fi
+    if [ -f "$base" ]; then
+        dup=$(_dup_keys "$base")
+        if [ -n "$dup" ]; then
+            echo "lint-diff: the baseline holds the same key twice — it cannot be compared:" >&2
+            printf '%s\n' "$dup" | sed 's/^/  /' >&2
+            echo "  Delete the stale line by hand; a key names one object, so one line is right." >&2
+            rm -f "$cur"; return 1
+        fi
     fi
 
     # An empty stdin against a POPULATED baseline is the dangerous case, and it was
@@ -386,6 +484,24 @@ lint_diff() {
     n_new=$(grep -c . "$new_keys"); n_gone=$(grep -c . "$gone_keys")
     n_same=$(( $(cut_keys "$cur" | grep -c .) - n_new ))
 
+    # A key present on both sides can still have moved. Only types declared in
+    # LINT_COUNTED are read this way, and only their LEADING integer — see the
+    # declaration for why the trait cannot be inferred from the detail.
+    moved="${TMPDIR:-/tmp}/brain-lint-moved.$$"
+    awk -F'\t' -v counted=" $LINT_COUNTED " '
+        NR == FNR { was[$1] = $2; next }
+        ($1 in was) {
+            t = $1; sub(/:.*/, "", t)
+            if (index(counted, " " t " ") == 0) next
+            a = was[$1]; b = $2
+            if (a !~ /^[0-9]+/ || b !~ /^[0-9]+/) next
+            if (b + 0 > a + 0)      printf "worse\t%s\t%s\t%s\n",  $1, a + 0, b + 0
+            else if (b + 0 < a + 0) printf "better\t%s\t%s\t%s\n", $1, a + 0, b + 0
+        }' "$base_cmp" "$cur" > "$moved"
+    n_worse=$(grep -c '^worse' "$moved" || true)
+    n_better=$(grep -c '^better' "$moved" || true)
+    n_same=$(( n_same - n_worse - n_better ))
+
     if [ "$n_new" -gt 0 ]; then
         echo "NEW since last lint ($n_new):"
         while read -r k; do
@@ -393,24 +509,40 @@ lint_diff() {
             awk -F'\t' -v k="$k" '$1 == k { print "  + " $1 (NF > 1 ? " — " $2 : "") }' "$cur"
         done < "$new_keys"
     fi
+    if [ "$n_worse" -gt 0 ]; then
+        echo "WORSE since last lint ($n_worse) — same finding, bigger:"
+        awk -F'\t' '$1 == "worse" { printf "  ^ %s — %s -> %s\n", $2, $3, $4 }' "$moved"
+    fi
     if [ "$n_gone" -gt 0 ]; then
         echo "GONE since last lint ($n_gone):"
         sed 's/^/  - /' "$gone_keys"
+    fi
+    if [ "$n_better" -gt 0 ]; then
+        echo "BETTER since last lint ($n_better):"
+        awk -F'\t' '$1 == "better" { printf "  v %s — %s -> %s\n", $2, $3, $4 }' "$moved"
     fi
     echo "known and unchanged: $n_same (parked debt, not this session's regression)"
 
     if [ "$seal" = "--seal" ]; then
         if [ -n "$scope" ]; then
-            # In-scope lines are replaced, everything else is carried through verbatim.
-            cat "$cur" "$base_out" "$cur_out" | LC_ALL=C sort -u > "$base"
-            echo "baseline updated: $base ($(grep -c . "$cur") in scope, $(grep -c . "$base_out" || true) preserved)"
+            # In-scope lines are replaced; out-of-scope lines are carried through from the
+            # BASELINE, verbatim. `$cur_out` must never appear here — those are the current
+            # findings this run printed as "reported but not compared", and sealing them
+            # would record another project's state as known debt on the strength of a run
+            # that deliberately looked away from it. Measured 2026-08-26: a scoped seal on
+            # `alpha` wrote `beta 99 open items` beside the baseline's `beta 10`, giving two
+            # lines for one key, and the live vault already carried such a pair. Worse than
+            # the duplicate: B's regression becomes parked debt on every machine, and the
+            # only run that could have caught it is the one that sealed it.
+            cat "$cur" "$base_out" | LC_ALL=C sort -u > "$base"
+            echo "baseline updated: $base ($(grep -c . "$cur") in scope, $(grep -c . "$base_out" || true) carried over, $(grep -c . "$cur_out" || true) left uncompared)"
         else
             cp "$cur" "$base"
             echo "baseline updated: $base"
         fi
     fi
     [ -n "$scope" ] && rm -f "$base_in" "$base_out" "$cur_out"
-    rm -f "$cur" "$new_keys" "$gone_keys"
+    rm -f "$cur" "$new_keys" "$gone_keys" "$moved"
 }
 
 # ── archive ──────────────────────────────────────────────────────────────────
@@ -1311,6 +1443,30 @@ BUDGET_DONE=20
 # Items, not lines — see _budget_prog. 40 open top-level tasks is roughly what the two
 # outlier boards exceed and every other board sits far below (next largest: 4).
 BUDGET_PROG=40
+
+# ── which findings carry a magnitude ─────────────────────────────────────────
+# The delta compares KEYS, so a debt that grows keeps its key and reads as parked.
+# Measured 2026-08-26 against the 08-23 baseline: goprofi's In progress went 184 -> 197,
+# `wiki-no-sibling:_mac/mac-setup` DOUBLED 2 -> 4, and this project's own board improved
+# 70 -> 62 — all four inside `known and unchanged: 29`.
+#
+# The fix is not "compare the detail". A detail changes on its own: `stale-draft` counts
+# days elapsed and grows every night, which would make seven permanent WORSE lines and a
+# fifth signal nobody reads — this project has already cut four of those. So the magnitude
+# is DECLARED, per finding type, exactly as the lifecycle-document measurement of 08-19
+# concluded: a trait must be declared, never inferred. `stale-draft` is the case that
+# proves declaration is needed — its detail opens with a number like the counted ones do.
+#
+# Convention for a counted type: its detail OPENS with the magnitude. Two types were
+# rewritten on 2026-08-26 to obey it (`current-state`, `ffc-budget`), which changes their
+# detail text only — the key is what the baseline compares, so no delta was fabricated.
+# Every type the collector emits must appear in exactly one of these two lists; a new type
+# is a red until it is classified, which is what keeps the enumeration derived rather than
+# remembered.
+LINT_COUNTED="ambiguous-link current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress wiki-no-backlink wiki-no-links wiki-no-sibling"
+# Not counted, and why: `stale-draft` is time elapsed, not debt; `scope-note` is an
+# inventory; the rest state a fact that is either true or absent and carry no number.
+LINT_UNCOUNTED="decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
 
 # non-blank lines of one '## ' section, heading excluded. Top-level, not nested in
 # lint_collect: prose-budget needs the same counter, and a copy would be a second
@@ -2442,9 +2598,9 @@ EOF
         cur=$(_budget_current "$f")
         sess=$(_budget_sessions "$f")
         ffc=$(_budget_ffc "$f")
-        [ "$cur" -gt "$BUDGET_CURRENT" ] && printf 'current-state:%s\tCurrent state %s lines against ~%s — status and open blockers only\n' "$P" "$cur" "$BUDGET_CURRENT"
+        [ "$cur" -gt "$BUDGET_CURRENT" ] && printf 'current-state:%s\t%s lines against ~%s — Current state holds status and open blockers only\n' "$P" "$cur" "$BUDGET_CURRENT"
         [ "$sess" -gt "$BUDGET_SESSIONS" ] && printf 'session-list:%s\t%s entries against ~%s — drop the oldest, the account stays in sessions/\n' "$P" "$sess" "$BUDGET_SESSIONS"
-        [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\tFor future Claude %s lines\n' "$P" "$ffc"
+        [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\t%s lines against ~%s — For future Claude\n' "$P" "$ffc" "$BUDGET_FFC"
 
         # A bullet in `Current state` that runs three lines or more is no longer a state —
         # it is an account of something, and an account without a `[[link]]` has no owner

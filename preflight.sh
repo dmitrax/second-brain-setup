@@ -170,6 +170,11 @@ fi
 # the stale threshold is `> 14` rather than `>= 1`; PF_ANCIENT can only get older.
 PF_FRESH=$(date -d '-13 days' +%Y-%m-%d 2>/dev/null || date -v-13d +%Y-%m-%d)
 PF_ANCIENT=2020-01-01
+# Later than any commit this repository can hold, computed rather than written: check 61
+# asserts an ORDERING (a session log against the last shipping commit), and a fixture dated
+# today would flip depending on whether that commit was made this morning or this evening.
+# The same reasoning as PF_ANCIENT, pointing the other way — see check 41.
+PF_FUTURE=$(date -d '+2 days' +%Y-%m-%d 2>/dev/null || date -v+2d +%Y-%m-%d)
 
 # Scan targets. preflight.sh is deliberately NOT among them: it holds the forbidden
 # patterns as search strings and would match itself — the same class of mistake as
@@ -4124,6 +4129,34 @@ grep -qF 'outside the scope' <<<"$sc_out" ||
     missing+="  a finding outside the scope was not named as reported-but-not-compared"$'\n'
 grep -qEe '\+ ambiguous-link' <<<"$sc_out" &&
     missing+="  a finding outside the scope was counted as NEW against a baseline that never held it"$'\n'
+# ── The seal carries the BASELINE's out-of-scope line, never the CURRENT one ──
+# Added 2026-08-26, because everything above was green while `--seal` wrote `$cur_out` —
+# the out-of-scope findings the same run had just printed as "reported but not compared" —
+# straight into the shared baseline. Two consequences, and the second is the expensive one:
+# the file grew a second line for any key whose detail had moved (the live vault carried
+# two `scope-note:lifecycle-docs` lines, and `cut_keys` runs `sort -u`, so the comparison
+# stayed correct while the file rotted), and project B's CURRENT state was sealed as known
+# debt by a run scoped to project A, which is how B's regression becomes invisible on every
+# machine. The fixtures above could not see it: their sealed run carried no out-of-scope
+# finding at all, so the offending path never executed.
+printf 'wiki-no-links:demo\t1 notes\ntaskboard-inprogress:other\t10 open\n' > "$sc/base2.txt"
+printf 'wiki-no-links:demo\t2 notes\ntaskboard-inprogress:other\t99 open\n' |
+    bash "$LIBSH" lint-diff "$sc/base2.txt" --scope demo --seal >/dev/null 2>&1
+grep -qF 'taskboard-inprogress:other	10 open' "$sc/base2.txt" ||
+    missing+="  --seal on a scoped run did not carry the out-of-scope line in the BASELINE's edition"$'\n'
+grep -qF 'taskboard-inprogress:other	99 open' "$sc/base2.txt" &&
+    missing+="  --seal on a scoped run wrote an out-of-scope finding it had reported as not compared"$'\n'
+sc_dups=$(cut -f1 "$sc/base2.txt" | LC_ALL=C sort | uniq -d)
+[ -n "$sc_dups" ] &&
+    missing+="  --seal on a scoped run left duplicate keys in the baseline: $sc_dups"$'\n'
+# A baseline that already holds a key twice cannot be compared, and saying so is the only
+# honest answer: `sort -u` inside the comparison hides the duplicate, so nothing downstream
+# would ever report it. Checked on BOTH inputs — only stdin was checked until this date,
+# and stdin is not the input that goes bad on its own.
+printf 'wiki-no-links:demo\t1 notes\nwiki-no-links:demo\t9 notes\n' > "$sc/dup.txt"
+if printf 'wiki-no-links:demo\t1 notes\n' | bash "$LIBSH" lint-diff "$sc/dup.txt" >/dev/null 2>&1; then
+    missing+="  lint-diff accepted a baseline holding the same key twice"$'\n'
+fi
 rm -rf "$sc"
 # And the command must actually pass the flag on its project run, in an executable block.
 lint_exec=$(exec_blocks "$SCRIPT_DIR/commands/brain-lint.md")
@@ -4252,28 +4285,160 @@ fi
 # session log on this code must NOT read as a pass, or the command becomes a rubber stamp.
 rc_tmp=$(mktemp -d)
 missing=""
-mkdir -p "$rc_tmp/nolog/00-system" "$rc_tmp/nolog/proj/sessions" "$rc_tmp/nolog/proj/wiki"
-printf -- '# Index\n\n## Projects\n- [[proj/_PROJECT|proj]] — x, code, active\n' > "$rc_tmp/nolog/00-system/index.md"
-printf -- '---\nproject: proj\nupdated: %s\nstatus: active\nbrain-version: "v9.9.9"\n---\n## Current state\nx\n' \
-    "$PF_ANCIENT" > "$rc_tmp/nolog/proj/_PROJECT.md"
-: > "$rc_tmp/nolog/00-system/lint-baseline.txt"
-rc_out=$(cd "$SCRIPT_DIR" && bash "$LIBSH" release-check "$rc_tmp/nolog" 2>&1); rc_rc=$?
+# The code under judgement is the INSTALLED copy, so the fixture supplies one. Without it
+# this check would measure whether the developer had run update.sh — a verdict about the
+# machine wearing the shape of a verdict about the soak. Building it from the repo also
+# makes "installed == this code" true by construction, which is the precondition every
+# gate-3 assertion below depends on.
+rc_home="$rc_tmp/home"
+mkdir -p "$rc_home/.claude/skills/second-brain/lib" "$rc_home/.claude/commands"
+cp "$SCRIPT_DIR/SKILL.md" "$rc_home/.claude/skills/second-brain/SKILL.md"
+cp "$LIBSH" "$rc_home/.claude/skills/second-brain/lib/brain.sh"
+cp "$SCRIPT_DIR"/commands/*.md "$rc_home/.claude/commands/"
+printf 'v9.9.9\n' > "$rc_home/.claude/skills/second-brain/lib/VERSION"
+
+# One vault per outcome; only the session logs differ.
+rc_vault() {                      # $1 dir, $2 project name, $3 log basename or ""
+    mkdir -p "$rc_tmp/$1/00-system" "$rc_tmp/$1/$2/sessions" "$rc_tmp/$1/$2/wiki"
+    printf -- '# Index\n\n## Projects\n- [[%s/_PROJECT|%s]] — x, code, active\n' "$2" "$2" \
+        > "$rc_tmp/$1/00-system/index.md"
+    printf -- '---\nproject: %s\nupdated: %s\nstatus: active\nbrain-version: "v9.9.9"\n---\n## Current state\nx\n' \
+        "$2" "$PF_ANCIENT" > "$rc_tmp/$1/$2/_PROJECT.md"
+    : > "$rc_tmp/$1/00-system/lint-baseline.txt"
+    [ -n "${3:-}" ] && printf -- '---\nproject: %s\n---\n# Session\n' "$2" > "$rc_tmp/$1/$2/sessions/$3"
+    return 0
+}
+rc_run() { (cd "$SCRIPT_DIR" && HOME="$rc_home" bash "$LIBSH" release-check "$rc_tmp/$1" 2>&1); }
+
+# (a) No session log at all — the plain unmet gate.
+rc_vault nolog proj ""
+rc_out=$(rc_run nolog); rc_rc=$?
 grep -qEe '^gate 3[[:space:]]+MISSING' <<<"$rc_out" ||
     missing+="  a vault with no session log on this version did not fail gate 3: ${rc_out:-<no output>}"$'\n'
 [ "$rc_rc" -eq 2 ] ||
     missing+="  gate 3 unmet returned $rc_rc, and the contract says 2"$'\n'
+
+# (b) A log exists, but only in the package's OWN project. That is the session that wrote
+# the code: the project is decided by the repository being worked in, so the author saves
+# here by construction. Measured 2026-08-18 — `b9e18a3` at 11:03:04 and this project's
+# `2026-08-18_1111_session.md` eight minutes later, the very session that declared the gate
+# closed on its own code. Comparing timestamps alone passes it; only the project separates
+# them, which is why this fixture exists rather than a later-timestamp one.
+rc_vault ownonly "$(basename "$SCRIPT_DIR")" "${PF_FUTURE}_1200_session.md"
+rc_out=$(rc_run ownonly)
+grep -qEe '^gate 3[[:space:]]+MISSING' <<<"$rc_out" ||
+    missing+="  a session in the package's own project was accepted as a witness: ${rc_out:-<no output>}"$'\n'
+
+# (c) A log in ANOTHER project, later than the last shipping commit — the gate closes.
+rc_vault foreign proj "${PF_FUTURE}_1200_session.md"
+rc_out=$(rc_run foreign)
+grep -qEe '^gate 3[[:space:]]+ok' <<<"$rc_out" ||
+    missing+="  a foreign session on this version did not close gate 3: ${rc_out:-<no output>}"$'\n'
+
+# (d) The identity of the code comes from the installed paths, not from HEAD. A commit that
+# touches only `preflight.sh` or `CLAUDE.md` installs nothing, so it must not reset the
+# soak. Measured 2026-08-26: HEAD read `v1.8.0-2-g4319071` two non-shipping commits past the
+# tag, gate 3 said MISSING, and three foreign projects had been using that code since 08-19.
+# A false red in the release gate is worse than none — it teaches the reader to skim it.
+# The assertion is the ordering itself: a stamp that names HEAD cannot match any project.
+rc_out_head=$(cd "$SCRIPT_DIR" && git describe --tags --always 2>/dev/null)
+grep -qF "$rc_out_head" <<<"$rc_out" &&
+    missing+="  gate 3 names HEAD ($rc_out_head), so a non-shipping commit renames the code under test"$'\n'
+
+# (e) "The installed copy is not this code" is a different fact from "nobody used it", and
+# only the second is a red. Saying MISSING for the first draws a verdict about the soak
+# from a fact about the machine.
+printf 'not this code\n' >> "$rc_home/.claude/skills/second-brain/lib/brain.sh"
+rc_out=$(rc_run foreign)
+grep -qEe '^gate 3[[:space:]]+ANSWER' <<<"$rc_out" ||
+    missing+="  a stale install did not get its own verdict: ${rc_out:-<no output>}"$'\n'
+grep -qEe '^gate 3[[:space:]]+MISSING' <<<"$rc_out" &&
+    missing+="  a stale install was reported as an unmet soak"$'\n'
+
 # It must also refuse what it cannot read, rather than passing over it.
 bash "$LIBSH" release-check "$rc_tmp/does-not-exist" >/dev/null 2>&1
 [ $? -eq 1 ] || missing+="  release-check did not return 1 for a vault it cannot read"$'\n'
-# And gate 2 must actually run the lint rather than assert it: an unreadable vault cannot
-# produce a gate-2 ok.
+# And gate 2 must actually run the lint rather than assert it.
 grep -qEe '^gate 2[[:space:]]+(ok|ANSWER|MISSING)' <<<"$rc_out" ||
     missing+="  gate 2 produced no verdict at all"$'\n'
+# Gate 2 must ask about a finding that GREW, not only about one that appeared: a key that
+# stays put while its number doubles was invisible to the delta until 2026-08-26.
+grep -qF 'WORSE' <<<"$(sed -n '/gate 2/p' <<<"$rc_out")" ||
+    grep -qF 'WORSE' "$LIBSH" ||
+    missing+="  gate 2 reads NEW only, so a finding that kept its key and grew passes unasked"$'\n'
 rm -rf "$rc_tmp"
 if [ -n "$missing" ]; then
     fail "release-check does not measure the two gates it claims to" "$missing"
 else
-    pass "release-check measures gates 2 and 3, and an unmet gate 3 is exit 2"
+    pass "release-check measures gates 2 and 3 on five fixtures, and an unmet gate 3 is exit 2"
+fi
+
+# ─── 63. A finding that kept its key and grew is reported, and the trait is declared ──
+# The delta compared keys and nothing else, so a debt that doubled read as parked. Measured
+# 2026-08-26 against the 08-23 baseline: goprofi's board 184 -> 197, `wiki-no-sibling:_mac/
+# mac-setup` 2 -> 4, `wiki-no-backlink:goprofi-voronka` 16 -> 17, and this project's own
+# board 70 -> 62 the good way — four movements, all inside `known and unchanged: 29`.
+#
+# Why the trait has to be DECLARED and cannot be read off the detail: `stale-draft` opens
+# with a number exactly like the counted types do, and that number is days elapsed. Inferring
+# would have produced seven permanent WORSE lines — the fifth always-fires signal this
+# project has had to cut, after the _PROJECT.md total, the taskboard total and the summed
+# prose budget. `key-uniformity` is the mirror case: its leading number is the debt and the
+# `(of N)` behind it is the corpus, which grows legitimately.
+#
+# The enumeration is derived, not listed beside the code: every type the collector emits must
+# sit in exactly one of the two declarations, so a twenty-fourth finding type is a red until
+# somebody classifies it.
+missing=""
+n_cnt=0
+ct_types=$(awk '/^lint_collect\(\)/,/^}/' "$LIBSH" |
+    grep -oE "printf '[a-z-]+:" | sed "s/printf '//; s/:$//" | LC_ALL=C sort -u)
+ct_counted=$(sed -nE 's/^LINT_COUNTED="(.*)"$/\1/p' "$LIBSH")
+ct_uncounted=$(sed -nE 's/^LINT_UNCOUNTED="(.*)"$/\1/p' "$LIBSH")
+if [ -z "$ct_types" ] || [ -z "$ct_counted" ] || [ -z "$ct_uncounted" ]; then
+    fail "check 63 read no finding type or no magnitude declaration — empty input, not a clean repo"
+else
+    for k in $ct_types; do
+        n_cnt=$((n_cnt + 1))
+        in_c=0; in_u=0
+        case " $ct_counted "   in *" $k "*) in_c=1 ;; esac
+        case " $ct_uncounted " in *" $k "*) in_u=1 ;; esac
+        [ $((in_c + in_u)) -eq 1 ] ||
+            missing+="  \`$k\` is emitted but is in $((in_c + in_u)) of the two magnitude declarations, not exactly one"$'\n'
+    done
+    # The command that reads the delta must name the same counted set, or a session is told
+    # one thing and the tool does another.
+    for k in $ct_counted; do
+        grep -qF "\`$k\`" "$SCRIPT_DIR/commands/brain-lint.md" ||
+            missing+="  \`$k\` is counted in the code and /brain-lint never says so"$'\n'
+    done
+
+    # Behavioural, on the four outcomes that matter. A static read would pass on a
+    # declaration nothing consults.
+    ct=$(mktemp -d)
+    printf 'taskboard-inprogress:a\t10 open items\nstale-draft:b/wiki/x\t20 days\nkey-uniformity:c/sessions\t4 entries lack zone (of 96)\nwiki-no-sibling:d\t8 notes\n' > "$ct/base.txt"
+    ct_out=$(printf 'taskboard-inprogress:a\t17 open items\nstale-draft:b/wiki/x\t23 days\nkey-uniformity:c/sessions\t4 entries lack zone (of 108)\nwiki-no-sibling:d\t3 notes\n' |
+        bash "$LIBSH" lint-diff "$ct/base.txt" 2>&1)
+    grep -qF 'taskboard-inprogress:a — 10 -> 17' <<<"$ct_out" ||
+        missing+="  a count that grew was not reported WORSE: ${ct_out:-<no output>}"$'\n'
+    grep -qF 'wiki-no-sibling:d — 8 -> 3' <<<"$ct_out" ||
+        missing+="  a count that shrank was not reported BETTER"$'\n'
+    grep -qF 'stale-draft' <<<"$ct_out" &&
+        missing+="  stale-draft moved with the calendar and was reported as a change — the permanent signal this declaration exists to prevent"$'\n'
+    grep -qF 'key-uniformity' <<<"$ct_out" &&
+        missing+="  a key-uniformity denominator grew and was read as debt; only the leading number is the debt"$'\n'
+    # Four keys in, one WORSE and one BETTER, so exactly two are unchanged — the two whose
+    # detail moved without their debt moving. "Unchanged" has to mean unchanged, or the
+    # line that tells a session what not to re-litigate is counting regressions.
+    grep -qF 'known and unchanged: 2 ' <<<"$ct_out" ||
+        missing+="  the unchanged count still includes the findings that moved: ${ct_out:-<no output>}"$'\n'
+    rm -rf "$ct"
+
+    if [ -n "$missing" ]; then
+        fail "a finding can grow without the delta saying so" "$missing"
+    else
+        pass "every finding type declares whether it carries a magnitude, and a moved one is reported ($n_cnt types)"
+    fi
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

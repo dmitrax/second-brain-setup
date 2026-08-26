@@ -119,6 +119,16 @@ returning quietly — otherwise a typo reads as a clean project.
 
 What the keys mean and what each is worth:
 
+**Counted keys** — their detail opens with the magnitude of the debt, and Step 5 reports
+that number moving (`WORSE` / `BETTER`), not just the key appearing and disappearing:
+`ambiguous-link`, `current-state`, `ffc-budget`, `key-uniformity`, `retelling-no-source`,
+`session-list`, `taskboard-done`, `taskboard-inprogress`, `wiki-no-backlink`,
+`wiki-no-links`, `wiki-no-sibling`. Every other key is **uncounted**, and the exclusion is
+declared rather than guessed: `stale-draft` opens with a number as well, but it counts days
+elapsed, which grows on its own and would fire forever. `key-uniformity` is counted on its
+leading number only — the numerator is the debt, the `(of N)` behind it is the corpus and
+grows legitimately.
+
 | Key | What to do |
 |---|---|
 | `current-state:<project>` | `## Current state` over ~30 lines. Status and open blockers only — look for paragraphs restating a wiki note that already exists and collapse each to one line + `[[wikilink]]`. **Replaced the summed `prose-budget` on 2026-08-16:** that one added three sections, two of which already carry their own limits, so a project was penalised twice for one thing and the only unregulated section got whatever remained. It fired in 66 of 96 revisions on `goprofi-voronka` and 11 of 14 on `_arch/dimarch` — a warning that frequent stops being read. |
@@ -232,8 +242,21 @@ finding the run does produce (two sweeps stay vault-wide by design) is listed se
 reported-but-not-compared.
 
 Report in this order: **NEW first** — this session's regression and the only part that
-usually needs action; then GONE (something was fixed — confirm it was deliberate); then
-the count of unchanged, which is parked debt and needs no re-litigation.
+usually needs action; then **WORSE**, then GONE (something was fixed — confirm it was
+deliberate), then BETTER, then the count of unchanged, which is parked debt and needs no
+re-litigation.
+
+**`WORSE` is a finding that kept its key and grew**, and the delta was blind to it until
+2026-08-26: keys are what get compared, so a debt that doubles reads as parked. Measured
+against the 08-23 baseline — goprofi's board 184 -> 197, `wiki-no-sibling:_mac/mac-setup`
+2 -> 4, and this project's own board 70 -> 62 the good way — all of it inside `known and
+unchanged`. Only the types marked **counted** in the table above are read this way, and
+only their leading number. The trait is declared rather than inferred for one measured
+reason: `stale-draft`'s detail opens with a number too, but that number is days elapsed
+and grows every night, so inferring would have produced seven permanent `WORSE` lines —
+the fifth signal-that-always-fires this project has had to cut. `BETTER` is the same
+comparison the other way and costs nothing; it is the only place progress on parked debt
+is ever visible.
 
 `--seal` rewrites the baseline, so pass it only on a run whose findings you have actually
 reported to the user, and never from a partial checkout (Step 0c). A sealed baseline is
@@ -255,7 +278,9 @@ finding it owned.
 Coverage:              entire vault / everything except [paths] (partial checkout)
 
 NEW since last lint:   [N] ← this session's regression, act on these
+WORSE since last lint: [N] ← same finding, bigger; a regression that kept its key
 GONE since last lint:  [N] ← fixed; confirm it was deliberate
+BETTER since last lint:[N] ← parked debt that shrank
 Known, unchanged:      [N] ← parked debt, listed in the baseline, do not re-litigate
 
 Contradictions:        [M] (list — the part no script can find)
