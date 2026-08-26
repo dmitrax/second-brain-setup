@@ -128,10 +128,15 @@ For non-Claude agents: rename `CLAUDE.md` → `AGENTS.md`.
 
 ## Versioning
 
-Semver since v1.4.0 (`MAJOR.MINOR.PATCH`): `PATCH` — bug fixes with no new behaviour,
-`MINOR` — backward-compatible features and rules (commands, checks, templates), `MAJOR` —
-breaking changes shipped with a migration script. Tags `v1.0`–`v1.3` predate it, under a
-coarser "v1.x = additive only" scheme, and are not retro-fitted.
+Semver since v1.4.0 (`MAJOR.MINOR.PATCH`). The bump is decided by what the installed
+package can newly **do**, not by how much changed: `MINOR` — it gained something you would
+ask for by name (a command, a flag, a report, a template); `PATCH` — it stopped being
+wrong, including when the fix changes output or ships a new gate check; `MAJOR` — a
+breaking change with a migration script. A new check in `preflight.sh` is never a `MINOR`
+on its own — the rulebook requires one for every rule it states, and rules are written
+after defects. Narrowed 2026-08-26; earlier tags keep the number they were released under.
+Tags `v1.0`–`v1.3` predate semver entirely, under a coarser "v1.x = additive only" scheme,
+and are not retro-fitted either.
 
 ```bash
 # Update the installed system after pulling changes
@@ -169,7 +174,7 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 | `WORKFLOW.md` | Russian | User guide (human) |
 | `ВТОРОЙ_МОЗГ_v1.8.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
-| `README_RU.md` | Russian | GitHub (same content, Russian readers) |
+| `README_RU.md` | Russian | GitHub (an independent document for Russian readers, not a translation) |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
 | `chat-skills/README.md` / `README_RU.md` | English / Russian | GitHub |
 | `lib/brain.sh` output | English | data a session reads, then writes the sentence around it in the owner's language |

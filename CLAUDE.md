@@ -52,11 +52,33 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   has to install first. The release gate's PyYAML is dev-only and never shipped — see
   the last rule in this list.
 - After editing SKILL.md or any brain-*.md → run `update.sh` to apply changes
-- Versioning: semver (MAJOR.MINOR.PATCH). PATCH = bug fixes only, no new behavior.
-  MINOR = new backward-compatible features/rules (commands, checks, templates).
-  MAJOR = breaking change + migration script. Adopted 2026-07-20 — before that,
-  tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme; those
-  are not retro-fitted.
+- **Versioning: semver (MAJOR.MINOR.PATCH), and the bump is decided by what the INSTALLED
+  package can newly DO — never by how much changed.**
+  MINOR = it gained something a person would ask for by name: a command, a flag, a report,
+  a template. PATCH = it stopped being wrong, and that **includes** a fix that changes
+  output, adds a rule to this Block, or ships a new `preflight.sh` check.
+  MAJOR = breaking change + migration script.
+  **A gate check is never by itself a MINOR, and the reason is a contradiction inside this
+  Block:** it requires a machine check for every rule it states, and a rule is almost always
+  written after a defect — so counting checks as features turns a fix session into a MINOR
+  by construction. Measured 2026-08-26 over every commit since v1.6.0: of the 40 commits
+  that add a check, 19 are `feat` and **21 are not** (12 `fix`, 4 `docs`, 4 `test`, 1
+  `refactor`). The same measurement on releases, which is the half that had already gone
+  wrong: of the four MINOR tags since semver was adopted, **v1.5.0 and v1.6.0 delivered no
+  named capability at all** — their changelog entries are fix lists ("no longer uses
+  `property:set`", "verifies WHICH vault is open", "supersession is two fields") that earned
+  a MINOR for adding rules. v1.7.0 and v1.8.0 did deliver one (`lib/brain.sh`, `--mutate`,
+  `release-check`, `save-report`), and that is the line this now draws.
+  **What is NOT the discriminator, written down so it is not re-proposed: whether the output
+  changed.** A fix that restores a stated property usually changes output — that is how you
+  can tell it worked — so "the report gained a line" decides nothing on its own. Nor is the
+  size of the diff: v1.8.0 added 38 checks and v1.6.0 added 14, and only one of the two
+  shipped a capability.
+  Adopted 2026-07-20 and **narrowed 2026-08-26**. Earlier tags are not retro-fitted — same
+  reason as the `v1.0`-`v1.3` era below: a tag records what was released under the rule then
+  in force, and rewriting it destroys the only evidence of when the rule changed. Before the
+  adoption date tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme.
+  Checked by preflight 60(a) for the tag shape and 60(d) for the bump itself.
 - Commit messages follow Conventional Commits: `<type>(<scope>)?!?: <description>`,
   type one of `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release`
   (`release` is this repo's own type, used for tag commits — see git log). Adopted
@@ -669,6 +691,62 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
     v1.5.0 at the v1.7.0 tag and v1.7.0 at the v1.8.0 tag, caught both times by a person
     reading the file. A version named as history is left alone (62).
 
+- **A run seals only what it compared, and "the flag is passed" is not that property.**
+  `lint-diff --scope A --seal` wrote `$cur_out` — the CURRENT findings it had printed two
+  lines earlier as "reported but not compared" — into the shared baseline. Two costs, and
+  the second is the one that matters: the file grew a second line for every out-of-scope key
+  whose detail had moved (the live vault carried two `scope-note:lifecycle-docs` lines, and
+  nothing noticed because the comparison runs `sort -u`, so a duplicate collapses there
+  while the file rots), and project B's state was sealed as known debt by a run scoped to A
+  — after which B's regression is invisible on every machine, sealed by the one run that
+  deliberately looked away from it. Check 58 was green throughout: its fixtures sealed a run
+  carrying **no** out-of-scope finding at all, so the offending line never executed. Measured
+  2026-08-26. The general form: a fixture that does not exercise the path proves nothing
+  about it, and an assertion on presence ("the key survived") passes on both editions of a
+  line — assert on the VALUE, which is the half that differs. Key uniqueness is now checked
+  on **both** inputs, not only stdin: stdin is not the input that can go bad on its own.
+- **The identity of the code under a soak is the INSTALLED copy, never HEAD.** A commit
+  touching only `preflight.sh` or `CLAUDE.md` installs nothing, yet `git describe HEAD`
+  renames the thing under judgement, and no stamp in any vault can then match it. Measured
+  2026-08-26: HEAD read `v1.8.0-2-g4319071`, `release-check` reported gate 3 MISSING, and
+  the gate was in fact closed — the last shipping commit was `39f859f` of 08-19 and three
+  foreign projects had used that code since. A false red inside the release gate is worse
+  than no check, because its red gets read as noise; the taskboard already carried "verify
+  this by reading the decision, not on sight", which is a human working around a tool.
+  Rejected with a reason, so it is not re-proposed: recomputing VERSION from the shipping
+  paths instead — the `release: vX` commit ships nothing, so `describe` over those paths
+  would call v1.8.0's own code `v1.7.0-N-g39f859f`, a version understating itself.
+  **The witness is a session in ANOTHER project**, because the project is decided by the
+  repository being worked in, so the session that writes the code saves here by construction.
+  The candidate "a log later than the commit" was refuted by measurement rather than by
+  taste: the log file is created by `/brain-save` at SAVE time, so the author's own log is
+  later too — `b9e18a3` at 2026-08-18T11:03:04 and this project's `2026-08-18_1111_session.md`
+  eight minutes after it, which is the very session that declared the gate closed on its own
+  code. Time still counts, but only to close the cheap hole of a foreign save earlier the
+  same day. Checked by preflight 61 on five fixtures.
+- **A delta that compares keys is blind to a finding that grew, and the magnitude must be
+  DECLARED per finding type.** Measured 2026-08-26 against the 08-23 baseline: goprofi's
+  board 184 → 197, `wiki-no-sibling:_mac/mac-setup` 2 → 4, `wiki-no-backlink:goprofi-voronka`
+  16 → 17, and this project's own board 70 → 62 the good way — four movements, every one of
+  them inside `known and unchanged: 29`, the line that tells a session what NOT to
+  re-litigate. The fix is not "compare the detail": a detail moves on its own. `stale-draft`
+  counts days elapsed and its detail opens with a number exactly like a counted type's does,
+  so inferring the trait would have produced seven permanent `WORSE` lines — the fifth
+  always-fires signal this project has had to cut, after the `_PROJECT.md` total, the
+  taskboard total and the summed prose budget. So `LINT_COUNTED` / `LINT_UNCOUNTED` declare
+  it, the convention is that a counted detail OPENS with the magnitude, and the enumeration
+  is **derived**: every type the collector emits must sit in exactly one of the two, so a new
+  finding type is a red until somebody classifies it. `BETTER` is the same comparison
+  reversed and costs nothing — it is the only place progress on parked debt is ever visible.
+  Checked by preflight 63, on all four outcomes including the two that must NOT fire.
+- **A consumer reads its producer's exit status; parsing the output is not that.** Found
+  2026-08-26 within minutes of adding the baseline guard above: `release_check` derived gate
+  2 from `sed`-ing the word "NEW" out of `lint_diff`'s text, so a refusal — which prints no
+  such line — came out as `gate 2 ok, 0 NEW` while a hand-run diff on the same vault said 3.
+  This package's headline defect, a failure indistinguishable from success, occurring inside
+  its own release gate. Same family as the empty-producer rule already in this Block, seen
+  from the other end: there the consumer must not read an empty producer as a clean result,
+  here it must not read a silent one as a passing one.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

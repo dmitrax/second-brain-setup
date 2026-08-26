@@ -4266,6 +4266,58 @@ grep -qFe 'the fresher record' "$SCRIPT_DIR/SKILL.md" ||
 # declared closed on 2026-08-18 by the session that wrote the code it was judging.
 grep -qFe 'release-check' "$SCRIPT_DIR/CLAUDE.md" ||
     missing+="  the release rule does not name \`brain.sh release-check\`, so gates 2 and 3 stay a protocol"$'\n'
+# (d) The MINOR/PATCH line itself, narrowed 2026-08-26: the bump follows what the installed
+# package can newly DO, not how much changed. The rule it replaces made a fix session a
+# MINOR by construction, because this Block requires a machine check for every rule it
+# states and rules are written after defects. Measured that day over every commit since
+# v1.6.0: of the 40 commits that add a check, 21 are not `feat` (12 `fix`, 4 `docs`,
+# 4 `test`, 1 `refactor`). And on releases, which is where it had already gone wrong —
+# `v1.4.3->v1.5.0` and `v1.5.0->v1.6.0` add ZERO named surface while `v1.6.0->v1.7.0` adds
+# 7 and `v1.7.0->v1.8.0` adds 18, matching the changelog read by hand: the first two MINORs
+# are fix lists. (Caveat kept honest: `lib/brain.sh` did not exist before v1.7.0, so for the
+# early pairs the detector's zero rests on no new command file either, with the changelog as
+# the primary evidence.)
+#
+# A "named surface" is what someone asks for by name: a new subcommand in the dispatcher, a
+# new command file, a new flag. Deliberately NOT counted: a new check, a new rule, a changed
+# report line — a fix that restores a stated property usually changes output, which is how
+# you can tell it worked.
+SV_NARROWED="2026-08-26"
+sv_surface() {
+    sv_a=$(git -C "$SCRIPT_DIR" diff --unified=0 "$1".."$2" -- lib/brain.sh 2>/dev/null |
+           grep -cE '^\+[[:space:]]*[a-z][a-z-]*\)[[:space:]]+shift' || true)
+    sv_b=$(git -C "$SCRIPT_DIR" diff --name-status --diff-filter=A "$1".."$2" -- commands 2>/dev/null |
+           grep -c . || true)
+    sv_c=$(git -C "$SCRIPT_DIR" diff --unified=0 "$1".."$2" -- lib/brain.sh 2>/dev/null |
+           grep -cE '^\+[[:space:]]*--[a-z][a-z-]*\)' || true)
+    printf '%s' "$((sv_a + sv_b + sv_c))"
+}
+sv_prev=""
+sv_judged=0
+for t in $(git -C "$SCRIPT_DIR" tag --sort=v:refname 2>/dev/null); do
+    tday=$(git -C "$SCRIPT_DIR" log -1 --format=%cI "$t" 2>/dev/null); tday=${tday%%T*}
+    [ -n "$tday" ] || continue
+    case "$t" in v[0-9]*.[0-9]*.[0-9]*) : ;; *) sv_prev="$t"; continue ;; esac
+    if [ -n "$sv_prev" ] && ! [ "$tday" \< "$SV_NARROWED" ]; then
+        IFS='.' read -r sv_x sv_y sv_z <<<"${t#v}"
+        IFS='.' read -r sv_px sv_py sv_pz <<<"${sv_prev#v}"
+        : "${sv_z:=0}" "${sv_pz:=0}"
+        sv_n=$(sv_surface "$sv_prev" "$t")
+        if [ "$sv_x" = "$sv_px" ] && [ "$sv_y" != "$sv_py" ]; then
+            sv_judged=$((sv_judged + 1))
+            [ "$sv_n" -gt 0 ] ||
+                missing+="  $sv_prev -> $t is a MINOR bump adding no command, flag or template — that is a PATCH"$'\n'
+        elif [ "$sv_x" = "$sv_px" ] && [ "$sv_y" = "$sv_py" ]; then
+            sv_judged=$((sv_judged + 1))
+            [ "$sv_n" -eq 0 ] ||
+                missing+="  $sv_prev -> $t is a PATCH bump shipping $sv_n named surface(s) — that is a MINOR"$'\n'
+        fi
+    fi
+    sv_prev="$t"
+done
+if [ "$sv_judged" -eq 0 ]; then
+    gap "whether a bump matches what the package can newly do (check 60d) — no tag has been cut since the rule was narrowed on $SV_NARROWED, so the assertion has had nothing to judge"
+fi
 if [ "$n_tags" -eq 0 ]; then
     fail "check 60 found no tag dated after semver was adopted — empty input, not a clean repo"
 elif [ -n "$missing" ]; then
