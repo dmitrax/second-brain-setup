@@ -37,6 +37,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   The repo is public: a comment and a commit message are read by strangers, and by the
   next maintainer, before anything else
 
+## Long runs go to the background
+- `preflight.sh` takes minutes, `--mutate` takes tens of them, and a negative test is a
+  whole extra gate run over a mutated copy — so they are started in the background and the
+  session does the next piece of work while they run, never a blocking call followed by
+  idling. Independent runs (several negative tests, the gate plus a vault sweep) start
+  together, not one after the other.
+- The canonical copy of this preference is `00-shared/Working style` in the vault, which is
+  in git and read at every session start on every machine. The global `~/.claude/CLAUDE.md`
+  is neither, so a rule that lives only there exists on one machine
+  [[decision-the-global-claude-md-never-receives-a-project-lesson-because-it-is-unversioned-and-unsynced]].
+
 ## Critical thinking & safety
 - Do not flatter or auto-agree. If an approach is weak or suboptimal, say so
   plainly: what is wrong and what would be better.
