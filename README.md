@@ -186,6 +186,49 @@ User guide and architecture doc in Russian:
 
 ## Changelog
 
+### v1.8.1 — 2026-08-29
+
+Four fixes in `lib/brain.sh`, every one of them green in `preflight.sh` at the time it was
+found. `update.sh` is the whole upgrade: note formats, headings and existing vaults are
+untouched.
+
+- **A scoped lint sealed findings it had refused to compare.** `lint-diff --scope A --seal`
+  wrote the current findings — the ones the same run had printed two lines earlier as
+  "reported but not compared" — straight into the shared baseline. The file then grew a
+  second line for every out-of-scope key whose detail had moved (the live vault carried two
+  such duplicates, invisible because the comparison runs `sort -u`, so a duplicate collapses
+  there while the file rots), and project B's state was sealed as known debt by a run scoped
+  to A, after which B's regression is invisible on every machine. Key uniqueness is now
+  checked on **both** inputs, not only on stdin — stdin was never the input that can go bad
+  on its own.
+- **The delta reports what grew, not only what appeared.** A finding that keeps its key and
+  gets bigger used to read as parked debt. Against the 08-23 baseline four had moved — a
+  board 184 → 197, one project's missing backlinks 16 → 17 — and all four sat inside `known
+  and unchanged`. `WORSE` and `BETTER` name them now, on a magnitude **declared** per
+  finding type in `LINT_COUNTED` / `LINT_UNCOUNTED` rather than inferred from the detail:
+  `stale-draft` also opens with a number, and that number is days elapsed, so inferring the
+  trait would have produced seven permanent `WORSE` lines.
+- **`release-check` judges the installed copy, not `HEAD`.** A commit touching only
+  `preflight.sh` or `CLAUDE.md` ships nothing, yet it renamed the code under test and no
+  stamp in any vault could match — gate 3 reported `MISSING` while the gate was in fact
+  closed, its last shipping commit nine days old and used by three foreign projects since.
+  It now reads the installed `VERSION`, dates the code from the last commit touching an
+  installed path, gives a stale install its own verdict instead of `MISSING`, and requires
+  the witness to be a session in **another** project — the session that writes the code
+  saves into this one by construction, and timestamps alone would pass it because
+  `/brain-save` creates the log at save time.
+- **Gate 2 reads its producer's exit status instead of parsing its text.** With the baseline
+  guard in place, a refusal — which prints no `NEW` line — came out as `gate 2 ok, 0 NEW`
+  while a hand-run diff on the same vault said 3. A failure indistinguishable from success,
+  occurring inside this package's own release gate.
+
+`preflight.sh` grew 79 → 81 checks; checks 58 and 61 gained behavioural fixtures, and every
+assertion was mutated to confirm it goes red with the guarded behaviour removed.
+
+**Upgrading from v1.8.0 → v1.8.1:** run `update.sh`, and nothing else. If you keep a shared
+`lint-baseline.txt`, a scoped `--seal` from an earlier version may have left duplicate lines
+in it; they collapse on the next full `--seal` and cost nothing meanwhile.
+
 ### v1.8.0 — 2026-08-20
 
 - **The gate now asks whether its own checks have force.** `preflight.sh --mutate` guts

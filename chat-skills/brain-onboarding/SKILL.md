@@ -9,7 +9,7 @@ Onboard a project into the Second Brain system (Claude Code + Obsidian vault).
 Scan the current conversation, ask only for missing information, generate a
 complete ready-to-use file package. No preamble — go straight to intake.
 
-System version: v1.8.0
+System version: v1.8.1
 
 ---
 
@@ -226,7 +226,7 @@ type: [code|content|config|mixed]
 created: [YYYY-MM-DD]
 updated: [YYYY-MM-DD]
 status: active
-brain-version: "v1.8.0"
+brain-version: "v1.8.1"
 ---
 
 # [Project Name]
