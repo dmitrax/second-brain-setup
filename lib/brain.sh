@@ -42,10 +42,14 @@ usage: brain.sh <command> [args]
                                and nothing else. Adds the key if absent.
   version                      print the installed version (from the VERSION file
                                written by install.sh/update.sh), or "unknown".
-  archive <taskboard> <archive> --before <YYYY-MM-DD> [--apply]
+  archive <taskboard> [<archive>] --before <YYYY-MM-DD> [--apply]
                                move closed entries older than the date from the
                                taskboard's Done section into the archive note.
                                Dry-run unless --apply. Refuses on any imbalance.
+                               The archive is optional: without it the one beside the
+                               board is used, or `taskboard-archive.md` is created. A
+                               name that would open a SECOND archive beside an existing
+                               one is refused — one board, one record.
   backfill-dates <taskboard> [--apply]
                                give every undated closed entry the date of the first
                                commit that shows it closed. archive can only move dated
@@ -79,10 +83,14 @@ usage: brain.sh <command> [args]
                                would read as a recorded connection. Refuses an empty
                                entry, a missing section, a bad date and an exact
                                duplicate; verifies the count grew by exactly one.
-  prose-budget <_PROJECT.md> [taskboard.md]
+  prose-budget <project dir | _PROJECT.md> [taskboard.md]
                                measure what /brain-lint measures, at the moment of
                                writing instead of a day later: the three prose sections
-                               of _PROJECT.md and the three taskboard metrics.
+                               of _PROJECT.md and the two taskboard metrics. Given the
+                               project directory it finds both files itself; given one
+                               file it names the taskboard it did NOT measure. A section
+                               the file lacks is refused, never counted as a zero — zero
+                               is inside every budget, so a wrong file read as healthy.
                                exit 0 within budget · 2 over · 1 could not measure.
   claude-md-audit <CLAUDE.md>  report what a project CLAUDE.md holds that expires: a
                                state section, a copy of the stack inventory, a heading
@@ -114,21 +122,37 @@ usage: brain.sh <command> [args]
                                run every mechanical vault check and print each
                                finding as `key<TAB>detail` on stdout. Fails, never
                                prints a green, when its input is empty.
-  lint-diff <baseline> [--seal]
+  lint-diff <baseline> [--scope P] [--seal] [--allow-empty]
                                read findings on stdin (one per line, `key<TAB>detail`),
                                print what is NEW and what is GONE against the baseline,
-                               and how many are unchanged. --seal rewrites the baseline.
+                               what got WORSE and BETTER while keeping its key, and how
+                               many are unchanged. A magnitude is DECLARED per finding
+                               type in LINT_COUNTED/LINT_UNCOUNTED, never inferred from
+                               the detail: a counted detail opens with its number, and
+                               so does an uncounted one whose number is days elapsed.
+                               --scope limits the comparison AND the seal to one
+                               project; out-of-scope findings are printed but neither
+                               compared nor written back. --seal rewrites the baseline.
                                An empty stdin against a populated baseline is refused:
                                a broken producer and a clean vault look the same from
                                here. --allow-empty is the deliberate way through.
-  release-check <vault>        answer gates 2 and 3 of the release rule by measuring them:
-                               run the lint against this vault and report the delta, and
-                               look for a session log dated on or after the HEAD commit in
-                               a project stamped with the version HEAD describes. Both were
-                               a protocol nothing checked — and on 2026-08-18 gate 3 was
-                               declared closed by the session that wrote the code. Not part
-                               of preflight.sh on purpose: that stays repo-only and must
-                               run where no vault exists.
+  release-check <vault>        answer gates 2 and 3 of the release rule by measuring them.
+                               Gate 2 runs the lint against this vault and reads the
+                               delta's EXIT STATUS, not its text — a refusal prints no
+                               NEW line and would otherwise come out as "0 NEW".
+                               Gate 3 identifies the code by the INSTALLED copy, never by
+                               HEAD: a commit touching only preflight.sh or CLAUDE.md
+                               ships nothing yet renames what is under test, and no stamp
+                               in any vault could then match. The code is dated by the
+                               last commit touching an installed path, an install that
+                               differs from the repo gets its own verdict, and the witness
+                               must be a session in ANOTHER project — the session that
+                               writes the code saves into this one by construction, and
+                               /brain-save names the log at save time, so timestamps alone
+                               would pass it. Both gates were a protocol nothing checked:
+                               on 2026-08-18 gate 3 was declared closed by the session that
+                               had written the code. Not part of preflight.sh on purpose:
+                               that stays repo-only and must run where no vault exists.
                                exit 0 both gates answered · 2 one is not met · 1 cannot read
   rename <vault> <old-rel-path> <new-rel-path> [--apply]
                                rename a wiki note and repoint every link form to it —
@@ -558,6 +582,44 @@ lint_diff() {
 archive_done() {
     tb="${1:-}"; ar="${2:-}"; before="${3:-}"; apply="${4:-}"
     [ -f "$tb" ] || { echo "archive: no taskboard at '${tb:-}'" >&2; return 1; }
+    tb_dir=$(cd "$(dirname "$tb")" && pwd) || return 1
+
+    # One board, one archive. The name was a plain argument and nothing else, so every run
+    # that spelled it differently opened its own file. Measured in a live project 2026-08-29:
+    # ONE board had grown THREE archives — 92, 22 and 8 entries — each carrying the same
+    # header, none of them saying it was not the only one, and the next run would have made a
+    # fourth. They were merged by hand, and that board's header now warns the reader not to
+    # pass another name: a workaround paid for in manual labour, which is the shape of a
+    # defect this package fixes in code and not in prose.
+    #
+    # Existing archives are found by the header this command writes, never by the filename:
+    # a note merely called "archive" is then not mistaken for one, and one that was renamed
+    # still counts. `grep -l` ends the pipeline here on purpose — `-q` would exit at the
+    # first match and signal `find`.
+    existing=$(find "$tb_dir" -maxdepth 1 -type f -name "*.md" \
+                    -exec grep -l "Moved out of the taskboard by" {} + 2>/dev/null | LC_ALL=C sort)
+    n_ex=$(printf '%s' "$existing" | grep -c . || true)
+    if [ -z "$ar" ]; then
+        if [ "$n_ex" -gt 1 ]; then
+            echo "archive: this board already has $n_ex archives — merge them by hand first, then name the survivor:" >&2
+            printf '%s\n' "$existing" | sed 's|^|  |' >&2
+            return 1
+        elif [ "$n_ex" -eq 1 ]; then
+            ar="$existing"
+        else
+            ar="$tb_dir/taskboard-archive.md"
+        fi
+        echo "archive: archive note $ar"
+    elif [ ! -f "$ar" ] && [ "$n_ex" -gt 0 ]; then
+        echo "archive: '$ar' does not exist and this board already has an archive — a second one splits the record:" >&2
+        printf '%s\n' "$existing" | sed 's|^|  |' >&2
+        echo "  pass that path, or no path at all and it is used automatically" >&2
+        return 1
+    elif [ "$n_ex" -gt 1 ]; then
+        # Named explicitly and it exists, so the caller means it — but say what else is there
+        # rather than let one board's record stay split without a word.
+        echo "archive: note — this board has $n_ex archives; writing only to $ar"
+    fi
     # The archive note is CREATED when it does not exist, under --apply. Refusing was a
     # dead end: nothing in the package ever created one — not /brain-init, not install.sh —
     # and no prompt named its path, so the remedy prescribed for `taskboard-done` failed on
@@ -1482,7 +1544,11 @@ _budget_sessions() {
          p && /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { n++ }
          END { print n + 0 }' "$1"
 }
-_budget_ffc()   { _lc_section "$1" '^## For future Claude'; }
+# Both spellings, like every other matched name in this file. It read English only until
+# 2026-08-29, which no vault had yet exercised (all 13 `_PROJECT.md` head this section in
+# English) — but the presence test beside it names both, and a counter disagreeing with its
+# own presence test is how a section reads as present and measures zero.
+_budget_ffc()   { _lc_section "$1" '^## (For future Claude|Для будущего Claude)'; }
 # Both markers, always: projects write closed items as `- [x]` and as `- ✅`, and a
 # counter that knows one reports zero for a project using the other. Count inside Done
 # only — a closed sub-item under an open task is not an archivable entry.
@@ -1518,11 +1584,35 @@ _budget_prog() {
          END { print n + 0 }' "$1"
 }
 
-# prose-budget <_PROJECT.md> [taskboard.md]
+# A section the file does not HAVE is not a section of length zero. Every counter above
+# returns 0 for both, and 0 is inside every budget — so `prose-budget <taskboard.md>` printed
+# three `ok` lines (0/30, 0/5, 0/20) for a file carrying none of the sections, and a wrong
+# argument came out looking like a healthy project. The guard inside `report` catches a
+# counter that did not RUN; this is its twin, a counter that ran against a file it was never
+# given, and the twin was missed for as long as the guard existed. Reported from live use in
+# another project 2026-08-29 and reproduced here the same day.
+# Measured before making it fatal: all 13 `_PROJECT.md` in the live vault carry all three
+# sections, so refusing an absent one refuses nothing legitimate.
+_budget_or_absent() {  # <file> <heading regex> <counter fn> — the value, or the word absent
+    if grep -qE "$2" "$1"; then "$3" "$1"; else printf 'absent'; fi
+}
+
+# prose-budget <project dir | _PROJECT.md> [taskboard.md]
 #   exit 0 within budget · 2 over budget · 1 could not measure
+#
+# The directory form exists because the single-file form was the defect: one argument
+# measured `_PROJECT.md` and left the board unmeasured at exit 0, and the board is the half
+# that overruns. A caller that names the project names both files, and the listing is done
+# here rather than by a glob at the call site.
 prose_budget() {
     pm="${1:-}"; tb="${2:-}"
-    [ -n "$pm" ] || { echo "prose-budget: need <_PROJECT.md> [taskboard.md]" >&2; return 1; }
+    [ -n "$pm" ] || { echo "prose-budget: need <project dir | _PROJECT.md> [taskboard.md]" >&2; return 1; }
+    if [ -d "$pm" ]; then
+        pdir="$pm"
+        pm="$pdir/_PROJECT.md"
+        [ -f "$pm" ] || { echo "prose-budget: no _PROJECT.md in $pdir" >&2; return 1; }
+        [ -n "$tb" ] || { [ -f "$pdir/taskboard.md" ] && tb="$pdir/taskboard.md"; }
+    fi
     [ -f "$pm" ] || { echo "prose-budget: no such file: $pm" >&2; return 1; }
     over=0
     report() {  # <label> <value> <budget>
@@ -1532,6 +1622,8 @@ prose_budget() {
         # Hit live while writing it: _lc_section was nested inside lint_collect and
         # unreachable from here, and the first output said ok for both prose sections.
         case "$2" in
+            absent)      echo "prose-budget: '$1' — the file has no such section; that is not a zero" >&2
+                         over=2; return 1 ;;
             ''|*[!0-9]*) echo "prose-budget: counter '$1' returned no number ('$2') — nothing was measured" >&2
                          over=2; return 1 ;;
         esac
@@ -1542,28 +1634,39 @@ prose_budget() {
             printf 'ok              %s: %s/%s\n' "$1" "$2" "$3"
         fi
     }
-    report "_PROJECT.md Current state" "$(_budget_current "$pm")" "$BUDGET_CURRENT"
-    report "_PROJECT.md session list (entries)" "$(_budget_sessions "$pm")" "$BUDGET_SESSIONS"
-    report "_PROJECT.md For future Claude" "$(_budget_ffc "$pm")" "$BUDGET_FFC"
+    report "_PROJECT.md Current state" \
+           "$(_budget_or_absent "$pm" '^## (Current state|Статус)' _budget_current)" "$BUDGET_CURRENT"
+    report "_PROJECT.md session list (entries)" \
+           "$(_budget_or_absent "$pm" '^## (Last session|Последняя сессия)' _budget_sessions)" "$BUDGET_SESSIONS"
+    report "_PROJECT.md For future Claude" \
+           "$(_budget_or_absent "$pm" '^## (For future Claude|Для будущего Claude)' _budget_ffc)" "$BUDGET_FFC"
     if [ -z "$tb" ]; then
-        echo "taskboard.md                       not given — only the _PROJECT.md sections measured"
+        # Name the file that was NOT measured when one is sitting right there: a scope this
+        # command declined to cover is stated, never left to the caller to notice.
+        if [ -f "$(dirname "$pm")/taskboard.md" ]; then
+            echo "taskboard.md                       NOT MEASURED — one sits beside it: $(dirname "$pm")/taskboard.md"
+        else
+            echo "taskboard.md                       not given — only the _PROJECT.md sections measured"
+        fi
     elif [ ! -f "$tb" ]; then
         # NOT READ, never silence: "no taskboard" and "no overrun" are different facts.
         echo "taskboard.md                       NOT READ — no file at $tb"
     else
-        dn=$(_budget_done "$tb"); dnd=$(_budget_done_dated "$tb")
+        dn=$(_budget_or_absent "$tb" '^## (Done|Завершено)' _budget_done)
+        dnd=$(_budget_done_dated "$tb")
         report "taskboard Done (entries)" "$dn" "$BUDGET_DONE"
         # Never advise `archive` without saying how much of it archive can reach: the
         # advice was unactionable on every board whose entries are undated, and an
         # instruction the tool cannot carry out devalues the whole block of output.
-        if [ "$dn" -gt "$BUDGET_DONE" ]; then
+        if [ "$dn" != absent ] && [ "$dn" -gt "$BUDGET_DONE" ]; then
             if [ "$dnd" -eq 0 ]; then
                 echo "        of them archive can move: 0 — date them first: brain.sh backfill-dates $tb"
             else
                 echo "        of them archive can move: $dnd (the rest carry no date in the entry line)"
             fi
         fi
-        report "taskboard In progress (open items)" "$(_budget_prog "$tb")" "$BUDGET_PROG"
+        report "taskboard In progress (open items)" \
+               "$(_budget_or_absent "$tb" '^## (In progress|В работе)' _budget_prog)" "$BUDGET_PROG"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
@@ -2906,8 +3009,15 @@ case "${1:-}" in
                         done
                         catalog "$cat_v" "$cat_p" ;;
     archive)            shift
-                        a_tb="${1:-}"; a_ar="${2:-}"; a_before=""; a_apply=""
-                        shift 2 2>/dev/null
+                        a_tb="${1:-}"; a_ar=""; a_before=""; a_apply=""
+                        shift 2>/dev/null || true
+                        # The archive path is optional, so position 2 is only a path when
+                        # it is not a flag — otherwise `--before` would be eaten as a name.
+                        case "${1:-}" in
+                            --*) : ;;
+                            "")  : ;;
+                            *)   a_ar="$1"; shift ;;
+                        esac
                         while [ $# -gt 0 ]; do
                             case "$1" in
                                 --before) shift; a_before="${1:-}" ;;

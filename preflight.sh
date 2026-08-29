@@ -1730,12 +1730,16 @@ else
     done
     # Verified by RUNNING it on a fixture rather than grepping shape: three outcomes must differ.
     fx=$(mktemp -d)
-    printf -- '---\nupdated: %s\n---\n## Current state\none line\n' "$PF_ANCIENT" > "$fx/_PROJECT.md"
+    # All three sections are present in every fixture below: a `_PROJECT.md` missing one is
+    # not a smaller `_PROJECT.md`, it is a different file, and prose-budget refuses it since
+    # 2026-08-29 — an absent section is not a zero. Each fixture still isolates ONE threshold;
+    # the other two sections are present and minimal.
+    printf -- '---\nupdated: %s\n---\n## Current state\none line\n\n## Последняя сессия\n2026-01-01 — one\n\n## For future Claude\n- one\n' "$PF_ANCIENT" > "$fx/_PROJECT.md"
     printf -- '# tb\n## In progress\n- [ ] one\n## Done\n- [x] 2020-08-01 done\n' > "$fx/taskboard.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 0 ] || missing+="within budget the exit code is not 0"$'\n'
     # over budget: inflate For future Claude past its threshold
-    { printf -- '---\nupdated: %s\n---\n## For future Claude\n' "$PF_ANCIENT"
+    { printf -- '---\nupdated: %s\n---\n## Current state\none line\n\n## Последняя сессия\n2026-01-01 — one\n\n## For future Claude\n' "$PF_ANCIENT"
       i=0; while [ $i -lt 40 ]; do echo "- line $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 2 ] || missing+="an overrun does not give exit 2"$'\n'
@@ -1756,10 +1760,29 @@ else
     grep -q 'session list (entries): 5/' <<<"$out" ||
         missing+="the session list is not measured in entries"$'\n'
     # Six entries must trip it even though they are fewer lines than five wordy ones.
-    { printf -- '---\nupdated: %s\n---\n## Последняя сессия\n' "$PF_ANCIENT"
+    { printf -- '---\nupdated: %s\n---\n## Current state\none line\n\n## For future Claude\n- one\n\n## Последняя сессия\n' "$PF_ANCIENT"
       i=0; while [ $i -lt 6 ]; do echo "2026-01-0$((i + 1)) — entry $i"; i=$((i + 1)); done; } > "$fx/_PROJECT.md"
     bash "$lb" prose-budget "$fx/_PROJECT.md" "$fx/taskboard.md" >/dev/null 2>&1
     [ $? -eq 2 ] || missing+="a sixth session entry does not trip the limit"$'\n'
+    # An absent section is not a zero. Every counter returns 0 for "the section is empty" and
+    # for "the file has no such section", and 0 is inside every budget — so `prose-budget
+    # <taskboard.md>` printed three `ok` lines (0/30, 0/5, 0/20) and a wrong argument read as a
+    # healthy project. Reported from live use in another project 2026-08-29. The sibling guard
+    # (a counter that did not RUN) had existed since the command was written and never covered
+    # this: same class, one file apart.
+    out=$(bash "$lb" prose-budget "$fx/taskboard.md" 2>&1); rc=$?
+    [ "$rc" -eq 1 ] || missing+="a file with none of the sections is not refused (rc=$rc) — a zero passed for health"$'\n'
+    grep -q 'no such section' <<<"$out" ||
+        missing+="the refusal does not say the section is absent, so it reads as a counter fault"$'\n'
+    # The directory form: one argument used to leave the board unmeasured at exit 0, and the
+    # board is the half that overruns.
+    out=$(bash "$lb" prose-budget "$fx" 2>&1); rc=$?
+    grep -q 'taskboard In progress' <<<"$out" ||
+        missing+="the project-directory form does not find the taskboard"$'\n'
+    # One file given: the board it did NOT measure must be named, never left silent.
+    out=$(bash "$lb" prose-budget "$fx/_PROJECT.md" 2>&1)
+    grep -q 'NOT MEASURED' <<<"$out" ||
+        missing+="a taskboard sitting beside the file is not named as unmeasured"$'\n'
     # a counter did not run: that is an error, not "within budget"
     sed 's|^_budget_ffc()   { _lc_section|_budget_ffc()   { _no_such_counter|' "$lb" > "$fx/broken.sh"
     if cmp -s "$fx/broken.sh" "$lb" || [ ! -s "$fx/broken.sh" ] || ! bash -n "$fx/broken.sh" 2>/dev/null; then
@@ -4039,6 +4062,24 @@ for sub in $subs; do
     grep -qxFe "$sub" <<<"$usage" ||
         missing_usage="${missing_usage:-}  brain.sh dispatches \`$sub\` and its usage text never names it"$'\n'
 done
+# The same obligation one level down, and the level where it had already failed: a FLAG the
+# code accepts must be named where a reader looks. `--scope` was dispatched by `lint-diff`
+# from the day it was written and appeared in the usage output zero times, so the only
+# document a session can reach described a command narrower than the one it was running.
+# This check saw nothing, because it asks whether the SUBCOMMAND is named — presence of the
+# name, never fidelity of the description, which is the gap this Block records three times.
+# Derived from the branches themselves, so the next flag is caught here rather than by
+# somebody remembering to extend a list.
+usage_txt=$(bash "$LIBSH" 2>&1)
+flags=$(grep -oE '^[[:space:]]+--[a-z][a-z-]*\)' "$LIBSH" |
+        sed -E 's/^[[:space:]]+//; s/\)$//' | LC_ALL=C sort -u)
+if [ -z "$flags" ]; then
+    fail "check 56 read no flag from lib/brain.sh — empty input, not a clean repo"
+fi
+for fl in $flags; do
+    grep -qFe "$fl" <<<"$usage_txt" ||
+        missing_usage="${missing_usage:-}  brain.sh accepts \`$fl\` and its usage text never names it"$'\n'
+done
 usage="$subs"
 missing=""
 n_sub=0
@@ -4490,6 +4531,71 @@ else
         fail "a finding can grow without the delta saying so" "$missing"
     else
         pass "every finding type declares whether it carries a magnitude, and a moved one is reported ($n_cnt types)"
+    fi
+fi
+
+# ─── 64. One board, one archive — a second one is refused, never created ─────
+# The archive path was a plain argument and nothing else, so every run that spelled it
+# differently opened its own file. Measured in a live project 2026-08-29: ONE board had
+# grown THREE archives — 92, 22 and 8 entries — each carrying the same header, none of them
+# saying it was not the only one, and the next run would have made a fourth. They were
+# merged by hand, and that board's header now carries a warning not to pass another name:
+# a workaround paid for in manual labour, which is what this package fixes in code.
+#
+# Nothing could see it. The existing coverage runs `archive` with ONE archive path and
+# asserts the entries moved — a fixture that never exercises the second path proves nothing
+# about it, the same gap that let a scoped `--seal` write out-of-scope findings for weeks.
+# So the fixtures here are the ones where a second archive is possible.
+missing=""
+if [ ! -f "$LIBSH" ]; then
+    fail "check 64: no lib/brain.sh — empty input, not a clean repo"
+else
+    av=$(mktemp -d); mkdir -p "$av/proj"
+    printf '# tb\n\n## In progress\n\n- [ ] open\n\n## Done\n\n- [x] 2026-01-05 old\n  body\n- [x] 2026-08-25 recent\n' > "$av/proj/taskboard.md"
+
+    # No archive named and none present: the name is derived, not demanded.
+    out=$(bash "$LIBSH" archive "$av/proj/taskboard.md" --before 2026-06-01 --apply 2>&1); rc=$?
+    [ "$rc" -eq 0 ] || missing+="  the archive argument is still mandatory (rc=$rc): ${out:-<no output>}"$'\n'
+    [ -f "$av/proj/taskboard-archive.md" ] ||
+        missing+="  no archive was derived beside the board"$'\n'
+
+    # THE ONE THAT MATTERS: a different name beside an existing archive must be refused,
+    # and must create nothing. A negative test, because the positive one was always green.
+    out=$(bash "$LIBSH" archive "$av/proj/taskboard.md" "$av/proj/other.md" --before 2026-09-01 --apply 2>&1); rc=$?
+    [ "$rc" -ne 0 ] ||
+        missing+="  a SECOND archive beside an existing one is accepted — this is the live defect"$'\n'
+    [ ! -f "$av/proj/other.md" ] ||
+        missing+="  the refused run created the second archive anyway"$'\n'
+    grep -qF 'taskboard-archive.md' <<<"$out" ||
+        missing+="  the refusal does not name the archive that already exists"$'\n'
+
+    # Naming the existing one is not a second archive and must still work.
+    out=$(bash "$LIBSH" archive "$av/proj/taskboard.md" "$av/proj/taskboard-archive.md" --before 2026-09-01 2>&1); rc=$?
+    [ "$rc" -eq 0 ] || missing+="  naming the existing archive is refused (rc=$rc): ${out:-<no output>}"$'\n'
+
+    # Two already there and none named: the tool cannot choose, so it must say so rather
+    # than pick. Picking silently is how the split becomes permanent.
+    cp "$av/proj/taskboard-archive.md" "$av/proj/second-archive.md"
+    out=$(bash "$LIBSH" archive "$av/proj/taskboard.md" --before 2026-09-01 2>&1); rc=$?
+    [ "$rc" -ne 0 ] ||
+        missing+="  two archives and no argument does not refuse — one of them is being chosen silently"$'\n'
+    grep -qF 'second-archive.md' <<<"$out" ||
+        missing+="  the refusal does not name both archives"$'\n'
+
+    # An archive is recognised by the header this command writes, never by its filename: a
+    # note merely called "archive" is not one, or every project with an archive-shaped name
+    # would be blocked from ever archiving.
+    rm -f "$av/proj/second-archive.md"
+    printf '# Some notes about the archive\n\nnot written by the tool\n' > "$av/proj/archive-notes.md"
+    out=$(bash "$LIBSH" archive "$av/proj/taskboard.md" "$av/proj/taskboard-archive.md" --before 2026-09-01 2>&1); rc=$?
+    [ "$rc" -eq 0 ] ||
+        missing+="  a note with 'archive' in its NAME is mistaken for an archive (rc=$rc)"$'\n'
+
+    rm -rf "$av"
+    if [ -n "$missing" ]; then
+        fail "one board can still grow a second archive" "$missing"
+    else
+        pass "archive derives its note, refuses to open a second one, and knows an archive by its header"
     fi
 fi
 

@@ -747,6 +747,47 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   its own release gate. Same family as the empty-producer rule already in this Block, seen
   from the other end: there the consumer must not read an empty producer as a clean result,
   here it must not read a silent one as a passing one.
+- **A section a file does not HAVE is not a section of length zero, and the difference is
+  invisible to every counter.** `prose-budget` guarded the case where a counter fails to
+  RUN — a non-numeric value, exit 1, "nothing was measured" — and was blind to its twin one
+  file away: given a `taskboard.md`, all three `_PROJECT.md` counters returned an honest 0,
+  and 0 is inside every budget, so the wrong argument printed `ok 0/30 · ok 0/5 · ok 0/20`
+  and exit 0. A failure indistinguishable from a healthy project, and the guard that would
+  have caught it had been sitting three lines above since the command was written. Reported
+  from live use in another project 2026-08-29 and reproduced here the same day. So a
+  measurement tests that its SUBJECT is present before reading its size, and reports absence
+  as a refusal, not as a small number. Measured before making it fatal — all 13 `_PROJECT.md`
+  in the vault carry all three sections, so nothing legitimate is refused; that measurement
+  is the step, not the decision to be strict. Second half, from the same fix: **a command
+  states the scope it declined to cover.** One argument left the taskboard unmeasured at
+  exit 0, and the board is the half that overruns; it now takes the project directory and
+  finds both files itself, and given one file it NAMES the board it did not measure.
+  Checked by preflight 25.
+- **A record whose ADDRESS is an argument gets a new record on every spelling.** This is
+  the registry rule one turn further: `connections-add` fixed "prose names a format but no
+  address" by putting the address in code, and `archive` still took the archive note's path
+  from the caller. Measured in a live project 2026-08-29: ONE board had grown **THREE**
+  archives — 92, 22 and 8 entries — each with the same header, none of them saying it was
+  not the only one, and the next run would have made a fourth; they were merged by hand, and
+  that board's own header now warns the reader not to pass another name. A workaround paid
+  for in manual labour is the shape of a defect that belongs in code. The path is derived
+  from the board, the argument stays for the case where the record was renamed, and a name
+  that would open a SECOND record beside an existing one is **refused** — an archive is
+  recognised by the header the tool writes, never by its filename, or a note merely called
+  "archive" would block the project forever. Note why nothing saw it: the existing fixtures
+  ran with one archive present, so the branch that creates the second never executed — the
+  same gap that let a scoped `--seal` write out-of-scope findings for weeks. Checked by
+  preflight 64.
+- **Every flag the code accepts is named where a reader looks, and check 56 guarded the
+  name rather than the description.** `lint-diff --scope` was dispatched from the day it was
+  written and appeared in the usage output zero times, while `release-check`'s usage still
+  described taking the code's identity from `HEAD` — retired 2026-08-26 in the same commit
+  that left the sentence standing. Both were invisible: 56 asks whether the SUBCOMMAND is
+  named in the usage and in the reference, which is presence, not fidelity, and this Block
+  already records that gap three times over. The flag half is checkable and derived from the
+  `--flag)` branches themselves, so the next flag reddens without anyone extending a list;
+  the prose half is not, and is the reason a behaviour change edits the usage text in the
+  same commit. Checked by preflight 56.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)
