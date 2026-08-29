@@ -799,6 +799,72 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   `--flag)` branches themselves, so the next flag reddens without anyone extending a list;
   the prose half is not, and is the reason a behaviour change edits the usage text in the
   same commit. Checked by preflight 56.
+- **A trait that exempts is DECLARED, never inferred — and the third candidate is the one
+  that teaches it.** `/brain-lint` demands a `[[../_PROJECT]]` backlink from every file in
+  `wiki/`, and briefs and preregistrations legitimately have none: they are instructions
+  that die with their run, not knowledge. Three ways to recognise them were tried, and two
+  were killed by measurement before the third held. `status:` outside the decision schema —
+  **56 wiki notes carry `status: active`** and are ordinary synthesis notes (2026-08-19).
+  The same plus an exception list — implemented and run: **18 findings against 3, nearly all
+  false**, sweeping decision notes whose `superseded`/`deprecated` are states of KNOWLEDGE
+  and `_arch/dimarch` notes with free-form statuses. And `tags:`, which is the closest call
+  and the most instructive — measured 2026-08-29, `audit` sits on **five ordinary goprofi
+  notes ABOUT audits** as well as on cadrika's five audit requests, so one tag names a
+  document and a note about one. What held: **inside `wiki/`, `type:` declares**, because
+  nobody else uses it — four files in the whole vault carried it, all four genuine documents
+  with a process. Such a file is inventoried by state and skips the three link rules; an
+  undeclared note in the same directory still owes its links. ⚠️ Never repair such a finding
+  by adding the backlink: an invented link is worse than an absent one, and this rule exists
+  precisely because the finding sat open for ten days rather than be closed that way.
+  Checked by preflight 48, whose fixture pairs a declared brief with an undeclared note
+  carrying the same tag — the exemption must not swallow the rule.
+  [[decision-a-lifecycle-document-declares-type-because-status-and-tags-are-carried-by-ordinary-notes]]
+- **A closed item outside `Done` is filed by nobody, and the fix is a fact rather than a
+  threshold.** `sweep-closed` walks `In progress` by construction — right for its job, since
+  that is the section the threshold measures — so an item ticked in `Backlog` stays there
+  for good. Estimated at seven on 2026-08-19 while reading for another purpose; **measured
+  2026-08-29 across the vault: 124** — 52 on this project's own board in 508 lines of
+  `Backlog`, 28 in goprofi, 23 and 20 in the dimarch pair. `closed-outside-done` names the
+  count and the sections. Two things it deliberately is not. Not a `--section` argument to
+  `sweep-closed`: that hands the caller the choice of where the tool looks, which is the
+  defect repaired in `archive` the same day. And not a size threshold on `Backlog` — refused
+  here for the **fifth** time on the same grounds, a queue is not debt. ⚠️ **Date before
+  moving:** most of those 124 carry no date, and an undated entry moved into `Done` creates
+  an overrun no number of `archive` runs can clear, which this Block classifies as a
+  permanent violation rather than a standard. `backfill-dates` now reads history across the
+  whole file — the revision that first shows an entry closed usually has it still in `In
+  progress`, which is the normal path, and scoping the search to `Done` looked only where
+  the entry ended up (`0 datable from 80 revisions` about an entry a commit plainly showed
+  closed). Checked by preflight 43, whose negative half proves an entry no revision shows
+  closed is still refused a date.
+  [[decision-a-closed-item-outside-done-is-reported-as-a-fact-because-the-queue-is-not-debt]]
+- **A record of a claim is stamped when the claim is CONFIRMED, not only when it changes.**
+  Step 5 of `/brain-save` stamped `updated:` on `architecture-map.md` only after a rewrite,
+  while `map-stale` fires as soon as the newest session log is younger than that stamp — so
+  after any session that touched no structure the finding fired **by construction**, and the
+  only way to clear it was the stamp the step forbade. Measured 2026-08-20: one file
+  changed, nothing added or renamed, Step 5 answered `ANSWER unchanged` honestly, and the
+  same run produced a NEW finding. Fifth always-firing signal this project has had to cut.
+  The step is now unconditional for code and mixed projects and only its writing half is
+  conditional; on that file `updated:` means *confirmed accurate as of*. The alternative —
+  teaching the finding to compare against structural change — is refused because the lint
+  would have to read the project's code, and the vault records no route to it, which is the
+  same constraint that makes `claude-md-audit` take its path as an argument. ⚠️ The failure
+  this introduces is stated in the step itself: do not stamp a map you did not read, because
+  a fresh date on an unread map is worse than a stale one — the finding that would have
+  caught it is now silent. Checked by preflight 42.
+  [[decision-the-map-is-stamped-when-it-is-confirmed-because-a-claim-nobody-reread-is-not-fresher]]
+- **A step's trace has more than one shape, and asking for one of them is a false MISSING.**
+  `save-report` asked whether a NEW session log appeared, so the second save inside one
+  session — which extends the log it already wrote — was reported as Step 1 leaving no
+  trace. Observed live twice, 2026-08-16 and 2026-08-29, on ordinary runs. A false red in
+  the one command written to make a skipped step visible is worse than no check at all: it
+  is the always-fires signal this project has cut five times, wearing the uniform of a
+  defect report. What qualifies the second shape has to be **the date in the log's name,
+  never its mtime** — an old log edited today is a correction to the record, not this
+  session's account, and accepting mtime would let a save with no log at all pass by
+  touching a file from July. Checked by preflight 42, in both directions, because the whole
+  risk is the second one.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

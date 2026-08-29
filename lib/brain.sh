@@ -825,10 +825,19 @@ function bfkey(s) {
 }'
 
 # Closed entry keys of one taskboard, read from stdin.
+# The HISTORY side is not scoped to Done, and the asymmetry with the `need` side below is
+# deliberate. `need` asks "which entries in Done lack a date", because Done is where archive
+# needs one. This asks "when did this text first appear closed", and the answer is often a
+# revision where the entry was still in `In progress` — that is the normal path: you tick it
+# where you were working, `sweep-closed` moves it later. Scoped to Done, the search looked
+# only where the entry ended up and reported `0 datable from 80 revisions` about an entry a
+# commit plainly showed closed. Found 2026-08-17 on this project's own board; goprofi's 34
+# of 34 dated only because that board happened to close items in Done already.
+# The negative test that must accompany it: an entry that was never `- [x]` stays `not`, or
+# the first line matching its text hands it a false date.
 _bf_keys() {
     awk "$_bf_key_awk"'
-        /^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
-        d && /^-[[:space:]]*(\[x\]|✅)/ { k = bfkey($0); if (k != "") print k }
+        /^-[[:space:]]*(\[x\]|✅)/ { k = bfkey($0); if (k != "") print k }
     '
 }
 
@@ -1525,7 +1534,7 @@ BUDGET_PROG=40
 # Every type the collector emits must appear in exactly one of these two lists; a new type
 # is a red until it is classified, which is what keeps the enumeration derived rather than
 # remembered.
-LINT_COUNTED="ambiguous-link current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress wiki-no-backlink wiki-no-links wiki-no-sibling"
+LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress wiki-no-backlink wiki-no-links wiki-no-sibling"
 # Not counted, and why: `stale-draft` is time elapsed, not debt; `scope-note` is an
 # inventory; the rest state a fact that is either true or absent and carry no number.
 LINT_UNCOUNTED="decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
@@ -2025,10 +2034,25 @@ save_report() {
     # ── 1. session log (Step 1) — owed unconditionally ───────────────────────
     logs=$(_sr_sel "$sr_new" "$project/sessions/" <<<"$changes" | grep '_session\.md$')
     n_logs=$(_sr_count "$logs")
+    # A second save inside one session extends the log it already wrote, so from the working
+    # tree the file is MODIFIED, not new — and asking only for a new file called that a
+    # missing step. Measured live 2026-08-29 on the second save of one session, the second
+    # observation of it (first 2026-08-16). A false MISSING is worse than no check: this
+    # report exists to be read, and a line that cries wolf on an ordinary run is the signal
+    # this project has had to cut five times.
+    # The date in the NAME is what qualifies a modified log, never the mtime: an old log
+    # edited today is a correction to the record, not this session's account, and counting
+    # it would let a save with no log at all pass by touching a file from July.
+    if [ "$n_logs" -eq 0 ]; then
+        logs=$(_sr_sel mod "$project/sessions/" <<<"$changes" |
+               grep "/$(date +%Y-%m-%d)_[0-9]*_session\.md$")
+        n_logs=$(_sr_count "$logs")
+        [ "$n_logs" -gt 0 ] && sr_log_note=" (extended, not new — a later save in the same session)"
+    fi
     if [ "$n_logs" -gt 0 ]; then
-        verdict ok "session log" "$(printf '%s' "$logs" | tr '\n' ' ')"
+        verdict ok "session log" "$(printf '%s' "$logs" | tr '\n' ' ')${sr_log_note:-}"
     else
-        verdict MISSING "session log" "no new file under $project/sessions/ — Step 1 left no trace"
+        verdict MISSING "session log" "no new file under $project/sessions/, and no log named for today was edited — Step 1 left no trace"
     fi
 
     # ── 2. wiki notes (Step 2) ───────────────────────────────────────────────
@@ -2144,7 +2168,16 @@ save_report() {
             elif [ ! -f "$vault/$amap" ]; then
                 verdict MISSING "architecture map" "type: $ptype and no architecture-map.md exists"
             else
-                verdict ANSWER "architecture map" "unchanged (type: $ptype) — say whether the structure moved"
+                # MISSING, not ANSWER, since 2026-08-29: Step 5 became UNCONDITIONAL for a
+                # code or mixed project — only its rewriting half is conditional, and the
+                # stamp is owed either way, because on this file `updated:` means "confirmed
+                # accurate as of" rather than "changed on". Before that the step stamped
+                # only after a rewrite while `map-stale` fired as soon as the newest session
+                # log was younger than the stamp, so the finding fired by construction after
+                # every session that touched no structure and the only way to clear it was
+                # the stamp the step forbade. An ANSWER here would leave the new obligation
+                # as prose, which is how this project shipped the same class three times.
+                verdict MISSING "architecture map" "unchanged (type: $ptype) — Step 5 stamps updated: on a map it CONFIRMED, not only on one it rewrote"
             fi ;;
         "") verdict ANSWER "architecture map" "_PROJECT.md declares no type: — say whether the map applies" ;;
         *)  _sr_line "n/a" "architecture map" "type: $ptype — Step 5 does not apply" ;;
@@ -2685,6 +2718,24 @@ EOF
         done <<EOF
 $(find "$P" -maxdepth 2 -name '*.md' -not -path "*/wiki/*" -not -path "*/sessions/*" 2>/dev/null)
 EOF
+        # Inside wiki/ the declaration is `type:`, and it has to be, because the two
+        # cheaper traits were killed by measurement. `status:` is carried by 56 ordinary
+        # synthesis notes (measured 2026-08-19), so a rule reading it would sweep them all;
+        # `tags:` is no better — measured 2026-08-29, `audit` sits on five ordinary
+        # goprofi notes ABOUT audits as well as on cadrika's five audit requests, so the
+        # same tag names a document and a note about one. `type:` is carried by nobody
+        # else: four files in the whole vault, all four genuine documents with a process.
+        # Same conclusion the 08-19 measurement reached and the delta's magnitude rule
+        # reached independently — a trait is DECLARED, never inferred.
+        while IFS= read -r lf; do
+            [ -n "$lf" ] || continue
+            ltp=$(_lc_fm "$lf" type)
+            [ -n "$ltp" ] || continue
+            lst=$(_lc_fm "$lf" status); lcl=$(_lc_fm "$lf" closed)
+            LIFECYCLE="$LIFECYCLE ${lf#./}=${ltp}${lst:+/$lst}${lcl:+@$lcl}"
+        done <<EOF
+$(find "$P/wiki" -maxdepth 1 -name '*.md' 2>/dev/null)
+EOF
     done 3<<EOF
 $PROJECTS
 EOF
@@ -2773,6 +2824,21 @@ EOF
             dnd=$(_budget_done_dated "$tb")
             [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
             [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s open items\n' "$P" "$prog"
+            # A closed item outside Done is filed by nobody, ever. `sweep-closed` walks
+            # `In progress` by construction — right for its job, since that is the section
+            # the threshold measures — so a task ticked in `Backlog` stays there for good.
+            # Measured 2026-08-29: 52 such items on this board alone (508 lines of Backlog),
+            # 28 in goprofi, 23 and 20 in the dimarch pair — against an estimate of seven
+            # made on 08-19 by reading for another purpose. Deliberately a FACT and not a
+            # threshold: the queue is not debt, and a size threshold on Backlog has been
+            # refused here on the same grounds a fifth time. It names the sections so the
+            # answer is actionable without opening the file.
+            cod=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); if (!d) s = $0; next }
+                       !d && /^-[[:space:]]*(\[x\]|✅)/ { c++; seen[s] = 1 }
+                       END { n = ""; for (k in seen) { sub(/^#+[[:space:]]*/, "", k); n = n (n ? ", " : "") k }
+                             print (c + 0) "\t" n }' "$tb")
+            cod_n=${cod%%	*}; cod_s=${cod#*	}
+            [ "$cod_n" -gt 0 ] && printf 'closed-outside-done:%s\t%s closed items outside Done — nothing files them: %s\n' "$P" "$cod_n" "$cod_s"
         fi
 
         am="$P/architecture-map.md"
@@ -2884,7 +2950,15 @@ EOF
     : > "$LC_TMP/links"
     printf '%s\n' "$SCOPED_MD" | grep '/wiki/' | while read -r p; do
         base=$(basename "$p" .md)
+        # An archive is a registry the tool writes, not a note somebody authored. The name
+        # is a weaker signal than a declaration and stays only because existing archives
+        # predate `type:`; a new one declares `type: archive` and is caught below.
         case "$base" in archive-*) continue ;; esac
+        # A document with a process is not a wiki note: it is an instruction that dies with
+        # its run, so a backlink to _PROJECT says nothing about it and a sibling link would
+        # be invented to satisfy a count — which this project forbids in so many words.
+        # It is reported by state in the lifecycle inventory above instead.
+        [ -n "$(_lc_fm "$p" type)" ] && continue
         proj=$(printf '%s' "${p#./}" | sed 's|/wiki/.*||')
         tg=$(grep -oE '\[\[[^]|]+' "$(_lc_clean "$p")" | sed 's/^\[\[//')
         sib=$(printf '%s\n' "$tg" | grep -v '_PROJECT$' | grep -c .)

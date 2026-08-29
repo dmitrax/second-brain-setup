@@ -2922,8 +2922,18 @@ else
     # brain-version and not updated, and the report said ok twice.
     grep -q 'MISSING  updated' <<<"$sr_out" ||
         missing+="_PROJECT.md older than this session's own log is not reported"$'\n'
-    grep -q 'ANSWER   architecture map' <<<"$sr_out" ||
-        missing+="an untouched map in a mixed project does not ask for an answer"$'\n'
+    # Since 2026-08-29 Step 5 is unconditional for a code or mixed project: the stamp is
+    # owed after a rewrite AND after reading the map and finding it still correct, because
+    # on that file `updated:` means "confirmed accurate as of". So an untouched map is a
+    # MISSING step, not a question — an ANSWER would leave the obligation as prose.
+    grep -q 'MISSING  architecture map' <<<"$sr_out" ||
+        missing+="an untouched map in a mixed project is not reported as a missing step"$'\n'
+    grep -qF 'CONFIRMED' <<<"$sr_out" ||
+        missing+="the map verdict does not say the stamp means confirmation, so the reader learns the old rule"$'\n'
+    grep -qF 'confirmed accurate as of' "$SCRIPT_DIR/commands/brain-save.md" ||
+        missing+="Step 5 does not state what updated: means on the map"$'\n'
+    grep -qF 'do not stamp it' "$SCRIPT_DIR/commands/brain-save.md" ||
+        missing+="Step 5 does not forbid stamping a map that was not read"$'\n'
     # ANSWER must NOT set the exit code on its own: a warning that fires every run stops
     # being read, and an ordinary save legitimately leaves conditional steps untouched.
     git -C "$srv" checkout -q . 2>/dev/null; git -C "$srv" clean -qfd 2>/dev/null
@@ -2975,6 +2985,48 @@ else
     grep -q 'step skipped' "$sr_md" ||
         missing+="brain-save.md does not require a MISSING step to be named in the Result"$'\n'
 fi
+# A second save inside one session EXTENDS the log it already wrote, so from the working tree
+# that file is MODIFIED, not new — and asking only for a new file called Step 1 a missing
+# step. Observed live twice on ordinary runs, 2026-08-16 and 2026-08-29. A false red in the
+# one command written to make a skipped step visible is worse than no check: it is the
+# always-fires signal this project has cut five times, wearing the uniform of a defect report.
+# Its own fixture, deliberately: the earlier assertions share one working tree, and a check
+# that commits or reverts inside it changes what the assertions after it are measuring —
+# which is exactly what the first draft of this block did, reddening three of them.
+xl=$(mktemp -d)
+if git -C "$xl" init -q . 2>/dev/null; then
+    git -C "$xl" config user.email t@t; git -C "$xl" config user.name t
+    mkdir -p "$xl/proj/wiki" "$xl/proj/sessions" "$xl/00-system"
+    printf -- '---\nproject: proj\ntype: content\nstatus: active\nbrain-version: "x"\nupdated: %s\n---\n## Current state\nx\n' "$PF_FRESH" > "$xl/proj/_PROJECT.md"
+    printf -- '# board\n## In progress\n' > "$xl/proj/taskboard.md"
+    printf -- '# index\n- [[proj/_PROJECT]]\n' > "$xl/00-system/index.md"
+    # Literally TODAY, because that is what the rule reads — `$PF_FRESH` is thirteen days
+    # back, which is "fresh" for an age threshold and not for "this session's log". Computed,
+    # never written as a literal, so the fixture-date rule (check 41) still holds.
+    xl_today=$(date +%Y-%m-%d)
+    printf -- '---\ndate: %s\n---\ntoday body\n' "$xl_today" > "$xl/proj/sessions/${xl_today}_1200_session.md"
+    printf -- '---\ndate: %s\n---\nold body\n' "$PF_ANCIENT" > "$xl/proj/sessions/${PF_ANCIENT}_0900_session.md"
+    git -C "$xl" add -A >/dev/null 2>&1; git -C "$xl" commit -qm base >/dev/null 2>&1
+    # (a) today's log extended — a trace, and the report must say which shape it found
+    echo 'a later section' >> "$xl/proj/sessions/${xl_today}_1200_session.md"
+    xl_a=$(bash "$LIBSH" save-report "$xl" proj 2>&1)
+    grep -q 'ok       session log' <<<"$xl_a" ||
+        missing+="an extended log from a second save in one session reads as a missing step"$'\n'
+    grep -qF 'extended, not new' <<<"$xl_a" ||
+        missing+="the report does not say the log was extended rather than created"$'\n'
+    git -C "$xl" checkout -- . >/dev/null 2>&1
+    # (b) the direction that carries the risk: an OLD log edited today is a correction to the
+    # record, not this session's account. Accepting it would let a save with no log at all
+    # pass by touching a file from July, so the date in the NAME decides, never the mtime.
+    echo 'a correction to an old record' >> "$xl/proj/sessions/${PF_ANCIENT}_0900_session.md"
+    xl_b=$(bash "$LIBSH" save-report "$xl" proj 2>&1)
+    grep -q 'MISSING  session log' <<<"$xl_b" ||
+        missing+="editing an OLD log passes for this session's account — the date in the name is not being read"$'\n'
+else
+    gap "the extended-log shape in save-report (check 42) — git could not init a fixture here"
+fi
+rm -rf "$xl"
+
 if [ -n "$missing" ]; then
     fail "a skipped save step can still read as a successful save" "$missing"
 else
@@ -3065,6 +3117,42 @@ else
         missing+="a board in a subdirectory finds no history — the pathspec is resolved from the wrong root"$'\n'
     rm -rf "$ng"
 fi
+# History is read across the WHOLE file, not only under `## Done`. The normal path is to
+# tick an item where you were working — in `In progress` — and let `sweep-closed` move it
+# later, so the revision that first shows it closed usually has it outside Done. Scoped to
+# Done, the search looked only where the entry ended up: measured 2026-08-17 on this
+# project's own board, `0 datable from 80 revisions` about an entry `939d7b3` plainly shows
+# closed. goprofi's 34 of 34 dated only because that board closed items in Done already,
+# which is why the defect survived a run that looked like proof.
+bh=$(mktemp -d)
+if git -C "$bh" init -q . 2>/dev/null; then
+    git -C "$bh" config user.email t@t; git -C "$bh" config user.name t
+    printf -- '## In progress\n- [ ] delta task\n\n## Done\n' > "$bh/taskboard.md"
+    git -C "$bh" add -A
+    GIT_AUTHOR_DATE='2026-04-01T10:00:00' GIT_COMMITTER_DATE='2026-04-01T10:00:00' \
+        git -C "$bh" commit -qm r1
+    # ticked WHERE IT WAS WORKED ON — never in Done in this revision
+    printf -- '## In progress\n- [x] delta task\n\n## Done\n' > "$bh/taskboard.md"
+    git -C "$bh" add -A
+    GIT_AUTHOR_DATE='2026-04-09T10:00:00' GIT_COMMITTER_DATE='2026-04-09T10:00:00' \
+        git -C "$bh" commit -qm r2
+    # swept into Done, undated — plus one entry no revision ever shows closed
+    printf -- '## In progress\n\n## Done\n- [x] delta task\n- [x] epsilon never in history\n' > "$bh/taskboard.md"
+    git -C "$bh" add -A
+    GIT_AUTHOR_DATE='2026-04-20T10:00:00' GIT_COMMITTER_DATE='2026-04-20T10:00:00' \
+        git -C "$bh" commit -qm r3
+    printf -- '## In progress\n\n## Done\n- [x] delta task\n- [x] epsilon never in history\n- [x] zeta uncommitted\n' > "$bh/taskboard.md"
+    bhout=$(bash "$LIBSH" backfill-dates "$bh/taskboard.md" 2>&1)
+    grep -qFe '2026-04-09  delta task' <<<"$bhout" ||
+        missing+="an entry closed while it was still in In progress is not datable: ${bhout:-<no output>}"$'\n'
+    # The negative that makes the widening safe: an entry no revision shows closed must stay
+    # `not`, or the first line matching its text hands it a date it never earned.
+    grep -qFe 'no commit shows this entry closed: zeta uncommitted' <<<"$bhout" ||
+        missing+="an entry absent from history is given a date — the widened search fabricates one"$'\n'
+else
+    gap "the whole-file history search in backfill-dates (check 43) — git could not init a fixture here"
+fi
+rm -rf "$bh"
 rm -rf "$bf"
 if [ -n "$missing" ]; then
     fail "backfill-dates cannot recover a closing date, or damages the board doing it" "$missing"
@@ -3110,6 +3198,35 @@ grep -q 'archive can move: 25' <<<"$out" ||
 lc_out=$(cd "$tc" 2>/dev/null && bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/dated.md" 2>&1)
 [ "$out" = "$lc_out" ] || missing+="prose-budget is not deterministic on the same input"$'\n'
 rm -rf "$tc"
+# A closed item outside `Done` is filed by nobody: `sweep-closed` walks `In progress` by
+# construction. Estimated at seven on 2026-08-19 while reading for another purpose, measured
+# at 124 across the vault on 2026-08-29 — 52 on this project's own board alone. Reported as a
+# FACT with its sections named, never as a threshold: a queue is not debt, and a size limit
+# on Backlog has now been refused here five times. The fixture pairs the two directions,
+# because the whole risk is over-reach: a closed item in Done must not be counted, or the
+# finding fires on every healthy board forever.
+cx=$(mktemp -d); mkdir -p "$cx/proj/wiki" "$cx/proj/sessions" "$cx/00-system"
+printf -- '---\nproject: proj\nstatus: active\n---\n## Current state\nx\n' > "$cx/proj/_PROJECT.md"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$cx/00-system/index.md"
+printf -- '# board\n\n## In progress\n\n- [ ] open one\n\n## Backlog\n\n- [x] closed in the queue\n- ✅ closed with the other marker\n\n## Done\n\n- [x] 2026-01-01 properly filed\n' \
+    > "$cx/proj/taskboard.md"
+cx_out=$(bash "$LIBSH" lint-collect "$cx" 2>&1)
+cx_line=$(grep -Fe 'closed-outside-done:' <<<"$cx_out")
+if [ -z "$cx_line" ]; then
+    missing+="a closed item outside Done is not reported at all"$'\n'
+else
+    # Both markers, as everywhere else: projects write `- [x]` and `- ✅`.
+    grep -qEe 'closed-outside-done:proj[[:space:]]+2 closed' <<<"$cx_line" ||
+        missing+="the count is wrong or knows only one closed marker: $cx_line"$'\n'
+    grep -qFe 'Backlog' <<<"$cx_line" ||
+        missing+="the sections are not named, so the answer cannot be acted on without opening the file"$'\n'
+    grep -qFe 'Done' <<<"${cx_line#*—}" &&
+        missing+="an item already in Done is counted — the finding would fire on every healthy board"$'\n'
+fi
+# It must stay a fact. A threshold on the queue is the fifth refusal of the same shape.
+grep -qEe '^backlog-(size|budget):' <<<"$cx_out" &&
+    missing+="a size threshold on Backlog appeared — a queue is not debt"$'\n'
+rm -rf "$cx"
 if [ -n "$missing" ]; then
     fail "a taskboard threshold measures the writing style, or advises what the tool cannot do" "$missing"
 else
@@ -3358,6 +3475,17 @@ printf -- '---\nstatus: processed\n---\naudit\n' > "$lv/proj/audits/audit-reques
 printf -- '---\nstatus: accepted\ndate: %s\n---\n[[../_PROJECT|_PROJECT]] [[other]]\n' "$PF_ANCIENT" \
     > "$lv/proj/wiki/decision-something.md"
 printf -- '---\nstatus: stable\ndate: %s\n---\nconcept\n' "$PF_ANCIENT" > "$lv/proj/concept-note.md"
+# Inside wiki/ the trait is DECLARED by `type:`, never inferred. Both cheaper candidates
+# were killed by measurement — `status:` is carried by 56 ordinary synthesis notes
+# (2026-08-19), and `tags:` is no better, since `audit` sits on five notes ABOUT audits as
+# well as on five audit requests (2026-08-29). So the fixture pairs them: a declared brief
+# in wiki/ with no links at all, which must be inventoried and must NOT be reported as a
+# note missing its backlink; and an undeclared note carrying the same tag and a free-form
+# status, which must stay an ordinary note and keep owing its links.
+printf -- '---\ntype: prereg\nstatus: recorded before the first run\n---\nno links here at all\n' \
+    > "$lv/proj/wiki/prereg-in-wiki.md"
+printf -- '---\ntags: [audit, method]\nstatus: draft\ndate: %s\n---\nan ordinary note about an audit\n' "$PF_ANCIENT" \
+    > "$lv/proj/wiki/note-about-an-audit.md"
 printf -- '---\ndate: %s\n---\nlog\n' "$PF_ANCIENT" > "$lv/proj/sessions/${PF_ANCIENT}_1000_session.md"
 printf -- '# index\n- [[proj/_PROJECT]]\n' > "$lv/00-system-index-stub.md"
 mkdir -p "$lv/00-system"; printf -- '# index\n- [[proj/_PROJECT]]\n' > "$lv/00-system/index.md"
@@ -3381,7 +3509,20 @@ else
         missing+="_PROJECT.md is reported — a project is not a document with a run"$'\n'
     grep -qFe 'concept-note' <<<"$lline" &&
         missing+="knowledge (status: stable) is reported as process state"$'\n'
+    grep -qFe 'prereg-in-wiki.md=prereg' <<<"$lline" ||
+        missing+="a document declaring type: inside wiki/ is not inventoried — the declaration is ignored"$'\n'
+    grep -qFe 'note-about-an-audit' <<<"$lline" &&
+        missing+="an undeclared note is inventoried on its tags — the trait is being inferred again"$'\n'
 fi
+# The declaration EXEMPTS, and that is the half the finding was raised about: a brief owes
+# no backlink, because a link to _PROJECT says nothing about an instruction that dies with
+# its run and a sibling link would be invented to reach a count. The undeclared note in the
+# same directory must still be counted, or the exemption has swallowed the rule.
+lwiki=$(grep -Ee '^wiki-no-(links|backlink|sibling):' <<<"$lout")
+grep -qFe '2 notes' <<<"$lwiki" &&
+    missing+="the declared document is still counted as a note missing links"$'\n'
+grep -qEe '^wiki-no-links:proj\s+1 notes' <<<"$lwiki" ||
+    missing+="the undeclared note stopped owing its links — the exemption is too wide"$'\n'
 # It must stay a scope note: a threshold here would fire on a brief that is legitimately open.
 grep -qEe '^(stale-brief|lifecycle-stale):' <<<"$lout" &&
     missing+="an age threshold on lifecycle documents appeared — a brief may stay open for weeks"$'\n'

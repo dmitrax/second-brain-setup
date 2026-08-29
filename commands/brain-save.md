@@ -542,16 +542,32 @@ The numbers are the same numbers `/brain-lint` prints — one implementation, in
 
 ## Step 5: Update architecture map (code / mixed projects only)
 
-If this is a code or mixed project AND the codebase structure changed in this session
-(new routes, modules, components, data sources, integrations, moved files):
+Skip this step entirely for content and config projects. For a code or mixed project it is
+UNCONDITIONAL, and only the writing half is conditional.
 
-Rewrite `$VAULT/$PROJECT/architecture-map.md` in place — update the affected rows
-or sections. Do not append. If `architecture-map.md` does not exist yet, create it
-using the project's current structure.
+If the codebase structure changed in this session (new routes, modules, components, data
+sources, integrations, moved files): rewrite `$VAULT/$PROJECT/architecture-map.md` in place
+— update the affected rows or sections. Do not append. If `architecture-map.md` does not
+exist yet, create it using the project's current structure.
 
-Update the `updated:` field in its frontmatter to today's date.
+**Then stamp `updated:` to today either way — after a rewrite, and after reading the map and
+finding it still correct.** On this file `updated:` means *confirmed accurate as of*, not
+*changed on*: a map is a claim about the code, and a claim nobody re-read is not fresher for
+having been left alone. The old wording stamped only on a rewrite, which put this step in
+direct contradiction with the `map-stale` finding — that finding fires as soon as the newest
+session log is younger than the map, so after any session that touched no structure it fired
+by construction, and the only way to clear it was the stamp this step forbade. Measured
+2026-08-20: one session changed a single file, Step 5 answered `unchanged` honestly, and the
+same run produced a NEW finding. This project has cut four always-firing signals already.
 
-Skip this step entirely for content and config projects.
+The alternative — teaching `map-stale` to compare against structural change instead of
+session dates — is refused, and for a reason already settled elsewhere: the lint would have
+to read the project's code, and the vault records no route to it. That is why
+`claude-md-audit` takes its path as an argument rather than guessing one, and the same
+constraint applies here.
+
+If you did not read the map, do not stamp it. An unread map with a fresh date is worse than
+a stale one, because the finding that would have caught it is now silent.
 
 ## Step 6: Update index.md
 
