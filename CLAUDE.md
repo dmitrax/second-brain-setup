@@ -863,8 +863,12 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   defect report. What qualifies the second shape has to be **the date in the log's name,
   never its mtime** — an old log edited today is a correction to the record, not this
   session's account, and accepting mtime would let a save with no log at all pass by
-  touching a file from July. Checked by preflight 42, in both directions, because the whole
-  risk is the second one.
+  touching a file from July. **The same shape one step over, and it bit on the very save that
+  introduced this rule:** an architecture map stamped in an earlier save of the same session
+  was committed then, so the next save read it as untouched — and since `updated:` there
+  means *confirmed accurate as of*, a date of today IS the confirmation however many saves
+  the session has made. An ancient stamp still is not. Checked by preflight 42, both shapes
+  and both directions, because in each case the whole risk is the second one.
 - Do not rename existing vault folders (breaks wikilinks in active vaults)
 - Do not reduce backward compatibility within a MAJOR version
 - Any guard function that shells out to an optional external CLI (e.g. `_obsidian_available()`)

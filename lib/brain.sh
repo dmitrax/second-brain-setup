@@ -2163,8 +2163,16 @@ save_report() {
     amap="$project/architecture-map.md"
     case "$ptype" in
         code|mixed)
+            # `updated:` already carrying today is a trace in its own right, and the git
+            # diff cannot see it: a map stamped in an earlier save of the SAME session was
+            # committed then, so this save reads it as untouched. Identical to the session
+            # log one step over — found the same day, by this report running on its own
+            # save. Since the stamp means "confirmed accurate as of", a date of today IS
+            # the confirmation, however many saves the session has made.
             if [ -n "$(_sr_sel any "$amap" <<<"$changes")" ]; then
                 verdict ok "architecture map" "updated"
+            elif [ "$(_lc_fm "$vault/$amap" updated)" = "$(date +%Y-%m-%d)" ]; then
+                verdict ok "architecture map" "already stamped today — confirmed in an earlier save of this session"
             elif [ ! -f "$vault/$amap" ]; then
                 verdict MISSING "architecture map" "type: $ptype and no architecture-map.md exists"
             else

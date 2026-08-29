@@ -10,6 +10,50 @@ and the [implementation guide](https://t.me/alex_magnier) by @alex_magnier.
 
 ---
 
+## What makes this different
+
+Most second brains are a place to put notes. This one is a memory with a **contract**, and
+the contract is executable.
+
+- **Every rule the project states has a machine check.** A rule that lives only as prose
+  survives exactly as long as the next session's attention — this repo shipped the same
+  class of bug three separate times before that became a rule. `preflight.sh` checks the
+  repository against every mechanical rule in `CLAUDE.md` and installs into a clean
+  temporary `$HOME` before a release is allowed.
+- **The checks are themselves tested.** `preflight.sh --mutate` guts each function in
+  `lib/` in turn and requires the gate to go red. It exists because a gate that was green
+  that same morning stayed green when the guarded behaviour was cut out of **8 of its
+  checks** — the count was measuring the presence of checks, not their strength.
+- **Release conditions are measured, not attested.** `brain.sh release-check` runs the lint
+  against the live vault and reports the delta, then looks for a session in **another**
+  project that has actually used the installed code. It was added after a soak condition
+  was declared met by the very session that wrote the code it was judging.
+- **A save reports what it left on disk, not what it meant to do.** `brain.sh save-report`
+  reads the vault's working tree and gives every step one of four verdicts. It was written
+  after a save ran eight of its twelve steps and reported success.
+- **Thresholds are measured before adoption and removed when they fire always.** Several
+  metrics have been cut for exactly that: a warning that fires on most runs stops being
+  read. Each removal is stated out loud, because a metric that disappears silently is
+  indistinguishable from debt somebody cleared.
+- **Rejections are recorded with the number that killed them.** Ideas that look right and
+  measure wrong are written down as refusals, so they are not re-proposed a year later —
+  including borrowed mechanisms that work elsewhere and do not transfer here.
+
+The trade-off is deliberate: this is slower to change than a folder of notes, and it is
+meant for knowledge you will still rely on in six months.
+
+## What it deliberately does not do
+
+- No external dependencies. Whatever `install.sh` ships runs with nothing you must install
+  first. (The release gate alone needs PyYAML; it is never shipped.)
+- No inference where a declaration will do. A trait that exempts a file from a rule is
+  declared in its frontmatter, never guessed from its name, tags or status — every attempt
+  to guess produced more false findings than real ones.
+- No size thresholds on things that grow legitimately. Rules grow, queues grow, decision
+  lists grow; measuring them punishes good practice.
+
+---
+
 ## The problem
 
 Claude Code has no memory between sessions. Every time you start a new session,

@@ -3022,6 +3022,27 @@ if git -C "$xl" init -q . 2>/dev/null; then
     xl_b=$(bash "$LIBSH" save-report "$xl" proj 2>&1)
     grep -q 'MISSING  session log' <<<"$xl_b" ||
         missing+="editing an OLD log passes for this session's account — the date in the name is not being read"$'\n'
+    # The same shape one step over, and it bit on the very save that introduced the rule:
+    # a map stamped in an EARLIER save of the same session was committed then, so this save
+    # reads it as untouched. Since `updated:` means "confirmed accurate as of", a date of
+    # today IS the confirmation however many saves the session has made.
+    mkdir -p "$xl/mx/wiki" "$xl/mx/sessions"
+    printf -- '---\nproject: mx\ntype: mixed\nstatus: active\nbrain-version: "x"\nupdated: %s\n---\n## Current state\nx\n' "$xl_today" > "$xl/mx/_PROJECT.md"
+    printf -- '# board\n## In progress\n' > "$xl/mx/taskboard.md"
+    printf -- '---\nupdated: %s\n---\n# map\n' "$xl_today" > "$xl/mx/architecture-map.md"
+    printf -- '---\ndate: %s\n---\nlog\n' "$xl_today" > "$xl/mx/sessions/${xl_today}_1300_session.md"
+    git -C "$xl" add -A >/dev/null 2>&1; git -C "$xl" commit -qm mx >/dev/null 2>&1
+    echo 'edit' >> "$xl/mx/_PROJECT.md"
+    xl_c=$(bash "$LIBSH" save-report "$xl" mx 2>&1)
+    grep -q 'ok       architecture map' <<<"$xl_c" ||
+        missing+="a map already stamped today reads as a missing step — the same defect as the log, one step over"$'\n'
+    # And the direction that must NOT be swallowed: a map stamped long ago is still missing.
+    printf -- '---\nupdated: %s\n---\n# map\n' "$PF_ANCIENT" > "$xl/mx/architecture-map.md"
+    git -C "$xl" add -A >/dev/null 2>&1; git -C "$xl" commit -qm old-map >/dev/null 2>&1
+    echo 'edit again' >> "$xl/mx/_PROJECT.md"
+    xl_d=$(bash "$LIBSH" save-report "$xl" mx 2>&1)
+    grep -q 'MISSING  architecture map' <<<"$xl_d" ||
+        missing+="an ancient stamp passes for confirmation — the exemption is too wide"$'\n'
 else
     gap "the extended-log shape in save-report (check 42) — git could not init a fixture here"
 fi
