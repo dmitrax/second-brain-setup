@@ -3260,10 +3260,33 @@ printf -- '---\nupdated: %s\n---\n## Current state\nx\n' "$PF_ANCIENT" > "$tc/_P
       i=$((i + 1)); done
   echo '## Done'; } > "$tc/verbose.md"
 out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/verbose.md" 2>&1)
-grep -q 'In progress (open items): 5/' <<<"$out" ||
+grep -q 'In progress (largest block): 5/' <<<"$out" ||
     missing+="a board of 5 well-justified tasks is not measured as 5 items"$'\n'
 grep -q 'OVER.*In progress' <<<"$out" &&
     missing+="200 lines of justification for 5 tasks reads as an overrun"$'\n'
+# The re-aim of 2026-08-30, and the case that tells it apart from the summed form it
+# replaced: a board far past the budget in TOTAL whose work sits in small blocks is not
+# debt, it is a long board. The sum mixed "how much is not cleared" with "how much is
+# planned" and neither candidate on record fixed it — measured on the two boards it ever
+# accused, by priority marker 218 -> 135 and by dropping the plan sections 218 -> 187, both
+# still over. A block cannot mix the two by construction.
+{ echo '## In progress'
+  b=0; while [ $b -lt 8 ]; do echo "### block $b"
+      i=0; while [ $i -lt 8 ]; do echo "- [ ] task $b-$i"; i=$((i + 1)); done
+      b=$((b + 1)); done
+  echo '## Done'; } > "$tc/spread.md"
+out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/spread.md" 2>&1)
+grep -q 'In progress (largest block): 8/' <<<"$out" ||
+    missing+="64 open items in blocks of 8 are still summed — the metric measures the section, not the block"$'\n'
+grep -q 'OVER.*In progress' <<<"$out" &&
+    missing+="a long board of small blocks reads as an overrun — the re-aim did not take"$'\n'
+# And the direction that must still fire: one block past the budget is a real lump.
+{ echo '## In progress'; echo '### one big lump'
+  i=0; while [ $i -lt 45 ]; do echo "- [ ] task $i"; i=$((i + 1)); done
+  echo '## Done'; } > "$tc/lump.md"
+out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/lump.md" 2>&1)
+grep -q 'OVER.*In progress' <<<"$out" ||
+    missing+="a single block of 45 open items does not read as an overrun — the signal was lost, not re-aimed"$'\n'
 # Done over budget with nothing archivable must say so and point at the recovery.
 { echo '## Done'; i=0; while [ $i -lt 25 ]; do echo "- [x] closed $i"; i=$((i + 1)); done; } > "$tc/undated.md"
 out=$(bash "$LIBSH" prose-budget "$tc/_PROJECT.md" "$tc/undated.md" 2>&1)

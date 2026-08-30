@@ -1587,10 +1587,32 @@ _budget_done_dated() {
 # Measured 2026-08-16 across 10 boards: 130, 60, 4, 3, 3, 0, 0, 0, 0, 0 open items against
 # 2084, 494, 55, 10, 4, 2, 2, 2, 1, 1 lines — the two projects the line threshold caught
 # are exactly the two the item threshold catches, so no signal is lost in the change.
+# The LARGEST single `###` block of open items inside `In progress`, not their sum.
+# Measured 2026-08-30 on the two boards the summed form ever accused, which is what the
+# rule asks for — one board is not enough, their plan share differs. The sum mixes two
+# quantities with different meanings, "how much is not cleared" and "how much is planned":
+# goprofi carried 218 open items of which 17 are a sprint order and 14 a session plan, and
+# neither of the candidates on record brings it under budget (by priority marker 135, by
+# excluding the plan sections 187). A block cannot mix them by construction, and it isolates
+# exactly what the analysis called genuine debt: goprofi's largest is the 40-item
+# "Разборы 02-03.08", while this project's 51 items sit in blocks of at most 8.
+# Items before the first `###` are one block too — most boards have no subsections at all.
 _budget_prog() {
     awk '/^## / { p = ($0 ~ /In progress|В работе/); next }
-         p && /^-[[:space:]]*\[ \]/ { n++ }
-         END { print n + 0 }' "$1"
+         !p { next }
+         /^### / { n = 0; next }
+         /^-[[:space:]]*\[ \]/ { n++; if (n > mx) mx = n }
+         END { print mx + 0 }' "$1"
+}
+
+# The heading of that largest block, so the finding names where to look rather than only
+# how many. Empty when the items sit before the first `###`.
+_budget_prog_where() {
+    awk '/^## / { p = ($0 ~ /In progress|В работе/); next }
+         !p { next }
+         /^### / { h = substr($0, 5); n = 0; next }
+         /^-[[:space:]]*\[ \]/ { n++; if (n > mx) { mx = n; mh = h } }
+         END { print mh }' "$1"
 }
 
 # A section the file does not HAVE is not a section of length zero. Every counter above
@@ -1674,7 +1696,7 @@ prose_budget() {
                 echo "        of them archive can move: $dnd (the rest carry no date in the entry line)"
             fi
         fi
-        report "taskboard In progress (open items)" \
+        report "taskboard In progress (largest block)" \
                "$(_budget_or_absent "$tb" '^## (In progress|В работе)' _budget_prog)" "$BUDGET_PROG"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
@@ -2866,7 +2888,12 @@ EOF
             # and "archive it" is useless advice when not one entry carries a date.
             dnd=$(_budget_done_dated "$tb")
             [ "$dn" -gt "$BUDGET_DONE" ] && printf 'taskboard-done:%s\t%s closed entries in Done, %s dated — archive can move only those\n' "$P" "$dn" "$dnd"
-            [ "$prog" -gt "$BUDGET_PROG" ] && printf 'taskboard-inprogress:%s\t%s open items\n' "$P" "$prog"
+            # Counted on the largest block, never on the sum — see `_budget_prog`.
+            if [ "$prog" -gt "$BUDGET_PROG" ]; then
+                pw=$(_budget_prog_where "$tb")
+                printf 'taskboard-inprogress:%s\t%s open items in one block%s\n' "$P" "$prog" \
+                       "${pw:+ — $pw}"
+            fi
             # A closed item outside Done is filed by nobody, ever. `sweep-closed` walks
             # `In progress` by construction — right for its job, since that is the section
             # the threshold measures — so a task ticked in `Backlog` stays there for good.
