@@ -1993,6 +1993,21 @@ _sr_sel() {   # <want> <prefix> ; changes on stdin
 
 _sr_count() { grep -c . <<<"$1"; }
 
+# The calendar day before today, anchored at noon so a DST shift cannot move it.
+# Both branches name hours, minutes and seconds: BSD `date` fills every field the format
+# does not name from the CURRENT clock, so a bare date parses to today's time-of-day and
+# the answer changes on every call.
+# The GNU branch says "1 day ago" and NOT "-1 day": after a time, GNU reads `12:00:00 -1`
+# as a UTC offset of minus one hour and the `day` that follows shifts the result FORWARD.
+# Measured 2026-08-30 on Darwin with both builds present: the two branches disagreed by two
+# days (GNU 08-31, BSD 08-29, today 08-30) while a check asking only "is a second form
+# there" stayed green. Verify a fallback by RUNNING both, never by reading them.
+_sr_yesterday() {
+    date -d "$(date +%Y-%m-%d) 12:00:00 1 day ago" +%Y-%m-%d 2>/dev/null ||
+        date -j -v-1d -f "%Y-%m-%d %H:%M:%S" "$(date +%Y-%m-%d) 12:00:00" +%Y-%m-%d 2>/dev/null ||
+        true
+}
+
 save_report() {
     vault="${1:-}"; project="${2:-}"
     [ -n "$vault" ] && [ -n "$project" ] || {
@@ -2044,15 +2059,35 @@ save_report() {
     # edited today is a correction to the record, not this session's account, and counting
     # it would let a save with no log at all pass by touching a file from July.
     if [ "$n_logs" -eq 0 ]; then
+        # Yesterday qualifies ONLY while the save series is current — that is, the vault's
+        # HEAD is dated today or yesterday. Plain "accept yesterday too" was rejected on the
+        # board before it was written, and the objection is real, not theoretical: a previous
+        # save that never committed leaves the tree dirty, so yesterday's log reads as
+        # modified and the guard would say ok for a session that wrote no log at all — the
+        # exact skip this report exists to catch. Tying it to HEAD closes that: a stale
+        # series fails the test, and the conservative direction is a MISSING on an abnormal
+        # tree rather than a green on a skipped step.
+        sr_head=$(git -C "$vault" log -1 --format=%cd --date=format:%Y-%m-%d 2>/dev/null || true)
+        sr_days="$(date +%Y-%m-%d)"
+        case "$sr_head" in
+            "$(date +%Y-%m-%d)"|"$(_sr_yesterday)") sr_days="$sr_days|$(_sr_yesterday)" ;;
+        esac
         logs=$(_sr_sel mod "$project/sessions/" <<<"$changes" |
-               grep "/$(date +%Y-%m-%d)_[0-9]*_session\.md$")
+               grep -E "/($sr_days)_[0-9]*_session\.md$")
         n_logs=$(_sr_count "$logs")
         [ "$n_logs" -gt 0 ] && sr_log_note=" (extended, not new — a later save in the same session)"
     fi
+    # The session's OWN date, not the calendar's, and it is derived once here so the map
+    # guard below cannot disagree with this one. A session that starts before midnight and
+    # saves after it owns a log named yesterday; comparing either guard against `date +%F`
+    # then reports a step that ran as MISSING. Falls back to today when no log was accepted,
+    # which keeps the map guard exactly as strict as it was.
+    sr_sdate=$(printf '%s' "$logs" | sed -n 's|.*/\([0-9-]\{10\}\)_[0-9]*_session\.md$|\1|p' | sort | tail -1)
+    [ -n "$sr_sdate" ] || sr_sdate=$(date +%Y-%m-%d)
     if [ "$n_logs" -gt 0 ]; then
         verdict ok "session log" "$(printf '%s' "$logs" | tr '\n' ' ')${sr_log_note:-}"
     else
-        verdict MISSING "session log" "no new file under $project/sessions/, and no log named for today was edited — Step 1 left no trace"
+        verdict MISSING "session log" "no new file under $project/sessions/, and no log named for today or yesterday was edited — Step 1 left no trace"
     fi
 
     # ── 2. wiki notes (Step 2) ───────────────────────────────────────────────
@@ -2171,8 +2206,8 @@ save_report() {
             # the confirmation, however many saves the session has made.
             if [ -n "$(_sr_sel any "$amap" <<<"$changes")" ]; then
                 verdict ok "architecture map" "updated"
-            elif [ "$(_lc_fm "$vault/$amap" updated)" = "$(date +%Y-%m-%d)" ]; then
-                verdict ok "architecture map" "already stamped today — confirmed in an earlier save of this session"
+            elif [ "$(_lc_fm "$vault/$amap" updated)" = "$sr_sdate" ]; then
+                verdict ok "architecture map" "already stamped $sr_sdate — confirmed in an earlier save of this session"
             elif [ ! -f "$vault/$amap" ]; then
                 verdict MISSING "architecture map" "type: $ptype and no architecture-map.md exists"
             else

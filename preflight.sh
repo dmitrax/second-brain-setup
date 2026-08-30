@@ -3043,6 +3043,67 @@ if git -C "$xl" init -q . 2>/dev/null; then
     xl_d=$(bash "$LIBSH" save-report "$xl" mx 2>&1)
     grep -q 'MISSING  architecture map' <<<"$xl_d" ||
         missing+="an ancient stamp passes for confirmation — the exemption is too wide"$'\n'
+    # A session that starts before midnight and saves after it owns a log named YESTERDAY
+    # and a map stamped yesterday. Comparing either guard against the calendar day then
+    # reports two steps that ran as MISSING — the sixth always-firing signal this project
+    # would have had to cut, wearing the uniform of a defect report. Observed live
+    # 2026-08-30 on the save that closed the 08-29 session at 00:05.
+    # The date is COMPUTED, never a literal (check 41), and the two branches are spelled the
+    # same way as in `lib/`: the GNU one says "1 day ago" and NOT "-1 day", because after a
+    # time GNU reads `12:00:00 -1` as a UTC offset and the `day` after it shifts the result
+    # FORWARD — measured 2026-08-30, the two forms disagreed by two days while a check
+    # asking only "is a second form there" stayed green.
+    xl_yst=$(date -d "$(date +%Y-%m-%d) 12:00:00 1 day ago" +%Y-%m-%d 2>/dev/null ||
+             date -j -v-1d -f "%Y-%m-%d %H:%M:%S" "$(date +%Y-%m-%d) 12:00:00" +%Y-%m-%d 2>/dev/null)
+    if [ -z "$xl_yst" ] || [ "$xl_yst" = "$xl_today" ]; then
+        gap "the midnight-crossing shape in save-report (check 42) — no usable date arithmetic here"
+    else
+        mkdir -p "$xl/mn/wiki" "$xl/mn/sessions"
+        printf -- '---\nproject: mn\ntype: mixed\nstatus: active\nbrain-version: "x"\nupdated: %s\n---\n## Current state\nx\n' "$xl_yst" > "$xl/mn/_PROJECT.md"
+        printf -- '# board\n## In progress\n' > "$xl/mn/taskboard.md"
+        printf -- '---\nupdated: %s\n---\n# map\n' "$xl_yst" > "$xl/mn/architecture-map.md"
+        printf -- '---\ndate: %s\n---\nlog written before midnight\n' "$xl_yst" > "$xl/mn/sessions/${xl_yst}_2340_session.md"
+        git -C "$xl" add -A >/dev/null 2>&1; git -C "$xl" commit -qm mn >/dev/null 2>&1
+        echo 'extended after midnight' >> "$xl/mn/sessions/${xl_yst}_2340_session.md"
+        xl_e=$(bash "$LIBSH" save-report "$xl" mn 2>&1)
+        grep -q 'ok       session log' <<<"$xl_e" ||
+            missing+="a log named yesterday, extended after midnight, reads as a missing step"$'\n'
+        grep -q 'ok       architecture map' <<<"$xl_e" ||
+            missing+="a map stamped yesterday reads as missing for a session that crossed midnight"$'\n'
+        # The widening is one day and no more: the July log must still not qualify, or the
+        # guard has become "any old log will do" and a save with no log at all passes.
+        printf -- '---\ndate: %s\n---\nancient\n' "$PF_ANCIENT" > "$xl/mn/sessions/${PF_ANCIENT}_0900_session.md"
+        git -C "$xl" add -A >/dev/null 2>&1; git -C "$xl" commit -qm mn-old >/dev/null 2>&1
+        git -C "$xl" checkout -- . >/dev/null 2>&1
+        echo 'a correction' >> "$xl/mn/sessions/${PF_ANCIENT}_0900_session.md"
+        xl_f=$(bash "$LIBSH" save-report "$xl" mn 2>&1)
+        grep -q 'MISSING  session log' <<<"$xl_f" ||
+            missing+="the midnight widening swallowed an ancient log — the window is not bounded to one day"$'\n'
+        # And the hole the board named BEFORE the fix was written, which plain "accept
+        # yesterday too" would have opened: a previous save that never committed leaves the
+        # tree dirty, so yesterday's log reads as modified and the guard would pass a session
+        # that wrote no log at all. Yesterday therefore qualifies only while the save series
+        # is current — HEAD dated today or yesterday. Here HEAD is ancient, so it must not.
+        xl_st=$(mktemp -d)
+        if git -C "$xl_st" init -q . 2>/dev/null; then
+            git -C "$xl_st" config user.email t@t; git -C "$xl_st" config user.name t
+            mkdir -p "$xl_st/p/wiki" "$xl_st/p/sessions"
+            printf -- '---\nproject: p\ntype: mixed\nstatus: active\nbrain-version: "x"\nupdated: %s\n---\n## Current state\nx\n' "$xl_yst" > "$xl_st/p/_PROJECT.md"
+            printf -- '# board\n## In progress\n' > "$xl_st/p/taskboard.md"
+            printf -- '---\nupdated: %s\n---\n# map\n' "$xl_yst" > "$xl_st/p/architecture-map.md"
+            printf -- '---\ndate: %s\n---\nlog\n' "$xl_yst" > "$xl_st/p/sessions/${xl_yst}_2340_session.md"
+            git -C "$xl_st" add -A >/dev/null 2>&1
+            GIT_AUTHOR_DATE="${PF_ANCIENT}T12:00:00" GIT_COMMITTER_DATE="${PF_ANCIENT}T12:00:00" \
+                git -C "$xl_st" commit -qm base >/dev/null 2>&1
+            echo 'touched, but this session wrote no log' >> "$xl_st/p/sessions/${xl_yst}_2340_session.md"
+            xl_g=$(bash "$LIBSH" save-report "$xl_st" p 2>&1)
+            grep -q 'MISSING  session log' <<<"$xl_g" ||
+                missing+="yesterday's log passes on a STALE save series — the exemption is not tied to HEAD and a skipped Step 1 reads as done"$'\n'
+        else
+            gap "the stale-save-series half of the midnight guard (check 42) — git could not init a fixture here"
+        fi
+        rm -rf "$xl_st"
+    fi
 else
     gap "the extended-log shape in save-report (check 42) — git could not init a fixture here"
 fi

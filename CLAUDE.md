@@ -279,6 +279,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   asserted against `_lc_epoch` as invoked normally, where GNU answers first and the branch
   under test never executes, and it passed a fallback rewritten to read the clock. The
   static half alone would not have caught that; the differentiating negative test did.
+  **Naming the hours is necessary and not sufficient, and the second trap is operator
+  adjacency.** Measured 2026-08-30 while widening `save-report` by one day: `date -d "$D
+  12:00:00 -1 day"` returns the day AFTER `$D` on GNU, because after a time GNU reads
+  `12:00:00 -1` as a UTC offset of minus one hour and the `day` that follows shifts the
+  result forward; the BSD form `date -j -v-1d` returns the day before, as intended. The two
+  branches disagreed by two days — GNU 08-31, BSD 08-29, today 08-30 — with hours named in
+  both and a `||` between them, so every static test stayed green. Write the GNU relative
+  form as `1 day ago`, never `-1 day` after a time, and settle any date fallback by RUNNING
+  both branches and comparing the answers, which is one command and the only evidence that
+  counts. Checked by preflight 42, whose midnight fixture computes the date with the same
+  pair.
 - **A step being present is not the same as the step running, and only the second is
   worth a green.** The pattern the previous two rules describe has a third form that no
   syntax check sees: a prompt block referencing a variable nothing ever assigns. Measured
