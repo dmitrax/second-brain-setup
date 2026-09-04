@@ -118,6 +118,16 @@ usage: brain.sh <command> [args]
                                Run it AFTER the writes and BEFORE the commit.
                                exit 0 every owed step left a trace · 2 one did not
                                · 1 could not measure.
+  commit-scope <vault> <project>
+                               name every uncommitted path in the vault that belongs to
+                               ANOTHER project, so the blanket `git add -A` that follows
+                               cannot sweep a neighbouring session's work into this
+                               commit without anyone saying so. It drops nothing and
+                               stages nothing — a cross-project write is legitimate and
+                               common, so the decision stays with the person.
+                               Run it AFTER save-report and BEFORE the commit.
+                               exit 0 nothing foreign · 2 foreign paths, answer in words
+                               · 1 could not measure.
   lint-collect <vault> [--project P]
                                run every mechanical vault check and print each
                                finding as `key<TAB>detail` on stdout. Fails, never
@@ -370,6 +380,27 @@ lint_diff() {
         shift
     done
     [ -n "$base" ] || { echo "lint-diff: need a baseline path" >&2; return 1; }
+    # A BASELINE PATH, and the wrong kind of thing is refused rather than read as a
+    # first run. `[ ! -f "$base" ]` below is true for a directory too, so passing the
+    # vault — which every OTHER subcommand takes, and which is therefore the natural
+    # mistake — printed "no baseline at <vault>", declared all findings NEW and exited
+    # 0; with --seal, `cp` then dropped a file named after the temporary into the
+    # directory, i.e. an untracked `brain-lint-cur.NNNN` in the vault root that the
+    # next `git add -A` from /brain-save would commit. Both halves are this package's
+    # headline shape: a failure indistinguishable from success, and it was found
+    # 2026-09-04 on the first natural attempt at the call. "There is no baseline yet"
+    # is a legitimate state; "you handed me a directory" is not, and only a
+    # non-existent path can mean the first. Same refusal `vault-sync` already makes.
+    if [ -e "$base" ] && [ ! -f "$base" ]; then
+        echo "lint-diff: '$base' is not a regular file — it takes the BASELINE path," >&2
+        echo "  not the vault: \$VAULT/00-system/lint-baseline.txt" >&2
+        return 2
+    fi
+    base_dir=$(dirname "$base")
+    if [ ! -d "$base_dir" ]; then
+        echo "lint-diff: no directory '$base_dir' to hold a baseline at '$base'" >&2
+        return 2
+    fi
 
     cur="${TMPDIR:-/tmp}/brain-lint-cur.$$"
     cat > "$cur"
@@ -428,7 +459,10 @@ lint_diff() {
     if [ ! -f "$base" ]; then
         echo "lint-diff: no baseline at $base — treating all $(grep -c . "$cur") findings as new"
         sed 's/^/  NEW  /' "$cur"
-        [ "$seal" = "--seal" ] && cp "$cur" "$base"
+        # Sorted, like the other two writers. This branch was the third one and was still
+        # `cp` after the seal block was fixed on 2026-09-04 — a file with three writers
+        # needs all three checked, and the check that caught it was written expecting one.
+        [ "$seal" = "--seal" ] && LC_ALL=C sort -u "$cur" > "$base"
         rm -f "$cur"; return 0
     fi
 
@@ -561,7 +595,16 @@ lint_diff() {
             cat "$cur" "$base_out" | LC_ALL=C sort -u > "$base"
             echo "baseline updated: $base ($(grep -c . "$cur") in scope, $(grep -c . "$base_out" || true) carried over, $(grep -c . "$cur_out" || true) left uncompared)"
         else
-            cp "$cur" "$base"
+            # Sorted, exactly as the scoped branch above writes it. Until 2026-09-04 this
+            # was `cp`, i.e. the collector's emission order, so the two seal paths
+            # disagreed about the file's order and every alternation between `--all` and
+            # `--scope` rewrote the WHOLE shared baseline. Seen on the 09-02 reseal: three
+            # lines had really changed and the diff moved a dozen. That is noise in the one
+            # file whose entire job is to make a small delta legible, and it maximises the
+            # chance of a conflict in a file every machine edits — the failure the
+            # sync-before-write rule exists to prevent. The comparison never cared (it
+            # sorts both sides), so nothing was wrong with the delta; the FILE was rotting.
+            LC_ALL=C sort -u "$cur" > "$base"
             echo "baseline updated: $base"
         fi
     fi
@@ -893,7 +936,20 @@ backfill_dates() {
         git -C "$top" show "$sha:$rel" 2>/dev/null | _bf_keys |
             while IFS= read -r k; do
                 [ -n "$k" ] || continue
-                grep -qxF "$k" <<<"$(cut -f2- "$work/found")" || printf '%s\t%s\n' "$day" "$k" >> "$work/found"
+                # `-e`, because the pattern is VAULT TEXT and an entry legitimately
+                # begins with a dash: this board carries one opening `--scope для
+                # lint-diff …`, which grep read as an unknown OPTION. Found 2026-09-04 on
+                # the first real run: eight greps wrote a usage message to stderr and
+                # exited 2, so the `||` fired on every revision and appended a duplicate
+                # each time — while the command printed "21 datable, 0 not" and exited 0.
+                # Measured rather than assumed, because the rationale matters more than
+                # the fix here: the DATES were NOT wrong. `_bf_keys` yields closed entries
+                # only, so the first line appended for a key still comes from the earliest
+                # revision showing it closed, which is what the lookup takes. The cost was
+                # a silent subroutine failure on ordinary vault text plus an unbounded
+                # temp file — and a guard that stops working the moment the dedup matters.
+                # `-F` does not help: option parsing happens before the pattern is read.
+                grep -qxF -e "$k" <<<"$(cut -f2- "$work/found")" || printf '%s\t%s\n' "$day" "$k" >> "$work/found"
             done
     done < "$work/revs"
     if [ "$n_rev" -eq 0 ]; then
@@ -1537,7 +1593,7 @@ BUDGET_PROG=40
 LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress wiki-no-backlink wiki-no-links wiki-no-sibling"
 # Not counted, and why: `stale-draft` is time elapsed, not debt; `scope-note` is an
 # inventory; the rest state a fact that is either true or absent and carry no number.
-LINT_UNCOUNTED="decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
+LINT_UNCOUNTED="decision-field decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
 
 # non-blank lines of one '## ' section, heading excluded. Top-level, not nested in
 # lint_collect: prose-budget needs the same counter, and a copy would be a second
@@ -2903,8 +2959,22 @@ EOF
             # threshold: the queue is not debt, and a size threshold on Backlog has been
             # refused here on the same grounds a fifth time. It names the sections so the
             # answer is actionable without opening the file.
-            cod=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); if (!d) s = $0; next }
-                       !d && /^-[[:space:]]*(\[x\]|✅)/ { c++; seen[s] = 1 }
+            #
+            # TWO sections are exempt, not one, and the second was missing until
+            # 2026-09-04: `Done`, which `archive` files, and `In progress`, which
+            # `sweep-closed` files — the very sentence three lines above. Counting
+            # `In progress` made the finding's own claim ("nothing files them") false
+            # about every item it named there, and inflated the count by the whole
+            # section: `goprofi-voronka` read 91 against a baseline of 28, the 63
+            # difference being exactly its ticked items in `In progress`. Nothing saw it
+            # for six days because the defect needs a board that has ticked items there
+            # and has not run `sweep-closed`, and no board had any when the check
+            # shipped — which is also why the declared measurement above (52/28/23/20)
+            # is a Backlog-only count that the code never actually computed. The exempt
+            # list is the sections a TOOL reaches; a section reached by nobody is the
+            # finding.
+            cod=$(awk '/^## / { f = ($0 ~ /^## (Done|Завершено|In progress|В работе)/); if (!f) s = $0; next }
+                       !f && /^-[[:space:]]*(\[x\]|✅)/ { c++; seen[s] = 1 }
                        END { n = ""; for (k in seen) { sub(/^#+[[:space:]]*/, "", k); n = n (n ? ", " : "") k }
                              print (c + 0) "\t" n }' "$tb")
             cod_n=${cod%%	*}; cod_s=${cod#*	}
@@ -2964,7 +3034,29 @@ EOF
         for k in supersedes superseded-by corrected-by; do
             v=$(_lc_fm "$p" "$k")
             case "$v" in ""|"~"|"null"|"[]") continue ;; esac
-            v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/|.*//; s/\.md$//')
+            # Strip the wrappers a note name legitimately arrives in — a wikilink, a
+            # YAML flow list, quotes — before asking anything about the value.
+            v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/^\[//; s/\]$//; s/^"//; s/"$//; s/|.*//; s/\.md$//')
+            # An identifier field holds an identifier and nothing else. A note name is
+            # kebab-case by rule, so whitespace in the value means prose got in, and the
+            # right finding is about the SCHEMA — reporting `does not exist` there is a
+            # false claim about the target, which usually exists. Measured 2026-09-04
+            # across the whole vault: 68 non-empty values in these three fields, exactly
+            # ONE with whitespace: a `supersedes:` in goprofi holding the note name
+            # followed by a parenthesised sentence saying which half of the old decision
+            # it reversed. Its target was on disk the whole time while the lint called it
+            # missing — a false claim about existence on a true defect of schema, which
+            # sends the reader to recreate a note instead of trimming a field. The value
+            # is not quoted here: it is Russian, and a comment in a shipped script is read
+            # by strangers. Same hedge CLAUDE.md
+            # already bans in `status:`, moved one field over: the degree of a partial
+            # supersession belongs in the new note's body, which in that case already
+            # carried it. `continue` so one defect yields one finding, never both.
+            case "$v" in
+                *[[:space:]]*)
+                    printf 'decision-field:%s#%s\tcarries prose, not an identifier: %s\n' "${p#./}" "$k" "$v"
+                    continue ;;
+            esac
             base=$(printf '%s' "$v" | sed 's|.*/||')
             # Output into a variable, not `find | grep -q .`: under pipefail grep -q
             # exits on the first line, find dies of SIGPIPE with 141, and the pipeline
@@ -2972,8 +3064,16 @@ EOF
             # where a basename is duplicated — the very class this vault carries
             # (see ambiguous-link).
             hits=$(find . -name "$base.md" -not -path './.git/*')
+            # The key names the note AND the field. This loop runs over three fields and
+            # keyed on the note alone, so a note with two broken references emitted the
+            # same key twice — and a duplicate key is not a cosmetic problem here: the
+            # uniqueness guard at the top of `lint-diff` refuses the run, so one such note
+            # anywhere in the vault would take the delta down for every project on every
+            # machine. Found 2026-09-04 while adding the sibling emitter below, which
+            # would have been the second way in. `#field` and not a second colon: the
+            # scope filter reads the object as everything after the FIRST colon.
             [ -n "$hits" ] || \
-                printf 'decision-ref:%s\t%s → %s does not exist\n' "${p#./}" "$k" "$v"
+                printf 'decision-ref:%s#%s\t%s does not exist\n' "${p#./}" "$k" "$v"
         done
     done
 
@@ -3124,6 +3224,69 @@ _lc_keys() {
     rm -f "$kt" "$ct"
 }
 
+# ── commit-scope ─────────────────────────────────────────────────────────────
+# The vault is one git repository holding every project, and `/brain-save` ends with a
+# blanket `git add -A` — so a second session running in another project at the same time
+# has its uncommitted files swept into this commit. Caught live 2026-08-30: a goprofi
+# session committed between the writes and the commit here, and `git add -A` carried a
+# 96-line `goprofi-voronka/output/*.md` that this session never wrote. Nothing could see
+# it: `save-report` asks whether a step LEFT a trace, never whose trace it is.
+#
+# What this deliberately does NOT do is narrow the `add`. Measured 2026-09-04 over the
+# vault's history: 820 commits since 06-01, **70 touching more than one project** once
+# the shared registries and `.obsidian` are set aside — a cross-project write is a
+# legitimate, common act (this very package's board carries tasks landed from other
+# projects). Scoping the add to `<project>/ 00-system/` would have dropped those 70
+# silently, and a silent omission is worse than a silent inclusion: it is the failure
+# indistinguishable from success that this package exists to hunt. There is also nothing
+# to narrow in practice — the commit is made by the operator's own shell alias, which the
+# package cannot reach. So the shell measures and the person judges, as with save-report.
+commit_scope() {
+    vault="${1:-}"; project="${2:-}"
+    [ -n "$vault" ] && [ -n "$project" ] || {
+        echo "commit-scope: need <vault> <project>" >&2; return 1; }
+    [ -d "$vault/$project" ] || {
+        echo "commit-scope: no such project: $vault/$project" >&2; return 1; }
+    if ! git -C "$vault" rev-parse --git-dir >/dev/null 2>&1; then
+        # A vault without git is a supported setup, and there is no commit to scope.
+        # Say which question went unanswered rather than printing a clean-looking pass.
+        echo "commit-scope: $vault is not a git repository — no commit to scope, nothing measured"
+        return 1
+    fi
+    cs_changes=$(git -C "$vault" -c core.quotePath=false status --porcelain -uall 2>/dev/null)
+    if [ -z "$cs_changes" ]; then
+        echo "commit-scope: the working tree is clean — nothing staged, nothing to name"
+        return 0
+    fi
+    # `R  old -> new` names the destination; the status letters are the first two columns
+    # and a space follows, so three characters come off the front.
+    cs_paths=$(printf '%s\n' "$cs_changes" | sed 's/^...//; s/^.* -> //')
+    # Owner of a path: `_arch/x` and `_mac/x` are two segments deep, everything else one.
+    # `00-system`, `00-shared` and `.obsidian` belong to no project and are always in
+    # scope — every save writes the first two by design.
+    cs_foreign=$(printf '%s\n' "$cs_paths" | awk -F/ -v me="$project" '
+        NF == 0 || $0 == "" { next }
+        {
+            if ($1 == "00-system" || $1 == "00-shared" || $1 == ".obsidian") next
+            if (NF < 2) next                       # a file at the vault root
+            owner = ($1 ~ /^_/) ? $1 "/" $2 : $1
+            if (owner == me) next
+            print owner "\t" $0
+        }')
+    echo "commit-scope: scope is $project plus 00-system, 00-shared and .obsidian"
+    if [ -z "$cs_foreign" ]; then
+        echo "commit-scope: ok — every uncommitted path belongs to this save"
+        return 0
+    fi
+    cs_n=$(printf '%s\n' "$cs_foreign" | grep -c .)
+    cs_who=$(printf '%s\n' "$cs_foreign" | cut -f1 | LC_ALL=C sort -u | tr '\n' ' ')
+    echo "commit-scope: ANSWER — $cs_n uncommitted path(s) outside this save, in: $cs_who"
+    printf '%s\n' "$cs_foreign" | cut -f2 | sed 's/^/  /'
+    echo "  Say in the Result block whether these are yours. They are NOT staged or dropped"
+    echo "  by this command: a cross-project write is legitimate, and only you know which."
+    return 2
+}
+
 case "${1:-}" in
     obsidian-available) shift; obsidian_available "${1:-}" ;;
     vault-name)         _timeout 2 obsidian vault info=name 2>/dev/null || true ;;
@@ -3139,6 +3302,7 @@ case "${1:-}" in
     claude-md-audit)    shift; claude_md_audit "${1:-}" ;;
     sweep-closed)       shift; sweep_closed "${1:-}" "${2:-}" ;;
     save-report)        shift; save_report "${1:-}" "${2:-}" ;;
+    commit-scope)       shift; commit_scope "${1:-}" "${2:-}" ;;
     backfill-dates)     shift; backfill_dates "${1:-}" "${2:-}" ;;
     lint-collect)       shift; lint_collect "$@" ;;
     connections-add)    shift; connections_add "${1:-}" "${2:-}" ;;

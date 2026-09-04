@@ -565,6 +565,35 @@ if [ -f "$LIBSH" ]; then
     # without --seal the baseline must stay as it was
     grep -q 'zone-missing' "$TMPLIB/base.txt" &&
         problems+="lint-diff: wrote the baseline without --seal"$'\n'
+
+    # The WRONG KIND of argument is refused, never read as "no baseline yet". `[ ! -f ]`
+    # is true for a directory as well as for a missing path, and only the second is a
+    # legitimate first run — so passing the vault, which every OTHER subcommand takes,
+    # reported every finding as NEW at exit 0, and `--seal` then dropped the temporary
+    # file INSIDE that directory. Both halves are asserted: the exit code cannot see the
+    # stray file, and a refusal that still writes is not a refusal. Found 2026-09-04.
+    mkdir -p "$TMPLIB/asvault/00-system"
+    printf 'a:x\tdetail\n' > "$TMPLIB/wrongarg.txt"
+    command cat "$TMPLIB/wrongarg.txt" | bash "$LIBSH" lint-diff "$TMPLIB/asvault" --seal >/dev/null 2>&1 &&
+        problems+="lint-diff: a directory was accepted as a baseline (exit 0)"$'\n'
+    [ -z "$(find "$TMPLIB/asvault" -type f)" ] ||
+        problems+="lint-diff: refused a directory and still wrote into it"$'\n'
+    # A path whose parent does not exist is the same mistake one level up.
+    command cat "$TMPLIB/wrongarg.txt" | bash "$LIBSH" lint-diff "$TMPLIB/nodir/base.txt" >/dev/null 2>&1 &&
+        problems+="lint-diff: accepted a baseline path with no directory to hold it"$'\n'
+    # And the legitimate first run still works, or the refusal has eaten it.
+    command cat "$TMPLIB/wrongarg.txt" | bash "$LIBSH" lint-diff "$TMPLIB/asvault/00-system/lint-baseline.txt" --seal >/dev/null 2>&1 ||
+        problems+="lint-diff: refused a first run against a path that simply does not exist"$'\n'
+    [ -s "$TMPLIB/asvault/00-system/lint-baseline.txt" ] ||
+        problems+="lint-diff: the legitimate first run sealed nothing"$'\n'
+
+    # Both seal paths write the baseline in ONE order. They disagreed until 2026-09-04 —
+    # scoped sorted, full `cp` in emission order — so alternating the two rewrote the whole
+    # shared file. Nothing about the delta was wrong, which is why no behavioural check saw
+    # it; the evidence lives in `git diff`, which no check reads.
+    printf 'b:2\tsecond\na:1\tfirst\n' | bash "$LIBSH" lint-diff "$TMPLIB/asvault/00-system/ord.txt" --seal >/dev/null 2>&1
+    [ "$(head -1 "$TMPLIB/asvault/00-system/ord.txt")" = "$(printf 'a:1\tfirst')" ] ||
+        problems+="lint-diff: a full --seal did not write the baseline sorted, so it churns against a scoped one"$'\n'
     # the step must exist in the prompt, or the code is there with nobody to call it
     LINTMD="$SCRIPT_DIR/commands/brain-lint.md"
     # The pattern carries the colon rather than a bare "Step 12": a substring also matches
@@ -686,14 +715,23 @@ if [ -f "$LIBSH" ]; then
         i=0; while [ $i -lt 25 ]; do echo "constant $i"; i=$((i + 1)); done
     } > "$LCV/proj/_PROJECT.md"
 
-    # Taskboard: past all three thresholds, both closure markers.
+    # Taskboard: past all three thresholds, both closure markers. Plus the PAIR that
+    # decides `closed-outside-done`: a ticked item in `In progress`, which `sweep-closed`
+    # files and which must therefore NOT be counted, and a ticked item in `Backlog`, which
+    # nothing files and which must. One without the other proves nothing — asserting only
+    # the Backlog item passes on a check that counts both, and asserting only the
+    # In progress item passes on a check that counts neither.
     {
         printf -- '## In progress\n'
         i=0; while [ $i -lt 320 ]; do echo "- [ ] task $i"; i=$((i + 1)); done
+        echo "- [x] 2026-01-05 — ticked here, sweep-closed files it"
         printf -- '\n## Done\n'
         i=0; while [ $i -lt 12 ]; do echo "- [x] 2026-01-01 — done $i"; i=$((i + 1)); done
         i=0; while [ $i -lt 12 ]; do echo "- ✅ 2026-01-02 — done ✅ $i"; i=$((i + 1)); done
         i=0; while [ $i -lt 300 ]; do echo "tail $i"; i=$((i + 1)); done
+        printf -- '\n## Backlog\n'
+        echo "- ✅ 2026-01-06 — ticked here, nothing files it"
+        echo "- [ ] still open"
     } > "$LCV/proj/taskboard.md"
 
     # The map is older than the last session.
@@ -722,6 +760,18 @@ if [ -f "$LIBSH" ]; then
         > "$LCV/proj/wiki/decision-legacyform.md"
     printf -- '---\nstatus: accepted\nsupersedes: ~\n---\n[[../_PROJECT|_PROJECT]]\n```\nstatus: superseded-by: decision-x.md\n```\n' \
         > "$LCV/proj/wiki/decision-clean.md"
+
+    # A reference field carrying the note name PLUS prose, whose target EXISTS
+    # (`decision-clean.md`, written just above). The whole point is which finding it
+    # earns: `decision-field`, about the schema, and never `decision-ref`, which would be
+    # a false claim about a file that is right there — and would send the reader to
+    # recreate a note instead of trimming a field.
+    printf -- '---\nstatus: accepted\nsupersedes: ["decision-clean (only the fork half, the rest stands)"]\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-prosefield.md"
+    # Two BROKEN references in one note. The key used to name the note alone, so this
+    # emitted one key twice — and a duplicate key makes `lint-diff` refuse the whole run.
+    printf -- '---\nstatus: accepted\nsupersedes: decision-nowhere-a\ncorrected-by: decision-nowhere-b\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-tworefs.md"
 
     # An unterminated frontmatter block.
     printf -- '---\ndate: 2026-06-01\nbody with no closing rule\n' > "$LCV/proj/wiki/broken-fm.md"
@@ -809,8 +859,16 @@ if [ -f "$LIBSH" ]; then
     want 'wiki-no-sibling:proj'
     want 'wiki-no-links:proj'
     want 'decision-schema:proj/wiki/decision-offschema.md'
-    want 'decision-ref:proj/wiki/decision-brokenref.md'
+    want 'decision-ref:proj/wiki/decision-brokenref.md#superseded-by'
     want 'decision-legacy:proj/wiki/decision-legacyform.md'
+    # A reference field carrying prose is a SCHEMA finding, and must not also be — or
+    # instead be — a claim that the target is missing: `decision-clean.md` is on disk.
+    want 'decision-field:proj/wiki/decision-prosefield.md#supersedes'
+    nope 'decision-ref:proj/wiki/decision-prosefield.md#supersedes'
+    # Two broken references in one note owe two keys, not one key twice. The uniqueness
+    # assertion below is what turns a duplicate red, but only if both lines exist.
+    want 'decision-ref:proj/wiki/decision-tworefs.md#supersedes'
+    want 'decision-ref:proj/wiki/decision-tworefs.md#corrected-by'
     want 'frontmatter:proj/wiki/broken-fm.md'
     want 'ambiguous-link:other/wiki/note-alone.md'
     want 'project-unregistered:unreg'
@@ -818,12 +876,25 @@ if [ -f "$LIBSH" ]; then
     # The nested project must reach the per-project checks, not only the file sweeps.
     want 'stale-project:other/nested'
     want 'project-unregistered:other/nested'
-    # What must not appear.
-    nope 'decision-ref:proj/wiki/decision-clean.md'
+    # What must not appear. The reference keys carry a `#field` suffix, so these are
+    # matched on the PREFIX — a `nope` demanding the tab would pass by construction.
+    nope_pre() { grep -q "^$1" "$out" && problems+="false finding: $1"$'\n'; }
+    nope_pre 'decision-ref:proj/wiki/decision-clean.md'
     nope 'decision-legacy:proj/wiki/decision-clean.md'
     nope 'ambiguous-link:other/wiki/note-quotes.md'
     nope 'stale-project:other'
     nope 'key-uniformity:other/decisions'
+    # `closed-outside-done` reports what NO TOOL files. Two sections are exempt, not one:
+    # `Done` (archive files it) and `In progress` (sweep-closed files it). Exactly one of
+    # the two ticked items planted above is outside both, so the count is 1 — counting the
+    # In progress item as well would read 2, which is how `goprofi-voronka` came to report
+    # 91 against a baseline of 28 on 2026-09-04.
+    grep -q '^closed-outside-done:proj	1 closed items outside Done' "$out" ||
+        problems+="closed-outside-done did not report exactly the 1 item no tool files (In progress is exempt: sweep-closed walks it)"$'\n'
+    grep -qE '^closed-outside-done:proj	.*(In progress|В работе)' "$out" &&
+        problems+="closed-outside-done named In progress, the section sweep-closed files by construction"$'\n'
+    grep -q '^closed-outside-done:proj	.*Backlog' "$out" ||
+        problems+="closed-outside-done did not name Backlog, where the unfiled item actually sits"$'\n'
     # The Done counter must see both markers: 12 + 12 = 24 > 20; either alone would miss.
     grep -q '^taskboard-done:proj	24 ' "$out" ||
         problems+="the Done counter did not add [x] and ✅ together (expected 24)"$'\n'
@@ -2984,7 +3055,25 @@ else
     fi
     grep -q 'step skipped' "$sr_md" ||
         missing+="brain-save.md does not require a MISSING step to be named in the Result"$'\n'
+    # commit-scope answers "whose trace is this", which save-report deliberately does not,
+    # so it sits AFTER save-report and BEFORE the commit — after the commit the tree is
+    # clean and there is nothing left to name. Matched on the invocation form for the same
+    # two reasons the line above is: prose about the step and the Result template both
+    # pass a looser grep.
+    cs_call=$(exec_blocks "$sr_md" | grep -E '(\$BRAIN|brain\.sh)[^|]*commit-scope' | head -1 | cut -d: -f1)
+    if [ -z "$cs_call" ]; then
+        missing+="brain-save.md never calls commit-scope — the blanket git add -A goes unwatched"$'\n'
+    elif [ -z "$sr_call" ] || [ -z "$sr_commit" ]; then
+        : # already reported above
+    elif [ "$cs_call" -lt "$sr_call" ] || [ "$cs_call" -gt "$sr_commit" ]; then
+        missing+="commit-scope is called out of order (line $cs_call; save-report $sr_call, commit $sr_commit)"$'\n'
+    fi
+    # It must state that it stages and drops nothing: the whole design rests on the person
+    # deciding, and a reader who thinks the tool already handled it will not answer.
+    grep -qiE 'stages nothing and drops nothing|stages nothing, drops nothing' "$sr_md" ||
+        missing+="brain-save.md does not say commit-scope neither stages nor drops — a reader will assume it acted"$'\n'
 fi
+
 # A second save inside one session EXTENDS the log it already wrote, so from the working tree
 # that file is MODIFIED, not new — and asking only for a new file called Step 1 a missing
 # step. Observed live twice on ordinary runs, 2026-08-16 and 2026-08-29. A false red in the
@@ -3115,6 +3204,68 @@ else
     pass "save-report measures the save on disk (4 outcomes run, ordering and MISSING wording checked)"
 fi
 
+# ─── commit-scope names foreign work and nothing else ────────────────────────
+# Behavioural, on a fixture vault with two projects: a path of the saving project and one
+# of a neighbour must be told apart, the shared registries must never count as foreign
+# (every save writes them), and the exit code must separate the two outcomes. A static
+# check would pass on a command that prints the banner and lists nothing.
+cs=$(mktemp -d)
+if git -C "$cs" init -q . 2>/dev/null; then
+    git -C "$cs" config user.email t@t; git -C "$cs" config user.name t
+    mkdir -p "$cs/mine/wiki" "$cs/theirs/wiki" "$cs/_arch/other/wiki" "$cs/00-system"
+    printf -- '# index\n' > "$cs/00-system/index.md"
+    printf -- '# p\n' > "$cs/mine/_PROJECT.md"
+    printf -- '# p\n' > "$cs/theirs/_PROJECT.md"
+    printf -- '# p\n' > "$cs/_arch/other/_PROJECT.md"
+    git -C "$cs" add -A >/dev/null 2>&1; git -C "$cs" commit -qm base >/dev/null 2>&1
+    cs_missing=""
+    # Only our own work plus a shared registry: nothing foreign, exit 0.
+    printf -- 'x\n' > "$cs/mine/wiki/note.md"
+    printf -- '# index\nline\n' > "$cs/00-system/index.md"
+    cs_out=$(bash "$LIBSH" commit-scope "$cs" mine 2>&1); cs_rc=$?
+    [ "$cs_rc" -eq 0 ] ||
+        cs_missing+="  our own file plus 00-system was called foreign (exit $cs_rc)"$'\n'
+    # The PATH, not the word: the banner names the scope and therefore contains
+    # "00-system" on every run, so matching the bare word reddens against correct output.
+    # It did, on the first run of this check — the same match-a-mention trap check 54
+    # records, reproduced here within the hour.
+    grep -qF '00-system/index.md' <<<"$cs_out" &&
+        cs_missing+="  a shared registry was listed as foreign — every save writes it"$'\n'
+    # A neighbour's uncommitted file: named, and the exit code says answer it.
+    printf -- 'y\n' > "$cs/theirs/wiki/note.md"
+    printf -- 'z\n' > "$cs/_arch/other/wiki/note.md"
+    cs_out=$(bash "$LIBSH" commit-scope "$cs" mine 2>&1); cs_rc=$?
+    [ "$cs_rc" -eq 2 ] ||
+        cs_missing+="  a neighbouring project's uncommitted file did not set exit 2 (got $cs_rc)"$'\n'
+    grep -qF 'theirs/wiki/note.md' <<<"$cs_out" ||
+        cs_missing+="  the foreign path was not named, so the answer has nothing to be about"$'\n'
+    # An `_arch/x` project is two segments deep: reading only the first would call every
+    # _arch project one project, and a neighbour under _arch would vanish into our scope.
+    grep -qF '_arch/other' <<<"$cs_out" ||
+        cs_missing+="  an _arch/ neighbour was not resolved to its own project"$'\n'
+    grep -qF 'mine/wiki/note.md' <<<"$cs_out" &&
+        cs_missing+="  our own file was listed as foreign"$'\n'
+    # It must not act. The defect it guards is a silent inclusion; a tool that silently
+    # stages or reverts would replace it with a silent omission, which is worse.
+    [ -z "$(git -C "$cs" diff --cached --name-only)" ] ||
+        cs_missing+="  commit-scope staged something — it must only name"$'\n'
+    [ -f "$cs/theirs/wiki/note.md" ] ||
+        cs_missing+="  commit-scope removed the foreign file — it must only name"$'\n'
+    # No git is "could not measure", never a clean pass: the question went unanswered.
+    cs2=$(mktemp -d); mkdir -p "$cs2/mine"
+    bash "$LIBSH" commit-scope "$cs2" mine >/dev/null 2>&1 &&
+        cs_missing+="  a vault without git reported a clean scope instead of refusing"$'\n'
+    rm -rf "$cs2"
+    if [ -n "$cs_missing" ]; then
+        fail "commit-scope does not separate this save's work from a neighbour's" "$cs_missing"
+    else
+        pass "commit-scope names foreign uncommitted work, spares the shared registries, and acts on nothing"
+    fi
+else
+    fail "check for commit-scope could not create a git fixture — empty input, not a clean repo"
+fi
+rm -rf "$cs"
+
 # ─── 43. backfill-dates recovers closing dates from history, or refuses ──────
 # `archive` moves dated entries only, so an undated Done backlog makes its threshold
 # unsatisfiable by any amount of running `archive` — a permanent violation rather than a
@@ -3172,6 +3323,21 @@ else
     out=$(bash "$LIBSH" backfill-dates "$bf/taskboard.md" 2>&1)
     grep -q 'already carries a date' <<<"$out" ||
         missing+="a second run does not recognise the board as fully dated"$'\n'
+
+    # (b2) an entry whose text BEGINS WITH A DASH. Vault text is input, and this board
+    # carries an entry opening `--scope для lint-diff …`; the dedup grep took it as an
+    # unknown OPTION, wrote a usage message to stderr and exited 2 on every revision,
+    # while the command printed its counts and exited 0. Found 2026-09-04 on the first
+    # real run, not by any check. Asserted on STDERR, because the counts were right the
+    # whole time — the dates did not move, so an assertion on the output would pass on the
+    # broken code. `-F` is no defence: options are parsed before the pattern is read.
+    printf -- '## Done\n- [x] --scope, an entry that opens with a dash\n- [x] -e another one\n' > "$bf/dash.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-07-04T10:00:00' GIT_COMMITTER_DATE='2026-07-04T10:00:00' \
+        git -C "$bf" commit -qm dash >/dev/null 2>&1
+    bf_err=$(bash "$LIBSH" backfill-dates "$bf/dash.md" 2>&1 >/dev/null)
+    [ -z "$bf_err" ] ||
+        missing+="an entry beginning with a dash was passed to a tool as an option: $(head -1 <<<"$bf_err")"$'\n'
 
     # (c) two entries with the same text cannot be told apart — refuse, never guess.
     printf -- '## Done\n- [x] same text\n- [x] same text\n' > "$bf/dup.md"

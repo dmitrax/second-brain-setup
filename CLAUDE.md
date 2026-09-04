@@ -727,6 +727,16 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   about it, and an assertion on presence ("the key survived") passes on both editions of a
   line — assert on the VALUE, which is the half that differs. Key uniqueness is now checked
   on **both** inputs, not only stdin: stdin is not the input that can go bad on its own.
+  **Sibling defect in the same two branches, found 2026-09-04: they disagreed about the
+  file's ORDER.** The scoped seal writes `LC_ALL=C sort -u`; the full seal wrote `cp`, i.e.
+  the collector's emission order. Nothing was ever wrong with the delta — the comparison
+  sorts both sides — but every alternation between `--all` and `--scope` rewrote the whole
+  shared file: the 09-02 reseal changed three lines and moved a dozen more. That is noise
+  in the one file whose entire job is to make a small delta legible, and it maximises the
+  chance of a conflict in a file every machine edits, which is the failure the
+  sync-before-write rule exists to prevent. **Two code paths that write one file agree on
+  its format, or the file rots while every check stays green** — the rot is visible only in
+  `git diff`, which no check reads.
 - **The identity of the code under a soak is the INSTALLED copy, never HEAD.** A commit
   touching only `preflight.sh` or `CLAUDE.md` installs nothing, yet `git describe HEAD`
   renames the thing under judgement, and no stamp in any vault can then match it. Measured
@@ -785,6 +795,20 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   exit 0, and the board is the half that overruns; it now takes the project directory and
   finds both files itself, and given one file it NAMES the board it did not measure.
   Checked by preflight 25.
+  **The third form of the same class, found 2026-09-04: the wrong ARGUMENT KIND read as a
+  legitimate empty state.** `lint-diff` tests `[ ! -f "$base" ]`, which is true for a
+  directory as well as for a path that does not exist, and the second is its legitimate
+  first run — so handing it the vault (what every OTHER subcommand takes, and therefore the
+  mistake a caller actually makes: reproduced on the first natural attempt) printed
+  "no baseline at …", declared all 31 findings NEW and exited 0. With `--seal`, `cp` into a
+  directory then dropped `brain-lint-cur.NNNN` in the vault root — an untracked file the
+  next `git add -A` from `/brain-save` would commit, so one silent defect feeds another.
+  A wrong argument and an empty subject are different facts, and only one deserves to
+  proceed: `-e` decides existence, `-f` decides kind, and the two questions are asked
+  separately. The example to copy is in the same file — `vault-sync` already refuses a path
+  that does not exist. Checked by preflight, which asserts the non-zero exit AND that
+  nothing was written: a refusal that still writes is not a refusal, and the exit code
+  alone cannot see the stray file.
 - **A record whose ADDRESS is an argument gets a new record on every spelling.** This is
   the registry rule one turn further: `connections-add` fixed "prose names a format but no
   address" by putting the address in code, and `archive` still took the archive note's path
@@ -848,6 +872,35 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   the entry ended up (`0 datable from 80 revisions` about an entry a commit plainly showed
   closed). Checked by preflight 43, whose negative half proves an entry no revision shows
   closed is still refused a date.
+  **And vault text reaches a tool's ARGUMENT position, not only its pattern: an entry that
+  begins with a dash is read as an option.** Found 2026-09-04 on the first real run of
+  `backfill-dates` over this board, which carries an entry opening `--scope для lint-diff`:
+  the dedup `grep` printed a usage message and exited 2 on every revision while the command
+  reported "21 undated, 21 datable, 0 not" and exited 0 — a subroutine failing silently
+  inside a confident answer. `-F` is not the guard, because options are parsed before the
+  pattern is ever read; `-e` (or `--`) is. Measured rather than assumed, and the measurement
+  changed the claim: the DATES were never wrong, since only closed entries are collected, so
+  the first record for a key still comes from the revision that closed it. What it cost was
+  the guard, which stops working the moment the dedup matters. The general rule is the one
+  this Block already states for reading vault content and now states for passing it: **a
+  value taken from the vault is never handed to a command in a position where it can be read
+  as a flag.** Checked by preflight 43, asserting on STDERR — the counts were correct
+  throughout, so an assertion on the output passes on the broken code.
+  **Correction 2026-09-04, and the shape of it is the lesson: the sentence above names the
+  exemption and the code implemented half of it.** `sweep-closed` files `In progress` —
+  said twice in this bullet — yet the check exempted `Done` only, so every item ticked in
+  `In progress` was reported as one "nothing files them", which is a diagnosis whose
+  premise the same paragraph refutes. It also inflated the number by a whole section:
+  `goprofi-voronka` read **91 against a baseline of 28**, the 63 difference being exactly
+  its ticked items there. Note what this means about the measurement printed above —
+  124 / 52 / 28 / 23 / 20 are Backlog-only counts, i.e. **numbers the shipped code never
+  computed**; they agreed for six days only because no board had a ticked item in
+  `In progress`, and goprofi's growing to 63 is what finally separated them. So a
+  measurement quoted in a rule is not evidence that the code produces it, and the exempt
+  list is written as what it means — the sections a TOOL reaches — never as an
+  enumeration that can lose a member silently. Checked by preflight 4e, whose fixture
+  pairs a ticked item in `In progress` with one in `Backlog`: without the second half the
+  exemption would swallow the rule.
   [[decision-a-closed-item-outside-done-is-reported-as-a-fact-because-the-queue-is-not-debt]]
 - **A record of a claim is stamped when the claim is CONFIRMED, not only when it changes.**
   Step 5 of `/brain-save` stamped `updated:` on `architecture-map.md` only after a rewrite,
@@ -985,7 +1038,23 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   the old scope that still hold, not just the delta. An off-schema value is invisible
   to every `status`-based property query — same failure shape as the legacy
   one-line supersession form above. Found live 2026-07-22 in `puzzlebot-voronka`;
-  `brain-lint` Step 10 now flags any `status:` value outside the three
+  `brain-lint` Step 10 now flags any `status:` value outside the three.
+  **The same ban binds every REFERENCE field — `supersedes`, `superseded-by`,
+  `corrected-by` — and it had to be written out because the hedge simply moved one field
+  over.** Found 2026-09-04 in `goprofi-voronka`: `supersedes:
+  ["decision-the-funnel-… (только развилочное следствие, остальное в силе)"]`, i.e. the
+  degree of a partial reversal parked in the field, exactly what the sentence above sends
+  to the new note's body — where that note already carried it. The cost is not
+  cosmetic and it is not the cost you would guess: the lint takes the whole value as a
+  filename and reports `does not exist` about a target sitting on disk, so the finding is
+  a FALSE claim about existence attached to a TRUE defect of schema, and repairing what it
+  names would be repairing nothing. A field that holds an identifier holds an identifier
+  and nothing else; whitespace in the value is the machine test, because a note name is
+  kebab-case by rule. Measured before making it fire, as a threshold must be: 68 non-empty
+  values in these three fields across the whole vault, **exactly one** with whitespace —
+  the defect itself, and no legitimate value at risk. Checked by preflight 4e, which
+  asserts the finding is `decision-schema` and NOT `decision-ref` — one defect owes one
+  finding, and the wrong one of the two sends the reader to the wrong repair
 - Partially-stale decision note (the decision holds, one supporting fact in its body
   has since been disproved) uses `corrected-by: <note>` in the old note's frontmatter,
   `status` and body untouched. Not `superseded` — that would falsely retire a rule

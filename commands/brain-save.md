@@ -662,6 +662,30 @@ memory of what the session *meant* to do. A count has to be counted: the shell r
 the facts, this step judges them, and the split is the same one `archive` uses — the
 model picks the boundary, the shell moves the bytes.
 
+## Step 8b: Name anything in the tree that is not this save's
+
+Still **before the commit**, and for the same reason: after it the tree is clean and
+there is nothing left to look at.
+
+```bash
+bash "$BRAIN" commit-scope "$VAULT" "$PROJECT"
+```
+
+Exit **0** every uncommitted path belongs here · **2** something does not — say what,
+in the Result · **1** could not measure (no git in the vault).
+
+The vault is ONE repository holding every project, and the commit below stages
+everything. Caught live 2026-08-30: a session in another project had uncommitted work in
+the tree, and `git add -A` carried a file this save never wrote into this save's commit.
+`save-report` cannot see it — it asks whether a step left a trace, never whose.
+
+On exit 2 the command **stages nothing and drops nothing**, and that is deliberate: a
+cross-project write is legitimate and common — measured 2026-09-04, 70 of the vault's 820
+commits since 06-01 touch more than one project. Narrowing the `add` would have dropped
+those silently, and a silent omission is worse than a silent inclusion. So answer it:
+either the foreign paths are yours (say so in one line) or they are another session's —
+commit by path instead of `-A`, and say that.
+
 ## Result
 
 Write the block from the `save-report` output — the numbers are its numbers, not a
@@ -680,6 +704,7 @@ Index:      updated / n/a
 step skipped: [step] — [reason]        ← one line per MISSING, or no such line at all
 
 Don't forget: git add -A && git commit -m "[DATE]" && git push
+foreign in tree: [what Step 8b named, and whose it is]   ← only when it named something
 ```
 The labels above are written in English here because this file is; **print them in the
 vault's working language** (`brain.sh vault-language`), and leave every identifier —
