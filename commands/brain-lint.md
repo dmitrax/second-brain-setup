@@ -265,6 +265,24 @@ reported to the user, and never from a partial checkout (Step 0c). A sealed base
 "known" for every future run — sealing a run nobody read is how a finding disappears
 without ever being seen.
 
+**A seal without `--scope` also records the run** in `00-system/lint-baseline.meta` — one
+line, the date and the finding count. A scoped seal never touches it: that run compared half
+a vault, and letting it stamp the record would make a partial pass read as a full one.
+`/brain-save` prints the record's age at every save, as context and with no threshold on it.
+
+**The `--all` run is maintenance of THIS project, not a routine of the vault**, and saying
+so is the point rather than a note in passing. A project save compares only its own project
+by design — the rule is that a run reports only what it compared — so a neighbour's
+regression is seen by nobody until somebody runs `--all`. Measured 2026-09-04: nine of the
+fourteen baseline writes since 08-03 came from sessions of `second-brain-setup`, three more
+touch only `00-system`, and the gaps between full passes run 2, 3, 4, 3, 6, 1 and **12**
+days. A cross-project defect lives exactly that long: `closed-outside-done` counted `In
+progress` for six days, and a false `decision-ref` sat in the vault from 08-31 to 09-04.
+Measured again 2026-09-09, five days on: one NEW finding and three grown, one of them
+28 -> 164. So: when a session opens this project, the full pass is part of the visit.
+`brain.sh release-check <vault>` already runs the same scope-less collect — it is simply
+locked behind "I am thinking about a release", which is why it is named here too.
+
 **A changed key set produces fake deltas, and they are recognisable.** Adding, renaming or
 dropping a check shows up as a NEW and a GONE for what is one unchanged finding. The tell
 is a GONE nobody remembers fixing, often paired with a suspiciously similar NEW. When the

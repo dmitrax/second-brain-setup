@@ -651,6 +651,13 @@ The output is the Result block's raw material, and it is not optional prose:
   for.
 - **`n/a`** — the step does not apply here (a content project has no architecture map).
   Nothing to say.
+- **`base`** — not a step at all: the measuring mode, and the age of the vault's last
+  scope-less lint seal. It carries no threshold and cannot move the exit code. Read the
+  `full lint` line and, if the last full pass is old, say so in one sentence — this save
+  compared only its own project by design, so a neighbour's regression is invisible from
+  here. Do not treat it as an owed step and do not "fix" it by running `--all` unless the
+  session is actually working in `second-brain-setup`: the full pass is that project's
+  maintenance, and `/brain-lint` says why.
 
 **Why this replaced a template.** Measured 2026-08-16 in `goprofi-voronka`, twice in one
 session: a save ran **eight steps of twelve** and reported success. The four that

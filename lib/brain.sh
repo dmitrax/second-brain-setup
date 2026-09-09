@@ -116,6 +116,12 @@ usage: brain.sh <command> [args]
                                against the vault's working tree, so a skipped step shows
                                up as MISSING instead of as a filled-in template line.
                                Run it AFTER the writes and BEFORE the commit.
+                               It also prints, as context and never as a verdict, how
+                               old the vault's last scope-less lint seal is, read from
+                               00-system/lint-baseline.meta. That line carries no
+                               threshold and cannot change the exit code: a project save
+                               compares only its own project by design, so a neighbour's
+                               regression is invisible here until someone runs --all.
                                exit 0 every owed step left a trace · 2 one did not
                                · 1 could not measure.
   commit-scope <vault> <project>
@@ -146,6 +152,11 @@ usage: brain.sh <command> [args]
                                An empty stdin against a populated baseline is refused:
                                a broken producer and a clean vault look the same from
                                here. --allow-empty is the deliberate way through.
+                               A seal WITHOUT --scope also records the run in
+                               00-system/lint-baseline.meta (one line: date and finding
+                               count). A scoped seal never touches it — that run compared
+                               half a vault, and letting it stamp the record would make a
+                               partial pass indistinguishable from a full one.
   release-check <vault>        answer gates 2 and 3 of the release rule by measuring them.
                                Gate 2 runs the lint against this vault and reads the
                                delta's EXIT STATUS, not its text — a refusal prints no
@@ -175,6 +186,27 @@ usage: brain.sh <command> [args]
                                created that day — and the run prints how many quoted
                                mentions it left. Dry-run unless --apply.
 USAGE
+}
+
+# ── shared helpers ───────────────────────────────────────────────────────────
+# Hoisted to file scope 2026-09-09, when `save-report` needed to age a date too.
+# It was nested inside `lint_collect` and therefore unreachable from anywhere else,
+# and the alternative — a second date parser one function over — is the "two copies
+# drift" class this package already records for thresholds and for CLAUDE.md.
+
+# Portable: GNU date first, BSD date second. Neither -> empty.
+# The BSD branch spells the time out. `date -j -f %Y-%m-%d` fills every field the
+# format does not name from the CURRENT clock, so the same date parses one second
+# later on every call while TODAY stays frozen at the top of the run: measured
+# 2026-08-04 on Darwin, `2026-07-20` was 15 days old at the start of a full
+# lint-collect and 14 days old by the time the loop reached it, and two projects
+# sitting exactly on the 14-day threshold vanished from the output. Exit 0, stderr
+# empty. GNU's `-d` means midnight, so the two implementations also disagreed by a
+# day even without the drift — a key set that differs per machine is precisely the
+# fake NEW/GONE the baseline exists to prevent.
+_lc_epoch() {
+    date -d "$1" +%s 2>/dev/null ||
+        date -j -f "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s 2>/dev/null || true
 }
 
 # ── release-check ────────────────────────────────────────────────────────────
@@ -606,6 +638,41 @@ lint_diff() {
             # sorts both sides), so nothing was wrong with the delta; the FILE was rotting.
             LC_ALL=C sort -u "$cur" > "$base"
             echo "baseline updated: $base"
+            # The scope-less seal is the ONLY writer of the run record, and the scoped
+            # branch above deliberately leaves it alone: that run compared half a vault,
+            # so letting it stamp "recorded" would make a partial pass look like a full
+            # one — the same defect as sealing out-of-scope findings, one file over.
+            #
+            # Why a record at all, measured 2026-09-04: the baseline carried 29 lines of
+            # findings and ZERO metadata, so "when was the last full pass" had to be
+            # answered by archaeology — the git history of the file plus a reading of
+            # which projects each commit touched. A one-off investigation, not a query.
+            # What it costs to not know: gaps between full passes of 2, 3, 4, 3, 6, 1 and
+            # 12 days, and a cross-project defect lives exactly that long. Measured again
+            # 2026-09-09, five days after the previous full pass: one NEW finding and
+            # three that had grown, one of them 28 -> 164, seen by nobody in between.
+            #
+            # ⚠️ It is PRINTED, never judged. An age threshold here would be one more
+            # always-firing signal in a project that has already cut the summed prose
+            # budget, the taskboard total, `stale-project`'s calendar, the Done counter's
+            # unreachable advice and a map stamp that fired by construction — and the item
+            # that asked for this record said so in the same breath. No ordinal here on
+            # purpose: a running tally in prose goes stale, see CLAUDE.md Block 2.
+            #
+            # The record names what this command can actually verify. Findings arrive on
+            # stdin, so the absence of `--scope` says the COMPARISON covered everything,
+            # not that the collector did: a project-scoped collect piped into an unscoped
+            # diff would report the rest of the vault GONE, loudly, but nothing here can
+            # see the producer's arguments. So the line says "scope-less seal", which is
+            # the fact, rather than "full vault scan", which would be an inference.
+            #
+            # Its address comes from the baseline's own directory, never from an argument.
+            # A record addressed by the caller gets a new record on every spelling — one
+            # board grew THREE archives that way before `archive` derived the path, and
+            # `connections-add` exists for the same reason.
+            meta="$(dirname "$base")/lint-baseline.meta"
+            printf 'full-seal\t%s\t%s\n' "$(date +%Y-%m-%d)" "$(grep -c . "$base" || true)" > "$meta"
+            echo "run recorded: $meta"
         fi
     fi
     [ -n "$scope" ] && rm -f "$base_in" "$base_out" "$cur_out"
@@ -2349,6 +2416,43 @@ save_report() {
         fi
     fi
 
+    # ── vault context, not a step: when was the last scope-less lint ─────────
+    # A project save compares only its own project BY DESIGN — the rule is that a run
+    # reports only what it compared — so a neighbour's regression is seen by nobody until
+    # somebody remembers `--all`. Measured 2026-09-04: nine of the fourteen baseline
+    # writes since 08-03 came from sessions of this one project, i.e. the full pass
+    # happens when its owner looks in, with gaps of up to twelve days. Measured again
+    # 2026-09-09, five days on: one NEW finding and three grown, one of them 28 -> 164.
+    #
+    # Printed through `_sr_line` DIRECTLY, never through `verdict()`: this is not a step
+    # of the save, it owes no trace, and routing it through the counters would let vault
+    # maintenance change the exit code of a project's save. It carries the `base` verdict
+    # for the same reason the measuring-mode line above does — neither is ok/MISSING/n/a.
+    #
+    # ⚠️ No threshold, deliberately, and this is the second place it must be said or the
+    # next session adds one: an age here would fire on almost every save, which is the
+    # signal this project has already had to cut five times.
+    #
+    # An absent record is not a fault: a vault sealed only by older code has none, and the
+    # next scope-less `--seal` writes it. Saying MISSING there would be a verdict about
+    # the vault drawn from a fact about the code that sealed it.
+    sr_meta="$vault/00-system/lint-baseline.meta"
+    if [ -f "$sr_meta" ]; then
+        sr_mday=$(awk -F'\t' '$1 == "full-seal" { print $2; exit }' "$sr_meta")
+        sr_mn=$(awk -F'\t' '$1 == "full-seal" { print $3; exit }' "$sr_meta")
+        sr_me=$(_lc_epoch "${sr_mday:-}")
+        if [ -n "$sr_me" ]; then
+            sr_age=$(( ( $(date +%s) - sr_me ) / 86400 ))
+            _sr_line base "full lint" "last scope-less seal: $sr_mday ($sr_age days ago, ${sr_mn:-?} findings)"
+        else
+            # A date the record carries but no `date(1)` here can parse. Say which fact is
+            # missing rather than printing an age computed from nothing.
+            _sr_line base "full lint" "last scope-less seal: ${sr_mday:-<no date in the record>} (age not computable here)"
+        fi
+    else
+        _sr_line base "full lint" "no scope-less seal on record — the next \`/brain-lint --all\` will write one"
+    fi
+
     # ── the line the session cannot skip reading ─────────────────────────────
     if [ "$sr_missing" -gt 0 ]; then
         printf 'save-report: %s step(s) left no trace, %s need a stated answer\n' "$sr_missing" "$sr_answer"
@@ -2685,20 +2789,6 @@ lint_collect() {
     # shellcheck disable=SC2064
     trap "rm -rf '$LC_TMP'" EXIT
 
-    # Portable: GNU date first, BSD date second. Neither -> empty.
-    # The BSD branch spells the time out. `date -j -f %Y-%m-%d` fills every field the
-    # format does not name from the CURRENT clock, so the same date parses one second
-    # later on every call while TODAY stays frozen at the top of the run: measured
-    # 2026-08-04 on Darwin, `2026-07-20` was 15 days old at the start of a full
-    # lint-collect and 14 days old by the time the loop reached it, and two projects
-    # sitting exactly on the 14-day threshold vanished from the output. Exit 0, stderr
-    # empty. GNU's `-d` means midnight, so the two implementations also disagreed by a
-    # day even without the drift — a key set that differs per machine is precisely the
-    # fake NEW/GONE the baseline exists to prevent.
-    _lc_epoch() {
-        date -d "$1" +%s 2>/dev/null ||
-            date -j -f "%Y-%m-%d %H:%M:%S" "$1 00:00:00" +%s 2>/dev/null || true
-    }
     # Strip fenced blocks and inline code, keeping the line count intact so a hit's
     # line number still addresses the same line after cleaning.
     #

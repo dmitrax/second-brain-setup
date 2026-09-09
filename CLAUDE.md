@@ -737,6 +737,53 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   sync-before-write rule exists to prevent. **Two code paths that write one file agree on
   its format, or the file rots while every check stays green** — the rot is visible only in
   `git diff`, which no check reads.
+- **A shared record says when it was last written and how much it covered; without that,
+  "nobody ran it" and "it was run and found nothing" are the same observation.** The lint
+  baseline carried 29 lines of findings and zero metadata, so the question "when was the
+  last full pass" was answered 2026-09-04 by archaeology — the git history of the file plus
+  a reading of which projects each commit touched. That is an investigation, not a query,
+  and a fact you have to excavate is one nobody checks. What it costs: a project save
+  compares only its own project BY DESIGN (the rule one bullet up — a run reports only what
+  it compared), so a neighbour's regression is seen by nobody until somebody runs `--all`,
+  and the measured gaps between full passes are 2, 3, 4, 3, 6, 1 and **12** days. A
+  cross-project defect lives exactly that long: `closed-outside-done` counted `In progress`
+  for six days, and a false `decision-ref` sat in the vault from 08-31 to 09-04. Measured
+  again 2026-09-09, five days after the previous full pass: one NEW finding and three that
+  had grown, one of them **28 → 164**, none of them seen in between.
+  So a scope-less `--seal` writes `00-system/lint-baseline.meta` — one line, date and count
+  — and `save-report` prints its age. Four things decide the design, and each was a defect
+  somewhere else in this Block first. **The record lives beside the file, not inside it**:
+  `lint-baseline.txt` has a contract (`key<TAB>detail`, key uniqueness, `sort -u`), and a
+  metadata line would break all three in the most-loaded place. **Its address comes from the
+  baseline's directory, never from an argument** — a record addressed by the caller gets a
+  new record on every spelling, which is how one board grew three archives. **Only the
+  scope-less branch writes it**, because a scoped run compared half a vault and stamping the
+  record there would make a partial pass indistinguishable from a full one, exactly as a
+  scoped seal writing out-of-scope findings did. And **the record claims only what the
+  command can verify**: findings arrive on stdin, so the absence of `--scope` says the
+  COMPARISON was whole, not that the collector was — hence "scope-less seal", which is the
+  fact, and never "full vault scan", which would be an inference.
+  ⚠️ **The age is printed and never judged, and that is a rule rather than an omission.** A
+  threshold here would fire on nearly every save — one more always-firing signal in a
+  project that has already had to cut the summed prose budget, the taskboard total,
+  `stale-project`'s calendar, the Done counter's unreachable advice and the map stamp that
+  fired by construction. ⚠️ **Written without an ordinal on purpose.** Two drafts of this
+  bullet called it the fifth and the sixth; the first double-counted the taskboard total
+  under two names, and the second collided with the count already claimed further down
+  this file. A running tally kept in prose is the literal this Block says rots, and it
+  rotted inside one edit — name the enumeration, never its length.
+  For the same reason the line goes through `_sr_line` directly and never through
+  `verdict()`: vault maintenance must not move the exit code of a project's save. Checked by
+  preflight 65, whose negative half is the one that matters — a scoped seal must leave the
+  record byte for byte, before and after it exists.
+  **Corollary about the parser, paid for in the same commit:** `_lc_epoch` was nested inside
+  `lint_collect` and therefore unreachable from `save_report`, and the tempting fix — a
+  second date parser one function over — is the "two copies drift" class this Block already
+  records for thresholds and for `CLAUDE.md`. It was hoisted to file scope instead. Note
+  what that cost elsewhere: preflight 38 extracts the function by a `sed` range ending at
+  `^    }`, the indentation it had while nested, so the hoist silently emptied its input —
+  caught only because that check already fails hard on empty input. **When code moves, the
+  checks watching it are redirected at the new address, never at a looser pattern.**
 - **The identity of the code under a soak is the INSTALLED copy, never HEAD.** A commit
   touching only `preflight.sh` or `CLAUDE.md` installs nothing, yet `git describe HEAD`
   renames the thing under judgement, and no stamp in any vault can then match it. Measured

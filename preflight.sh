@@ -2732,7 +2732,12 @@ for f in "$SCRIPT_DIR"/lib/*.sh "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR/SKILL.m
     h=$(grep -nE 'date -j' "$f" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v '%H')
     [ -n "$h" ] && missing+="$(basename "$f") — a BSD date parse that does not name the time:"$'\n'"$(printf '%s\n' "$h" | sed 's/^/  /')"$'\n'
 done
-epoch_fn=$(sed -n '/_lc_epoch() {/,/^    }/p' "$SCRIPT_DIR/lib/brain.sh")
+# `^}` at column zero: _lc_epoch was hoisted out of lint_collect on 2026-09-09 so that
+# save-report could age a date with the same parser, and the old range ended at `^    }`,
+# the indentation it had while nested. A range that stops matching yields nothing here,
+# which the guard below turns into a red rather than a silent skip — but fix the range,
+# never the guard.
+epoch_fn=$(sed -n '/^_lc_epoch() {/,/^}/p' "$SCRIPT_DIR/lib/brain.sh")
 if [ -z "$epoch_fn" ]; then
     missing+="lib/brain.sh — _lc_epoch not found; the behavioural half had nothing to run"$'\n'
 else
@@ -5008,6 +5013,130 @@ else
         fail "one board can still grow a second archive" "$missing"
     else
         pass "archive derives its note, refuses to open a second one, and knows an archive by its header"
+    fi
+fi
+
+# ─── 65. A scope-less seal records the run; a scoped one must not ─────────────
+# The baseline carried 29 lines of findings and ZERO metadata, so "when was the last full
+# pass" was answered on 2026-09-04 by archaeology — the git history of the file plus a
+# reading of which projects each commit touched. Measured cost of not knowing: gaps between
+# full passes of 2, 3, 4, 3, 6, 1 and 12 days, and a cross-project defect lives exactly that
+# long. Measured again 2026-09-09, five days after the previous full pass: one NEW finding
+# and three grown, one of them 28 -> 164, seen by nobody in between.
+#
+# The half that matters is the NEGATIVE one. A scoped seal compared half a vault, so letting
+# it stamp the record would make a partial pass indistinguishable from a full one — the same
+# defect as a scoped seal writing out-of-scope findings, which went unseen for weeks because
+# no fixture ever exercised that branch.
+#
+# ⚠️ This check also guards the ABSENCE of a threshold. The item that asked for the record
+# said in the same breath not to solve it with an age threshold: that would be the fifth
+# always-firing signal this project has had to cut. The age is printed, never judged, and
+# the exit code of save-report must not move when the record is ancient.
+missing=""
+if [ ! -f "$LIBSH" ]; then
+    fail "check 65: no lib/brain.sh — empty input, not a clean repo"
+else
+    mv=$(mktemp -d); mkdir -p "$mv/00-system"
+    mb="$mv/00-system/lint-baseline.txt"
+    mm="$mv/00-system/lint-baseline.meta"
+    printf 'alpha-key:alpha\t3 things\nbeta-key:beta\t10 things\n' > "$mb"
+
+    # A scoped seal: the baseline moves, the record does not exist afterwards.
+    printf 'alpha-key:alpha\t4 things\n' |
+        bash "$LIBSH" lint-diff "$mb" --scope alpha --seal >/dev/null 2>&1
+    [ ! -f "$mm" ] ||
+        missing+="  a SCOPED seal wrote the run record — a partial pass now reads as a full one"$'\n'
+
+    # A scope-less seal writes it, once, in the contracted shape.
+    printf 'alpha-key:alpha\t4 things\nbeta-key:beta\t10 things\n' |
+        bash "$LIBSH" lint-diff "$mb" --seal >/dev/null 2>&1
+    if [ ! -f "$mm" ]; then
+        missing+="  a scope-less seal left no run record"$'\n'
+    else
+        [ "$(grep -c . "$mm")" -eq 1 ] ||
+            missing+="  the record is not one line — it grew instead of being replaced"$'\n'
+        awk -F'\t' 'NR == 1 && $1 == "full-seal" && $2 ~ /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/ && $3 ~ /^[0-9]+$/ { ok = 1 }
+                    END { exit !ok }' "$mm" ||
+            missing+="  the record is not \`full-seal<TAB>YYYY-MM-DD<TAB>N\`: $(cat "$mm")"$'\n'
+        # The count is the sealed baseline's, not the caller's guess.
+        [ "$(awk -F'\t' '{ print $3; exit }' "$mm")" = "$(grep -c . "$mb")" ] ||
+            missing+="  the recorded finding count does not match the baseline it sealed"$'\n'
+    fi
+
+    # A scoped seal AFTER a record exists must leave it byte for byte — the branch that
+    # would rot the record silently, and the one a presence-only assertion cannot see.
+    # Guarded on the record existing: with no record at all this would fire too, and a
+    # check that names two defects for one cause sends the reader to the wrong repair.
+    if [ -f "$mm" ]; then
+        cp "$mm" "$mv/before"
+        printf 'alpha-key:alpha\t9 things\n' |
+            bash "$LIBSH" lint-diff "$mb" --scope alpha --seal >/dev/null 2>&1
+        cmp -s "$mm" "$mv/before" ||
+            missing+="  a scoped seal rewrote an existing run record"$'\n'
+    fi
+
+    # ── save-report prints it, in all three states, and judges none of them ──
+    srb="$mv/lib/brain.sh"; mkdir -p "$mv/lib"; cp "$LIBSH" "$srb"
+    printf 'v9.9.9\n' > "$mv/lib/VERSION"
+    sv=$(mktemp -d); mkdir -p "$sv/proj/wiki" "$sv/proj/sessions" "$sv/00-system"
+    printf -- '---\nproject: proj\ntype: mixed\nupdated: %s\nbrain-version: "v9.9.9"\n---\n## Current state\nx\n' \
+        "$PF_ANCIENT" > "$sv/proj/_PROJECT.md"
+    printf -- '## In progress\n- [ ] a\n## Done\n' > "$sv/proj/taskboard.md"
+    printf -- '---\nupdated: %s\n---\n# map\n' "$PF_ANCIENT" > "$sv/proj/architecture-map.md"
+    printf -- '# index\n- [[proj/_PROJECT]]\n' > "$sv/00-system/index.md"
+    printf -- '# connections\n' > "$sv/00-system/connections.md"
+
+    # state 1: no record. Not a fault — a vault sealed only by older code has none.
+    out_none=$(bash "$srb" save-report "$sv" proj 2>&1); rc_none=$?
+    grep -qF 'full lint' <<<"$out_none" ||
+        missing+="  save-report prints no 'full lint' line when the record is absent"$'\n'
+    grep -qE '^(MISSING|ANSWER)[[:space:]]+full lint' <<<"$out_none" &&
+        missing+="  the absent record is given a verdict — it owes no trace and must not carry one"$'\n'
+
+    # state 2: an ancient record. The age must be printed and must NOT move the exit code.
+    printf 'full-seal\t%s\t7\n' "$PF_ANCIENT" > "$sv/00-system/lint-baseline.meta"
+    out_old=$(bash "$srb" save-report "$sv" proj 2>&1); rc_old=$?
+    [ "$rc_old" -eq "$rc_none" ] ||
+        missing+="  an ancient record changed save-report's exit code ($rc_none -> $rc_old) — that is a threshold"$'\n'
+    grep -qF "$PF_ANCIENT" <<<"$out_old" ||
+        missing+="  the record's date is not printed"$'\n'
+    grep -qE 'full lint.*[0-9]+ days ago' <<<"$out_old" ||
+        missing+="  the age in days is not printed"$'\n'
+    grep -qE '^(MISSING|ANSWER)[[:space:]]+full lint' <<<"$out_old" &&
+        missing+="  an ancient record is given a verdict — the age is printed, never judged"$'\n'
+
+    # state 3: a fresh record reads fresh, and the two states are told apart.
+    printf 'full-seal\t%s\t7\n' "$PF_FRESH" > "$sv/00-system/lint-baseline.meta"
+    out_new=$(bash "$srb" save-report "$sv" proj 2>&1); rc_new=$?
+    [ "$rc_new" -eq "$rc_none" ] ||
+        missing+="  a fresh record changed save-report's exit code ($rc_none -> $rc_new)"$'\n'
+    grep -qF "$PF_FRESH" <<<"$out_new" ||
+        missing+="  a fresh record's date is not printed"$'\n'
+    [ "$(grep -E 'full lint' <<<"$out_old")" != "$(grep -E 'full lint' <<<"$out_new")" ] ||
+        missing+="  an ancient and a fresh record print the same line — the age is not being read"$'\n'
+
+    # The age agrees between the GNU and the BSD branch of the date fallback. Settled by
+    # RUNNING both, which is the only evidence that counts: a `||` proves nothing about
+    # whether the two branches compute the same value.
+    if PATH=/usr/bin:/bin /usr/bin/env bash -c 'date -j -f "%Y-%m-%d %H:%M:%S" "2026-07-20 00:00:00" +%s' >/dev/null 2>&1; then
+        out_bsd=$(PATH=/usr/bin:/bin bash "$srb" save-report "$sv" proj 2>&1)
+        [ "$(grep -E 'full lint' <<<"$out_bsd")" = "$(grep -E 'full lint' <<<"$out_new")" ] ||
+            missing+="  the age differs between the GNU and BSD date branches:"$'\n'"    gnu: $(grep -E 'full lint' <<<"$out_new")"$'\n'"    bsd: $(grep -E 'full lint' <<<"$out_bsd")"$'\n'
+    else
+        gap "the BSD branch of the run-record age (check 65) — no BSD \`date\` on this machine; run on macOS, where /bin/date is BSD"
+    fi
+
+    # No age threshold anywhere in lib/ — the same guard check 46 keeps over connections.md.
+    thr=$(grep -nE 'lint-baseline\.meta|full-seal' "$LIBSH" | grep -E '\-(gt|lt|ge|le)[[:space:]]|[0-9]+[[:space:]]*\]\]?[[:space:]]*(&&|\|\|)')
+    [ -z "$thr" ] ||
+        missing+="  a threshold appeared on the run record — it is printed, never judged:"$'\n'"$(printf '%s\n' "$thr" | sed 's/^/    /')"$'\n'
+
+    rm -rf "$mv" "$sv"
+    if [ -n "$missing" ]; then
+        fail "the lint run records itself wrongly, or the record is being judged" "$missing"
+    else
+        pass "only a scope-less seal records the run, and save-report prints its age without judging it"
     fi
 fi
 
