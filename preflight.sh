@@ -1244,9 +1244,9 @@ fi
 # routinely opens _PROJECT.md and taskboard.md in the state they had at its last visit to
 # THIS machine, giving nothing away — the files are there and look current. Hence false
 # conclusions that a task is open when another machine closed it yesterday.
-# Two places, both required: SKILL.md reaches every project (including the 9 created
-# before the rule, which no template will ever reach), and the brain-init template
-# guarantees execution in new ones.
+# Every place is required: SKILL.md reaches every project (including the 9 created before
+# the rule, which no template will ever reach), and each template that WRITES a CLAUDE.md
+# guarantees execution in the projects it creates.
 missing=""
 sk="$SCRIPT_DIR/SKILL.md"
 sync_ln=$(grep -n 'vault-sync' "$sk" | head -1 | cut -d: -f1)
@@ -1256,16 +1256,38 @@ if [ -z "$sync_ln" ]; then
 elif [ -z "$read_ln" ]; then
     missing+="SKILL.md: start-of-session load marker not found — the check did not run"$'\n'
 fi
-grep -q 'vault-sync' "$SCRIPT_DIR/commands/brain-init.md" ||
-    missing+="brain-init.md: the CLAUDE.md template carries no sync step at session start"$'\n'
-# In the template the step must sit above the line telling the session to read _PROJECT.md.
-tpl_sync=$(grep -n 'At session start' -A6 "$SCRIPT_DIR/commands/brain-init.md" | grep 'vault-sync' | head -1 | cut -d: -f1)
-[ -n "$tpl_sync" ] ||
-    missing+="brain-init.md: vault-sync exists but not inside the 'At session start' block"$'\n'
+# The templates are DERIVED from the heading they write, never listed. Until 2026-09-15
+# this check named brain-init.md alone, while the chat skill generates the same block: it
+# lacked the step until 2026-08-04, gained it by hand, and nothing would have seen it go
+# again. A further template is caught here without anyone extending a list. Within each
+# block the step must sit above the first read of _PROJECT.md — below it, the read it
+# exists to protect has already happened. No `{n,m}` in the awk: BSD awk is a target.
+n_tpl=0
+while IFS= read -r tf; do
+    [ -n "$tf" ] || continue
+    n_tpl=$((n_tpl + 1))
+    rel=${tf#"$SCRIPT_DIR"/}
+    blk=$(awk '/^##+ (At s|S)ession start/ { on = 1; next } on && (/^#+ / || /^```/) { exit } on' "$tf")
+    s_ln=$(grep -n 'vault-sync' <<<"$blk" | head -1 | cut -d: -f1)
+    r_ln=$(grep -n '_PROJECT\.md' <<<"$blk" | head -1 | cut -d: -f1)
+    if [ -z "$s_ln" ]; then
+        missing+="$rel: the CLAUDE.md template's session-start block carries no vault-sync step"$'\n'
+    elif [ -z "$r_ln" ]; then
+        missing+="$rel: the session-start block never reads _PROJECT.md — the ordering was not checked"$'\n'
+    elif [ "$s_ln" -gt "$r_ln" ]; then
+        missing+="$rel: vault-sync comes after the first read of _PROJECT.md — that read is already stale"$'\n'
+    fi
+done <<EOF
+$(grep -lE '^##+ (At s|S)ession start' "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR"/chat-skills/*/SKILL.md 2>/dev/null)
+EOF
+# brain-init and the chat skill both write one; fewer means the enumeration broke, and an
+# empty list would otherwise pass as "every template is fine".
+[ "$n_tpl" -ge 2 ] ||
+    missing+="found $n_tpl CLAUDE.md template(s) with a session-start block, expected at least 2 — the enumeration did not run"$'\n'
 if [ -n "$missing" ]; then
     fail "reading the vault is not synced — a stale checkout reads as current" "$missing"
 else
-    pass "session start syncs the vault before reading (SKILL.md + the brain-init template)"
+    pass "session start syncs the vault before reading (SKILL.md + $n_tpl CLAUDE.md templates)"
 fi
 
 # ─── 13. A vault search always carries -F or -E ──────────────────────────────

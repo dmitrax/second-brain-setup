@@ -181,10 +181,12 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   look current, so the session silently works from "as of my last visit *to this
   machine*" — and reports a task as open when another machine closed it yesterday. The
   push conflict this rule originally fixed is loud and recoverable; a stale read is
-  neither, and it defeats the one thing the system exists for. It lives in two places
-  because neither alone suffices: `SKILL.md` (reaches every project, including those
-  created before the rule) and the `CLAUDE.md` template in `/brain-init` (guarantees
-  execution in new ones). Checked by preflight 12b.
+  neither, and it defeats the one thing the system exists for. It lives in `SKILL.md`
+  (reaches every project, including those created before the rule) and in every template
+  that writes a `CLAUDE.md` — `/brain-init` and the chat skill (guarantee execution in new
+  ones); neither half alone suffices. Checked by preflight 12b, which derives the
+  templates from the heading they write rather than listing them: the chat skill lacked
+  the step until 2026-08-04, and the check named `/brain-init` alone until 2026-09-15.
   [[decision-vault-syncs-before-write-because-shared-registries-conflict-at-push]]
 - A command that audits the vault states the scope it actually covered, and checks that
   scope instead of assuming it. `vault-sync` makes a checkout *current*; it does not make
