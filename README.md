@@ -216,7 +216,7 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 |---|---|---|
 | `SKILL.md`, `commands/brain-*.md` | English | Claude Code (machine) |
 | `WORKFLOW.md` | Russian | User guide (human) |
-| `ВТОРОЙ_МОЗГ_v1.8.0.md` | Russian | Architecture reference |
+| `ВТОРОЙ_МОЗГ_v1.9.0.md` | Russian | Architecture reference |
 | `README.md` | English | GitHub |
 | `README_RU.md` | Russian | GitHub (an independent document for Russian readers, not a translation) |
 | `chat-skills/brain-onboarding/SKILL.md` | English | Claude.ai Skills (machine) |
@@ -225,10 +225,66 @@ mv ~/Documents/second-brain-vault ~/Workspace/second-brain-vault
 
 User guide and architecture doc in Russian:
 - [WORKFLOW.md](WORKFLOW.md) — step-by-step guide
-- [ВТОРОЙ_МОЗГ_v1.8.0.md](ВТОРОЙ_МОЗГ_v1.8.0.md) — full architecture
+- [ВТОРОЙ_МОЗГ_v1.9.0.md](ВТОРОЙ_МОЗГ_v1.9.0.md) — full architecture
 
 
 ## Changelog
+
+### v1.9.0 — 2026-09-15
+
+One new subcommand, one new record and one new finding, plus fixes found by using the
+package rather than by the gate. `update.sh` is the whole upgrade: note formats, headings and
+existing vaults are untouched.
+
+- **`commit-scope` names work that is not this save's.** The vault is one repository holding
+  every project, and `/brain-save` ends in a blanket `git add -A`, so a parallel session's
+  uncommitted files rode along into the wrong commit. The command lists the uncommitted paths
+  that belong to other projects, between `save-report` and the commit. It names and never
+  acts: 70 of 820 vault commits since June legitimately touch more than one project, so
+  narrowing the add would trade a silent inclusion for a silent omission.
+- **The full lint pass records itself.** A scope-less `lint-diff --seal` writes
+  `00-system/lint-baseline.meta` — date and finding count — and `save-report` prints its age.
+  Before, "when was the last full pass" was answered by git archaeology, and the measured gaps
+  between full passes ran up to 12 days, which is exactly how long a cross-project regression
+  lives unseen. Only the scope-less seal writes the record, because a scoped run compared half
+  a vault; the age is printed and never judged, since a threshold would fire on nearly every
+  save.
+- **`closed-outside-done` reports ticked items no tool will ever file.** `sweep-closed` walks
+  `In progress` by construction, so an item ticked in `Backlog` stayed there for good. The
+  finding counts them and names the sections with their sizes, largest first. It is a fact,
+  not a threshold: a queue is not debt.
+- **A document with a process declares `type:` in `wiki/`** and is inventoried by state
+  instead of owing the three link rules; an undeclared note beside it still owes them.
+  `status:` and `tags:` were measured as candidates and rejected — both are carried by
+  ordinary notes.
+- Fixes, each found by use:
+  - `prose-budget` printed `ok 0/30 · ok 0/5 · ok 0/20` for a file without the sections it
+    measures; a missing section is now refused, and given a project directory it measures
+    the taskboard too.
+  - `archive` opened a new archive for every spelling of its path — one live board had grown
+    three; the path is derived now, and a second archive beside an existing one is refused.
+  - `lint-diff` handed a directory read it as "no baseline yet" and declared every finding
+    NEW at exit 0; it now refuses.
+  - `save-report` no longer reports a skipped step for a session that crosses midnight, or
+    for the second save inside one session.
+  - The `In progress` threshold counts the largest `###` block, not the sum, so a roadmap no
+    longer reads as debt.
+  - `backfill-dates` reads history across the whole file, no longer passes entry text where
+    it can be read as a flag, and names the undated closed entries outside `Done` it did not
+    date.
+  - A reference field carrying prose beside a note name is reported as a schema defect
+    (`decision-field`), not as a missing target.
+  - Every path writes the shared baseline in one order, so alternating `--all` and `--scope`
+    no longer rewrites the whole file.
+  - `updated:` on the architecture map means "confirmed accurate as of", so `map-stale` no
+    longer fires by construction after a session that touched no structure.
+
+`preflight.sh` grew 81 → 84 checks.
+
+**Upgrading from v1.8.1 → v1.9.0:** run `update.sh`, and nothing else. The first full
+`/brain-lint --all` after upgrading writes `lint-baseline.meta`; until then `save-report` says
+there is no record. `closed-outside-done` is a new finding type, so on the first run it shows
+in the delta as NEW — a new metric, not new debt.
 
 ### v1.8.1 — 2026-08-29
 
