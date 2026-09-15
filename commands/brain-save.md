@@ -106,6 +106,14 @@ Each call rewrites one line, adds the key if absent, and refuses a file with no
 frontmatter — it cannot reformat anything else. Verify afterwards that the file it
 printed is the one you meant.
 
+**Exit 2 from the `brain-version` call is a refusal, not a failure.** The installed copy
+does not know its version — `unknown` (no `lib/VERSION`, or a package installed from an
+archive rather than a clone) or the old installers' literal `v1.0-dev` — so there is
+nothing true to stamp, and the project's previous stamp is kept. Say so in one line
+("version unknown on this machine, stamp left as it was") and carry on with the save;
+running `update.sh` from a git clone is the fix. Stamping the non-answer would overwrite
+the last real record with it, silently.
+
 **Why `brain-version` is stamped here.** It used to be written once by `/brain-init` from
 a hardcoded literal and then read or updated by nobody — a field that recorded the version
 a project was *created* under, drifting silently from the version actually in use

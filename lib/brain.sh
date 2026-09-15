@@ -300,9 +300,11 @@ release_check() {
     inst_dir="$HOME/.claude/skills/second-brain"
     ver=""
     [ -r "$inst_dir/lib/VERSION" ] && ver=$(head -1 "$inst_dir/lib/VERSION")
-    if [ -z "$ver" ] || [ "$ver" = "unknown" ]; then
-        echo "gate 3  ANSWER    nothing is installed here, so no session can have used this code"
-        echo "          run ./update.sh, then use the package from another project"
+    # `v1.0-dev` counts as unknown too: installers before v1.9.1 wrote it when there was no
+    # git to ask, and matching stamps against it would confirm a soak on code nobody can name.
+    if ! _version_known "$ver"; then
+        echo "gate 3  ANSWER    the installed copy does not know its version ('${ver:-no VERSION file}'), so no stamp can be matched to this code"
+        echo "          run ./update.sh from a git clone, then use the package from another project"
         return $rc_status
     fi
     # "The installed copy is not this code" and "nobody has used this code" are different
@@ -1110,6 +1112,20 @@ backfill_dates() {
 # computed one, printed it to stdout and wrote it nowhere. So no command could
 # say "this machine runs 1.3 while the vault is already on 1.6.0 — run
 # update.sh", and the drift stayed invisible until something behaved oddly.
+# Every value that means "the installed copy does not know its version", in ONE place.
+# `brain_version` prints `unknown` when no VERSION file sits next to the script, and the
+# installers before v1.9.1 wrote the literal `v1.0-dev` whenever `git describe` failed —
+# a package downloaded as an archive rather than cloned. That literal is shaped like a
+# release and names none, so it read as a real version everywhere a consumer checked for
+# `unknown` alone. The installers now write `unknown`; `v1.0-dev` stays here because
+# copies installed before the change keep it until their next update.
+_version_known() {
+    case "${1:-}" in
+        ''|unknown|v1.0-dev) return 1 ;;
+    esac
+    return 0
+}
+
 brain_version() {
     v="$(dirname "$0")/VERSION"
     if [ -r "$v" ]; then
@@ -1435,6 +1451,15 @@ stamp_field() {
     case "$key" in
         *[!A-Za-z0-9_-]*) echo "stamp-field: refusing odd key '$key'" >&2; return 1 ;;
     esac
+    # A version its source could not determine is not a version. Stamping it overwrites
+    # the project's last real stamp with a non-answer, silently — so it is refused and
+    # the old stamp stays. Exit 2, not 1: nothing is broken, there is simply nothing true
+    # to write, and the save says so in one line. Scoped to brain-version on purpose:
+    # another key may legitimately hold the word `unknown`.
+    if [ "$key" = "brain-version" ] && ! _version_known "$(printf '%s' "$val" | tr -d '"')"; then
+        echo "stamp-field: refusing brain-version $val — the installed copy does not know its version; the previous stamp is kept" >&2
+        return 2
+    fi
     [ "$(head -1 "$file")" = "---" ] || {
         echo "stamp-field: $file has no frontmatter block" >&2; return 1; }
     # And the block must CLOSE. Without a closing `---` the awk below never sets
@@ -2318,12 +2343,12 @@ save_report() {
     else
         stamped=$(_lc_fm "$pm" brain-version | tr -d '"')
         installed=$(brain_version)
-        if [ -z "$installed" ] || [ "$installed" = unknown ]; then
+        if ! _version_known "$installed"; then
             # Nothing to compare against: this copy was never installed (no VERSION file
             # next to the script — normal when running straight out of the repo). Naming
             # a MISSING here would be a verdict about the project drawn from a fact about
             # the caller, which is the "diagnosis whose premise was never checked" class.
-            _sr_line "n/a" "brain-version" "the running copy reports no version — nothing to compare '$stamped' against"
+            _sr_line "n/a" "brain-version" "the running copy reports no usable version ('${installed:-none}') — nothing to compare '$stamped' against"
         elif [ -z "$stamped" ]; then
             verdict MISSING "brain-version" "_PROJECT.md carries no brain-version: field; installed is $installed"
         elif [ "$stamped" = "$installed" ]; then

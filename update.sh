@@ -10,7 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # --dirty: edit -> update.sh -> commit is the normal order, and without the suffix the
 # stamp records `describe` from BEFORE the commit, lagging behind the code actually
 # installed (measured 2026-08-03: -10-g34f5287 against the real -12-g9a657fe).
-VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
+# No git (a package downloaded as an archive): say `unknown`, never invent a release.
+# The literal `v1.0-dev` stood here until v1.9.1 and read as a real version downstream.
+VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "unknown")
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'

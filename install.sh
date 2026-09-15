@@ -74,7 +74,9 @@ if [ -f "$SCRIPT_DIR/lib/brain.sh" ]; then
     # trails the installed code. Measured 2026-08-03: _PROJECT.md received -10-g34f5287
     # against the actual -12-g9a657fe. The -dirty suffix makes the lag visible in the
     # stamp itself.
-    INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "v1.0-dev")
+    # No git (a package downloaded as an archive): say `unknown`, never invent a release.
+    # The literal `v1.0-dev` stood here until v1.9.1 and read as a real version downstream.
+    INSTALLED_VERSION=$(git -C "$SCRIPT_DIR" describe --tags --always --dirty 2>/dev/null || echo "unknown")
     printf '%s\n' "$INSTALLED_VERSION" > "$SKILL_DIR/lib/VERSION"
     echo -e "  ${GREEN}✓${NC} lib/brain.sh + VERSION ($INSTALLED_VERSION) → $SKILL_DIR/lib/"
 else

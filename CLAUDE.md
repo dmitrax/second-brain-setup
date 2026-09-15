@@ -330,6 +330,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   record, it is decoration — measured 2026-08-03: 8 projects claimed `1.3`, two `1.5.0`,
   none the released 1.6.0, and the literal in the template had to be hand-edited at every
   release, which of course did not happen. Checked by preflight 4d.
+  **A version nobody knows is `unknown`, never a literal shaped like a release.** The
+  installers wrote `v1.0-dev` whenever `git describe` failed — a package downloaded as an
+  archive — while every consumer tested for `unknown` alone, so the literal read as a real
+  version: `release-check` would have matched stamps against it and confirmed a soak on
+  code nobody can name. The unknown values live in ONE function, `_version_known`, read by
+  `stamp-field` (which refuses to write such a value into `brain-version` and keeps the
+  previous stamp — exit 2, a refusal and not a failure), by `release-check` and by
+  `save-report`. Found 2026-09-15 by enumerating the values before choosing one: the board
+  item proposed refusing `unknown`, and the second value was the worse of the two. Checked
+  by preflight 4c (the refusal, and that it binds that key only) and by the install block,
+  which installs from a copy with no `.git`.
 - A count over vault files states which markers it counts, and counts all of them.
   Projects write closed tasks as both `- [x]` and `- ✅`; a counter that knows one reports
   zero for a project using the other — `cadrika` had 16 closed items invisible to the

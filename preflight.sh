@@ -487,6 +487,20 @@ if [ -f "$LIBSH" ]; then
         problems+="stamp-field did not add a missing key"$'\n'
     grep -q '^brain-version: "v1.7.0"$' "$TMPLIB/a.md" || problems+="stamp-field did not write brain-version"$'\n'
     grep -q '^count: 007$' "$TMPLIB/a.md" || problems+="stamp-field damaged a neighbouring key while adding"$'\n'
+    # A version its source could not determine is refused, and the last real stamp stays:
+    # stamping it would overwrite a fact with a non-answer, silently. Quoted and bare,
+    # plus the literal the installers wrote before v1.9.1.
+    for nv in '"unknown"' 'unknown' '"v1.0-dev"'; do
+        bash "$LIBSH" stamp-field "$TMPLIB/a.md" brain-version "$nv" >/dev/null 2>&1 &&
+            problems+="stamp-field wrote brain-version $nv over a real stamp"$'\n'
+    done
+    grep -q '^brain-version: "v1.7.0"$' "$TMPLIB/a.md" ||
+        problems+="a refused brain-version stamp still changed the field"$'\n'
+    # ...and only for brain-version: another key may legitimately hold the word.
+    printf -- '---\nstatus: x\n---\n' > "$TMPLIB/c.md"
+    bash "$LIBSH" stamp-field "$TMPLIB/c.md" status unknown >/dev/null 2>&1 &&
+        grep -q '^status: unknown$' "$TMPLIB/c.md" ||
+        problems+="stamp-field refused 'unknown' for a key that is not brain-version"$'\n'
     # A key with stray characters must be refused, or anything could be written into the block.
     bash "$LIBSH" stamp-field "$TMPLIB/a.md" 'weird: key' x >/dev/null 2>&1 &&
         problems+="stamp-field accepted a key with stray characters"$'\n'
@@ -5293,6 +5307,32 @@ else
         pass "update.sh is idempotent (two runs in a row, exit 0)"
     else
         fail "update.sh fails over a fresh install"
+    fi
+
+    # Installed from an archive rather than a clone, `git describe` has nothing to read.
+    # Both installers used to write the literal v1.0-dev there — shaped like a release,
+    # naming none — and release-check matched stamps against it. Each must now write
+    # `unknown`. The copy carries no .git, and GIT_CEILING_DIRECTORIES stops git from
+    # finding a repository in a parent of the temp dir instead.
+    nogit=$(mktemp -d); nghome=$(mktemp -d)
+    tar -C "$SCRIPT_DIR" --exclude=./.git --exclude=./.venv -cf - . | tar -C "$nogit" -xf -
+    ngv="$nghome/.claude/skills/second-brain/lib/VERSION"
+    ng_missing=""
+    [ -d "$nogit/.git" ] && ng_missing+="the archive copy still carries .git — the test would read a real version"$'\n'
+    HOME="$nghome" GIT_CEILING_DIRECTORIES="$(dirname "$nogit")" bash "$nogit/install.sh" </dev/null >/dev/null 2>&1 ||
+        ng_missing+="install.sh failed from an archive copy"$'\n'
+    [ "$(head -1 "$ngv" 2>/dev/null)" = "unknown" ] ||
+        ng_missing+="install.sh without git wrote VERSION '$(head -1 "$ngv" 2>/dev/null)', not 'unknown'"$'\n'
+    rm -f "$ngv"
+    HOME="$nghome" GIT_CEILING_DIRECTORIES="$(dirname "$nogit")" bash "$nogit/update.sh" >/dev/null 2>&1 ||
+        ng_missing+="update.sh failed from an archive copy"$'\n'
+    [ "$(head -1 "$ngv" 2>/dev/null)" = "unknown" ] ||
+        ng_missing+="update.sh without git wrote VERSION '$(head -1 "$ngv" 2>/dev/null)', not 'unknown'"$'\n'
+    rm -rf "$nogit" "$nghome"
+    if [ -n "$ng_missing" ]; then
+        fail "an install without git claims a version it does not have" "$ng_missing"
+    else
+        pass "an install without git writes VERSION 'unknown' (install.sh and update.sh)"
     fi
 
     # What is installed must match the repository byte for byte
