@@ -72,24 +72,18 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   **A gate check is never by itself a MINOR, and the reason is a contradiction inside this
   Block:** it requires a machine check for every rule it states, and a rule is almost always
   written after a defect — so counting checks as features turns a fix session into a MINOR
-  by construction. Measured 2026-08-26 over every commit since v1.6.0: of the 40 commits
-  that add a check, 19 are `feat` and **21 are not** (12 `fix`, 4 `docs`, 4 `test`, 1
-  `refactor`). The same measurement on releases, which is the half that had already gone
-  wrong: of the four MINOR tags since semver was adopted, **v1.5.0 and v1.6.0 delivered no
-  named capability at all** — their changelog entries are fix lists ("no longer uses
-  `property:set`", "verifies WHICH vault is open", "supersession is two fields") that earned
-  a MINOR for adding rules. v1.7.0 and v1.8.0 did deliver one (`lib/brain.sh`, `--mutate`,
-  `release-check`, `save-report`), and that is the line this now draws.
+  by construction, and two MINOR tags already shipped as fix lists that way, while v1.7.0
+  and v1.8.0 did deliver one (`lib/brain.sh`, `--mutate`, `release-check`, `save-report`).
   **What is NOT the discriminator, written down so it is not re-proposed: whether the output
   changed.** A fix that restores a stated property usually changes output — that is how you
   can tell it worked — so "the report gained a line" decides nothing on its own. Nor is the
-  size of the diff: v1.8.0 added 38 checks and v1.6.0 added 14, and only one of the two
-  shipped a capability.
+  size of the diff.
   Adopted 2026-07-20 and **narrowed 2026-08-26**. Earlier tags are not retro-fitted — same
   reason as the `v1.0`-`v1.3` era below: a tag records what was released under the rule then
   in force, and rewriting it destroys the only evidence of when the rule changed. Before the
   adoption date tags were `v1.0`-`v1.3` under a coarser "v1.x = additive only" scheme.
   Checked by preflight 60(a) for the tag shape and 60(d) for the bump itself.
+  [[decision-a-version-bump-follows-the-named-capability-because-a-gate-check-rides-with-every-fix]]
 - Commit messages follow Conventional Commits: `<type>(<scope>)?!?: <description>`,
   type one of `feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|release`
   (`release` is this repo's own type, used for tag commits — see git log). Adopted
@@ -103,10 +97,9 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
      `update.sh`*. Editing `commands/*.md` changes nothing until `update.sh` runs, so a
      lint run before it validates the previous version.
   3. **The change has survived at least one session other than the one that wrote it.**
-     No tag in the same session as the code. v1.4.3 and v1.5.0 both shipped on
-     2026-07-22, the second fixing what the first missed; five tags in three days, each
-     patching its predecessor. Writing a rule is not evidence the rule works — using it
-     is. Version numbers are cheap, but a released defect propagates into every vault.
+     No tag in the same session as the code. Writing a rule is not evidence the rule
+     works — using it is. Version numbers are cheap, but a released defect propagates into
+     every vault.
   **Conditions 2 and 3 are measured, not attested: `bash lib/brain.sh release-check
   "$VAULT"`.** It runs the lint against the live vault and reports the delta, then looks
   for a session log dated on or after the HEAD commit in a project stamped with the
@@ -114,14 +107,11 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   the stamp says it happened ON THIS CODE. Exit 0 both answered, 2 one is not met. It is
   deliberately NOT part of `preflight.sh`: that gate is repo-only and installs into a
   clean temporary `$HOME`, so it must run on a machine that has no vault, and a check
-  silently needing one would be a green meaning "did not run". Added 2026-08-19 after
-  gate 3 was declared closed on 08-18 by the session that had written the code it was
-  judging — the one thing condition 3 forbids in so many words, and nothing could see it
-  because nothing was looking. Checked by preflight 60.
+  silently needing one would be a green meaning "did not run". Checked by preflight 60.
   Rationale: preflight catches mechanical violations, lint catches vault-level ones, and
-  the waiting period catches design errors, which neither script can see. Three of the
-  four bugs in v1.4.3/v1.5.0 were one-line greps that no one had written; the fourth was
-  a design error found only by using the thing.
+  the waiting period catches design errors, which neither script can see.
+  [[decision-release-gate-is-executable-because-prose-rules-shipped-the-same-bug-three-times]] ·
+  [[decision-release-gates-two-and-three-live-outside-preflight-because-a-repo-gate-must-run-without-a-vault]]
 - Every rule added to this Block 2 must come with a machine check in `preflight.sh`
   where one is expressible. A rule that lives only as prose is a rule that survives
   exactly as long as the next session's attention — that is how the same
@@ -133,34 +123,22 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   not "libcava is pinned"). Never open a `## Current state` section in a project
   `CLAUDE.md` and never let dated session entries pile up there — the file loads in full
   every session, before the topic is known, and (for public repos) sits in `.gitignore`,
-  so nothing in it is ever seen changing. Measured 2026-07-25 on `dimarch`: 1080 lines,
-  490 of them dated chronicle, carrying 6 facts the vault had already corrected — a
-  script renamed two weeks earlier, a finished task listed as unwritten, a repo count
-  off by one. Checked by preflight 10-11.
+  so nothing in it is ever seen changing. Checked by preflight 10-11.
   **The second half of the same rule is about ownership, not expiry: a fact a vault file
   already owns must not be restated here even while it is still true.** The copy has no
   owner — `/brain-save` opens this file only to edit Block 2 on a rule change — so it does
   not stay true, and for a public repo it also sits in `.gitignore`, making it the one
-  copy never seen changing. Measured 2026-08-04 here: `/brain-init` wrote answer 5 into
-  three files at once (`_PROJECT.md`, `architecture-map.md`, `CLAUDE.md`), and the
-  `CLAUDE.md` one named three bash scripts for six weeks after `lib/brain.sh` became the
-  fourth, while both vault copies were right the whole time. So the fix for such a section
-  is deletion, never an update — keep only the constraint the inventory implies. Checked
-  by preflight 10b.
-  [[decision-claude-md-holds-invariants-vault-holds-state-because-copies-drift-silently]]
+  copy never seen changing. So the fix for such a section is deletion, never an update —
+  keep only the constraint the inventory implies. Checked by preflight 10b.
+  [[decision-claude-md-holds-invariants-vault-holds-state-because-copies-drift-silently]] ·
+  [[decision-the-map-holds-structure-only-because-a-third-copy-has-no-owner]]
 - A command that reports a diagnosis must verify the diagnosis's premise, in the same
   step that reports it. The action can be correct and the sentence attached to it false;
   nothing downstream catches that, because a session states it in prose and the next
-  session reads it as a finding. Two instances, both in `/brain-save`, both found
-  2026-08-03 on the first save under v1.7.0 code: the version warning called five
-  projects "running an un-updated copy" when their `1.3` was the old `/brain-init`
-  literal — evidence about no machine at all, and not even comparable to a
-  `v1.6.0-10-g34f5287` stamp, the two formats being unordered against each other; and
-  "delete older entries, they remain in `sessions/*.md`" was invoked on an entry that
-  had no session log and never did (the same case was caught by hand 2026-07-26 in
-  `goprofi-voronka` and never reached the rule's text). So a comparison states which
-  values it will compare and skips the rest, and a deletion whose safety rests on a
-  copy elsewhere opens that copy first. Checked by preflight 19.
+  session reads it as a finding. So a comparison states which values it will compare and
+  skips the rest, and a deletion whose safety rests on a copy elsewhere opens that copy
+  first. Checked by preflight 19.
+  [[decision-a-report-verifies-its-premise-because-a-true-action-can-carry-a-false-claim]]
 - A command that writes to the vault syncs it *before its first write* — `timeout N git -C
   "$VAULT" pull --rebase --autostash`, skipped silently when the vault is not a git repo or
   has no remote (a local-only vault is a supported setup). The vault is shared across
@@ -403,45 +381,28 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
 - **`grep -q` never ends a pipeline — no producer is exempt.** `grep -q`/`-qv` exits at
   the first qualifying line and the producer then dies of SIGPIPE with 141; where
   `pipefail` is on, 141 becomes the status of the whole pipeline, so a *successful match*
-  reads as a failure.
-  **Correction 2026-08-19, and it is the more useful half: only `preflight.sh` sets
-  `pipefail`.** `lib/brain.sh` is `set -u`, `install.sh` and `update.sh` are `set -e`.
-  This bullet said "the repo scripts run under `set -uo pipefail`" and was wrong about
-  three files of four, which makes the rule *defensive* in `lib/` rather than a repair,
-  and means the live defect it cites (`find … | grep -q .` in `decision-ref`) could not
-  have manifested the way it is written here. Third instance of the class this Block
-  already names twice — a rationale is the part of a fix that no check can hold.
-  What the missing `pipefail` DOES cost is worse and was found the same day: a pipeline
-  reports its LAST command, so `lint-collect <broken> | lint-diff --seal` returned 0 and
-  emptied the shared baseline while the collector was exiting non-zero. The lesson is not
-  "turn pipefail on" — that would change the status of every existing pipeline at once,
+  reads as a failure. Only `preflight.sh` sets `pipefail` — `lib/brain.sh` is `set -u`,
+  `install.sh` and `update.sh` are `set -e` — so in `lib/` the rule is *defensive* rather
+  than a repair. What the missing `pipefail` DOES cost is worse: a pipeline reports its
+  LAST command, so a consumer downstream of a failing producer reads success. The lesson is
+  not "turn pipefail on" — that would change the status of every existing pipeline at once,
   unmeasured — it is that **a consumer must not treat an empty producer as a clean
-  result**, which is where the guard now lives. Use a here-string,
-  `grep -qF PATTERN <<<"$var"`: that is not a pipeline at all, so `pipefail` has nothing
-  to observe and the producer cannot be signalled.
-  **This rule shipped with a false exemption, and the correction is the point.** Until
-  2026-08-16 it said to take the output into a variable and grep `printf '%s\n' "$var"`,
-  because "bounded producers (`printf`, `echo`, `cat`, `head -N`) cannot trigger it".
-  They can, and the prescribed fix was itself the defect. What decides the race is the
-  **output size against the pipe buffer** (64 KiB on Linux), not the kind of producer:
-  measured with a match at 15% depth, `printf … | grep -q` returned non-zero 0/200 times
-  at 28 KB, **199/200 at 56 KB** and 200/200 at 114 KB. Preflight 33 fed it 42 KB — the
-  grey zone — and flapped red on roughly a fifth of runs, naming a different Russian
-  pattern each time while `lib/brain.sh` carried all of them; two consecutive runs
-  accused different patterns, which is what exposed it. A gate that fails at random is
-  worse than one that fails, because its red gets read as noise. Hence the absolute form:
-  "is this output under 64 KB" needs a judgement at every call site and grows with the
-  vault, "is there a pipe" needs none. Measured 2026-08-04: preflight 26 went red
-  against a working warning, and — worse — the negative test on it reported a cheerful
-  "goes red" because the check was red *before* the mutation too. One such line voids
-  both the check and its test. The sweep this rule demanded found three more, one of them
-  live: `find . -name "$base.md" | grep -q .` in `lint-collect`'s `decision-ref`, which
-  would report an existing note as missing precisely when its basename is duplicated —
-  the one class this vault is known to carry. Checked by preflight 31.
+  result**. Use a here-string, `grep -qF PATTERN <<<"$var"`: that is not a pipeline at
+  all, so `pipefail` has nothing to observe and the producer cannot be signalled.
+  **Bounded producers are not exempt either:** what decides the race is the output size
+  against the pipe buffer, not the kind of producer, so "is this output small enough"
+  needs a judgement at every call site and grows with the vault, while "is there a pipe"
+  needs none. A gate that fails at random is worse than one that fails, because its red
+  gets read as noise — and a check that is red *before* the mutation voids its negative
+  test too. Checked by preflight 31.
   **Second-order note from the same fix:** taking a command out of a pipeline changes who
   swallows its exit code. `exact_tag=$(git describe --exact-match)` under `set -e` aborts
   the script when there is no exact tag, which is the normal state; inside the old `if`
   it was forgiven. When you unpipe something, re-ask what used to absorb its failure.
+  [[a-bounded-producer-loses-the-sigpipe-race-above-the-pipe-buffer]] ·
+  [[decision-grep-q-never-ends-a-pipeline-because-pipefail-turns-sigpipe-into-failure]] ·
+  [[only-preflight-sets-pipefail-so-the-grep-q-rule-is-defence-not-repair]] ·
+  [[a-consumer-that-parses-its-producers-text-reads-a-refusal-as-a-pass]]
 - **Sections are limited independently; a budget that sums them punishes twice and
   fires always.** `prose-budget` added `Current state` + `Последняя сессия` + `For future
   Claude` against 60 lines — but FFC already had its own limit of 20, and the session list
@@ -461,17 +422,16 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   Checked by preflight 25, whose fixture is three sections each inside its own limit and
   past the old sum.
 - **An audit covers every instruction file the project has, and prints how many.** A
-  project's instructions are rarely one file: measured 2026-08-16 in `goprofi-voronka` they
-  are four — root 765 lines, backend 645, content 579, infra 200, together 2189 lines and
-  172 KB loaded at session start — and only the root was ever audited, because that is the
-  path `/brain-save` happens to hand over. Three files of four were watched by nobody, and
-  "the file I was given is clean" read as "the instructions are clean". `claude-md-audit`
-  now audits the given file plus every other `CLAUDE.md` **tracked** in the same repository
-  (untracked ones are somebody's scratch, not the project's rules), names the file each
-  finding came from, and prints a `scope` line with the file and line count. Size remains
-  deliberately unmeasured — rules grow legitimately, and a size threshold has been removed
-  twice here for that reason; the scope line is a statement of coverage, not a budget.
-  Checked by preflight 40, including that an untracked file is not counted.
+  project's instructions are rarely one file, and auditing only the one `/brain-save`
+  happens to hand over leaves the rest watched by nobody — "the file I was given is clean"
+  then reads as "the instructions are clean". `claude-md-audit` audits the given file plus
+  every other `CLAUDE.md` **tracked** in the same repository (untracked ones are somebody's
+  scratch, not the project's rules), names the file each finding came from, and prints a
+  `scope` line with the file and line count. Size remains deliberately unmeasured — rules
+  grow legitimately, and a size threshold has been removed twice here for that reason; the
+  scope line is a statement of coverage, not a budget. Checked by preflight 40, including
+  that an untracked file is not counted.
+  [[decision-the-audit-covers-every-instruction-file-because-a-project-has-more-than-one]]
 - **A freshness check measures the record against the work, never against the calendar.**
   `stale-project` fired at 14 days since `updated:`, which reports how recently the owner
   chose to work on a project — a fact about priorities, not about health. Measured
@@ -534,18 +494,13 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
 - **A fixture never carries a fresh literal date: the calendar is not an input to a
   test.** What must read *fresh* is computed from today (`$PF_FRESH`), what must read
   *stale* is written ancient (`$PF_ANCIENT`) — a date only ever gets older, so an ancient
-  literal is stable while a recent one is a failure with a delay fuse. Measured
-  2026-08-16: the `lint-collect` fixture asserted `nope stale-project:other` against
-  `updated: 2026-08-01`, written on 08-04 when it was three days old; on 08-16 it turned
-  15, one day past the threshold, and failed the release gate with no commit since 08-05.
-  Both halves of that are bad — the red says nothing about the code, and had the assertion
-  been the other way round it would have gone *green* for the same reason. The sweep found
-  four more not yet fired, the nearest three days out: the scope fixture dated
-  `2026-08-04` set up two projects that are healthy *by intent*, which the stale check was
-  about to contradict. Bound is 30 days, twice the largest age threshold in `lib/`, so a
-  literal cannot drift into a window. Checked by preflight 41, which reads `date:` and
-  `updated:` values only — a date in a comment is a record of when something was measured
-  and must never be rewritten to satisfy a check.
+  literal is stable while a recent one is a failure with a delay fuse. Its red says nothing
+  about the code, and the opposite assertion would have gone *green* for the same reason.
+  Bound is 30 days, twice the largest age threshold in `lib/`, so a literal cannot drift
+  into a window. Checked by preflight 41, which reads `date:` and `updated:` values only —
+  a date in a comment is a record of when something was measured and must never be
+  rewritten to satisfy a check.
+  [[decision-a-fixture-computes-freshness-because-a-literal-date-fails-on-a-calendar-day]]
 - **Section names are matched in BOTH languages at once, never switched between them.**
   `(Done|Завершено)`, `(In progress|В работе)`, `(Current state|Статус)` — the code
   reads a vault, and a real vault is mixed: measured 2026-08-04, `second-brain-setup`
@@ -631,39 +586,18 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   that prints a Result block.
 - **Anything compared across machines is sorted under `LC_ALL=C`, and that is pinned per
   command, never exported.** The baseline is written on one machine and diffed on another,
-  and `comm` requires both inputs ordered identically. Collation is locale-dependent:
-  measured 2026-08-04, the C locale orders `Note-Alone.md` before `note-alone.md` while
-  `en_US.UTF-8` orders them the other way. Pinning makes the order a property of the code
-  rather than of whichever machine runs it. **Both halves of the original rationale were
-  re-measured on Arch 2026-08-04 and neither survived as written — the rule stands, its
-  reasons do not, and the corrected reasons are the ones to act on:**
-  - it claimed an unpinned run reports the SAME key as both NEW and GONE. Not reproducible
-    on glibc/coreutils 9.11: `sort` and `comm` read one environment, so they agree, and
-    glibc's collation has a codepoint tiebreak that stops `sort -u` collapsing keys that
-    differ only in case or punctuation. **Measured on Darwin 2026-08-04 and not reproduced
-    there either**, in any combination tried: BSD `sort`/`comm` from `/usr/bin`, the GNU
-    pair from Homebrew, and the two implementations crossed against each other, under `C`
-    and under `en_US.UTF-8` — 21 keys in, 21 out, NEW correct, GONE empty every time. The
-    premise is now refuted on both machines rather than untested on one.
-  - **but the pinning turned out to be a repair after all, of a different break, and that
-    is the reason to keep it.** Under a UTF-8 locale, GNU `sort` given a key with invalid
-    UTF-8 bytes fails the comparison and returns **nothing at all** with a non-zero status
-    that a process substitution swallows — so `cut_keys` yields an empty list, `comm` sees
-    no current findings, and every finding in the baseline is reported GONE. Measured
-    2026-08-04 on Darwin with Homebrew coreutils: 6 keys in, 0 out unpinned, 6 out pinned;
-    BSD `sort` handles the same input correctly, so this is the GNU build's behaviour and
-    not the platform's. Vault filenames are input, and the same class is already recorded
-    for `grep` on this machine ([[gnu-grep-returns-zero-matches-on-invalid-utf8]], 08-03),
-    where it cost three checks in a row and two false hypotheses. So: defence against
-    collation, repair against invalid bytes.
-  - it claimed a global export would blind the Cyrillic patterns. False in the dangerous
-    direction. Literal patterns (`Статус`, `Завершено`) match fine under `LC_ALL=C` —
-    they are byte sequences, verified by running `prose-budget` and `sweep-closed` with it
-    set. The character CLASS `[А-Яа-яЁё]` does not go blind either: under C it degrades
-    into a byte range matching **any** non-ASCII, so `café`, `naïve` and `Müller` all read
-    as Cyrillic, in grep, in awk and in a bash `case` glob alike. So do not export it —
-    but because it over-matches, not because it under-matches, and the practical victims
-    are checks 32 and 33 in a C-locale CI, not a Russian vault.
+  and `comm` requires both inputs ordered identically; collation is locale-dependent, so
+  pinning makes the order a property of the code rather than of whichever machine runs it.
+  Against collation that is a *defence*: the feared break — one key reported as both NEW
+  and GONE — was measured on both machines and does not reproduce. The *repair* is a
+  different break: under a UTF-8 locale, GNU `sort` given a key with invalid UTF-8 bytes
+  returns **nothing at all** with a non-zero status that a process substitution swallows —
+  `cut_keys` yields an empty list — so every finding in the baseline is reported GONE. Vault filenames are input, and
+  [[gnu-grep-returns-zero-matches-on-invalid-utf8]] is the same class for `grep`.
+  Do not export it either — not because literal Cyrillic patterns go blind (they are byte
+  sequences and match fine, verified by running `prose-budget` and `sweep-closed` under
+  it), but because the character CLASS `[А-Яа-яЁё]` degrades under C
+  into a byte range matching **any** non-ASCII, so `café` reads as Cyrillic.
   Pin it on each `sort`/`comm`; leave every pattern match alone. Checked by preflight 35,
   which asserts both halves and runs the same key set through `lint-diff` under two locales
   expecting no delta, and by the locale self-test at the top of `preflight.sh`, which
@@ -673,8 +607,8 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   rationale is the part of a fix that no check can hold. Preflight 19 forces a *command* to
   verify the premise of a diagnosis it reports, but a premise recorded in a comment or a
   decision note has no executable form, so it survives on the authority of whoever wrote
-  it. Both of these read as authoritative for a day and were wrong within an hour of being
-  run. When a fix is defensive, say so in the fix.
+  it. When a fix is defensive, say so in the fix.
+  [[lc-all-c-pinning-repairs-invalid-utf8-not-the-collation-it-was-written-for]]
 - **Rules the gate enforced before this Block named them.** Written down 2026-08-19, when
   an audit ran the mapping in both directions and found ten checks with no rule. That is
   the same rule failing the other way round: a check whose reason lives only in its own
@@ -751,71 +685,49 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   its format, or the file rots while every check stays green** — the rot is visible only in
   `git diff`, which no check reads.
 - **A shared record says when it was last written and how much it covered; without that,
-  "nobody ran it" and "it was run and found nothing" are the same observation.** The lint
-  baseline carried 29 lines of findings and zero metadata, so the question "when was the
-  last full pass" was answered 2026-09-04 by archaeology — the git history of the file plus
-  a reading of which projects each commit touched. That is an investigation, not a query,
-  and a fact you have to excavate is one nobody checks. What it costs: a project save
-  compares only its own project BY DESIGN (the rule one bullet up — a run reports only what
-  it compared), so a neighbour's regression is seen by nobody until somebody runs `--all`,
-  and the measured gaps between full passes are 2, 3, 4, 3, 6, 1 and **12** days. A
-  cross-project defect lives exactly that long: `closed-outside-done` counted `In progress`
-  for six days, and a false `decision-ref` sat in the vault from 08-31 to 09-04. Measured
-  again 2026-09-09, five days after the previous full pass: one NEW finding and three that
-  had grown, one of them **28 → 164**, none of them seen in between.
+  "nobody ran it" and "it was run and found nothing" are the same observation.** A project
+  save compares only its own project BY DESIGN (the rule one bullet up — a run reports only
+  what it compared), so a neighbour's regression is seen by nobody until somebody runs
+  `--all`, and it lives exactly as long as the gap between full passes.
   So a scope-less `--seal` writes `00-system/lint-baseline.meta` — one line, date and count
   — and `save-report` prints its age. Four things decide the design, and each was a defect
   somewhere else in this Block first. **The record lives beside the file, not inside it**:
   `lint-baseline.txt` has a contract (`key<TAB>detail`, key uniqueness, `sort -u`), and a
   metadata line would break all three in the most-loaded place. **Its address comes from the
   baseline's directory, never from an argument** — a record addressed by the caller gets a
-  new record on every spelling, which is how one board grew three archives. **Only the
-  scope-less branch writes it**, because a scoped run compared half a vault and stamping the
-  record there would make a partial pass indistinguishable from a full one, exactly as a
-  scoped seal writing out-of-scope findings did. And **the record claims only what the
-  command can verify**: findings arrive on stdin, so the absence of `--scope` says the
-  COMPARISON was whole, not that the collector was — hence "scope-less seal", which is the
-  fact, and never "full vault scan", which would be an inference.
+  new record on every spelling. **Only the scope-less branch writes it**, because stamping
+  the record from a scoped run would make a partial pass indistinguishable from a full one.
+  And **the record claims only what the command can verify**: findings arrive on stdin, so
+  the absence of `--scope` says the COMPARISON was whole, not that the collector was —
+  hence "scope-less seal", which is the fact, and never "full vault scan", which would be
+  an inference.
   ⚠️ **The age is printed and never judged, and that is a rule rather than an omission.** A
   threshold here would fire on nearly every save — one more always-firing signal in a
-  project that has already had to cut the summed prose budget, the taskboard total,
-  `stale-project`'s calendar, the Done counter's unreachable advice and the map stamp that
-  fired by construction. ⚠️ **Written without an ordinal on purpose.** Two drafts of this
-  bullet called it the fifth and the sixth; the first double-counted the taskboard total
-  under two names, and the second collided with the count already claimed further down
-  this file. A running tally kept in prose is the literal this Block says rots, and it
-  rotted inside one edit — name the enumeration, never its length.
+  project that has already had to cut several. ⚠️ **Name the enumeration, never its
+  length:** a running tally kept in prose is the literal this Block says rots, and two
+  drafts of this very bullet got the ordinal wrong.
   For the same reason the line goes through `_sr_line` directly and never through
   `verdict()`: vault maintenance must not move the exit code of a project's save. Checked by
   preflight 65, whose negative half is the one that matters — a scoped seal must leave the
   record byte for byte, before and after it exists.
-  **Corollary about the parser, paid for in the same commit:** `_lc_epoch` was nested inside
-  `lint_collect` and therefore unreachable from `save_report`, and the tempting fix — a
-  second date parser one function over — is the "two copies drift" class this Block already
-  records for thresholds and for `CLAUDE.md`. It was hoisted to file scope instead. Note
-  what that cost elsewhere: preflight 38 extracts the function by a `sed` range ending at
-  `^    }`, the indentation it had while nested, so the hoist silently emptied its input —
-  caught only because that check already fails hard on empty input. **When code moves, the
-  checks watching it are redirected at the new address, never at a looser pattern.**
+  **Corollary about the parser:** a second date parser one function over would be the "two
+  copies drift" class, so `_lc_epoch` was hoisted to file scope instead. **When code moves,
+  the checks watching it are redirected at the new address, never at a looser pattern.**
+  [[decision-only-a-scope-less-seal-records-the-run-because-a-partial-pass-must-not-look-full]]
 - **The identity of the code under a soak is the INSTALLED copy, never HEAD.** A commit
   touching only `preflight.sh` or `CLAUDE.md` installs nothing, yet `git describe HEAD`
-  renames the thing under judgement, and no stamp in any vault can then match it. Measured
-  2026-08-26: HEAD read `v1.8.0-2-g4319071`, `release-check` reported gate 3 MISSING, and
-  the gate was in fact closed — the last shipping commit was `39f859f` of 08-19 and three
-  foreign projects had used that code since. A false red inside the release gate is worse
-  than no check, because its red gets read as noise; the taskboard already carried "verify
-  this by reading the decision, not on sight", which is a human working around a tool.
-  Rejected with a reason, so it is not re-proposed: recomputing VERSION from the shipping
-  paths instead — the `release: vX` commit ships nothing, so `describe` over those paths
-  would call v1.8.0's own code `v1.7.0-N-g39f859f`, a version understating itself.
+  renames the thing under judgement, and no stamp in any vault can then match it — a false
+  red inside the release gate, which is worse than no check because its red gets read as
+  noise. Rejected with a reason, so it is not re-proposed: recomputing VERSION from the
+  shipping paths instead — the `release: vX` commit ships nothing, so `describe` over those
+  paths would name a release's own code by the previous tag, a version understating itself.
   **The witness is a session in ANOTHER project**, because the project is decided by the
-  repository being worked in, so the session that writes the code saves here by construction.
-  The candidate "a log later than the commit" was refuted by measurement rather than by
-  taste: the log file is created by `/brain-save` at SAVE time, so the author's own log is
-  later too — `b9e18a3` at 2026-08-18T11:03:04 and this project's `2026-08-18_1111_session.md`
-  eight minutes after it, which is the very session that declared the gate closed on its own
-  code. Time still counts, but only to close the cheap hole of a foreign save earlier the
-  same day. Checked by preflight 61 on five fixtures.
+  repository being worked in, so the session that writes the code saves here by
+  construction. "A log later than the commit" is refuted by measurement: the log file is
+  created by `/brain-save` at SAVE time, so the author's own log is later too. Time still
+  counts, but only to close the cheap hole of a foreign save earlier the same day. Checked
+  by preflight 61 on five fixtures.
+  [[decision-the-witness-of-a-soak-is-another-project-because-the-log-is-named-at-save-time]]
 - **A delta that compares keys is blind to a finding that grew, and the magnitude must be
   DECLARED per finding type.** Measured 2026-08-26 against the 08-23 baseline: goprofi's
   board 184 → 197, `wiki-no-sibling:_mac/mac-setup` 2 → 4, `wiki-no-backlink:goprofi-voronka`
@@ -831,14 +743,14 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   finding type is a red until somebody classifies it. `BETTER` is the same comparison
   reversed and costs nothing — it is the only place progress on parked debt is ever visible.
   Checked by preflight 63, on all four outcomes including the two that must NOT fire.
-- **A consumer reads its producer's exit status; parsing the output is not that.** Found
-  2026-08-26 within minutes of adding the baseline guard above: `release_check` derived gate
-  2 from `sed`-ing the word "NEW" out of `lint_diff`'s text, so a refusal — which prints no
-  such line — came out as `gate 2 ok, 0 NEW` while a hand-run diff on the same vault said 3.
-  This package's headline defect, a failure indistinguishable from success, occurring inside
-  its own release gate. Same family as the empty-producer rule already in this Block, seen
-  from the other end: there the consumer must not read an empty producer as a clean result,
-  here it must not read a silent one as a passing one.
+- **A consumer reads its producer's exit status; parsing the output is not that.** A
+  refusal prints no result line, so a consumer that reads its verdict out of the producer's
+  text reads the refusal as a pass — this package's headline defect, a failure
+  indistinguishable from success, and it once sat inside the release gate itself. Same
+  family as the empty-producer rule already in this Block, seen from the other end: there
+  the consumer must not read an empty producer as a clean result, here it must not read a
+  silent one as a passing one.
+  [[a-consumer-that-parses-its-producers-text-reads-a-refusal-as-a-pass]]
 - **A section a file does not HAVE is not a section of length zero, and the difference is
   invisible to every counter.** `prose-budget` guarded the case where a counter fails to
   RUN — a non-numeric value, exit 1, "nothing was measured" — and was blind to its twin one
@@ -894,25 +806,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   `--flag)` branches themselves, so the next flag reddens without anyone extending a list;
   the prose half is not, and is the reason a behaviour change edits the usage text in the
   same commit. Checked by preflight 56.
-- **A trait that exempts is DECLARED, never inferred — and the third candidate is the one
-  that teaches it.** `/brain-lint` demands a `[[../_PROJECT]]` backlink from every file in
-  `wiki/`, and briefs and preregistrations legitimately have none: they are instructions
-  that die with their run, not knowledge. Three ways to recognise them were tried, and two
-  were killed by measurement before the third held. `status:` outside the decision schema —
-  **56 wiki notes carry `status: active`** and are ordinary synthesis notes (2026-08-19).
-  The same plus an exception list — implemented and run: **18 findings against 3, nearly all
-  false**, sweeping decision notes whose `superseded`/`deprecated` are states of KNOWLEDGE
-  and `_arch/dimarch` notes with free-form statuses. And `tags:`, which is the closest call
-  and the most instructive — measured 2026-08-29, `audit` sits on **five ordinary goprofi
-  notes ABOUT audits** as well as on cadrika's five audit requests, so one tag names a
-  document and a note about one. What held: **inside `wiki/`, `type:` declares**, because
-  nobody else uses it — four files in the whole vault carried it, all four genuine documents
-  with a process. Such a file is inventoried by state and skips the three link rules; an
-  undeclared note in the same directory still owes its links. ⚠️ Never repair such a finding
-  by adding the backlink: an invented link is worse than an absent one, and this rule exists
-  precisely because the finding sat open for ten days rather than be closed that way.
-  Checked by preflight 48, whose fixture pairs a declared brief with an undeclared note
-  carrying the same tag — the exemption must not swallow the rule.
+- **A trait that exempts is DECLARED, never inferred.** `/brain-lint` demands a
+  `[[../_PROJECT]]` backlink from every file in `wiki/`, and briefs and preregistrations
+  legitimately have none: they are instructions that die with their run, not knowledge.
+  `status:` and `tags:` were both measured as candidates and both are carried by ordinary
+  notes as well, so neither can tell a document with a process from a note about one. What
+  held: **inside `wiki/`, `type:` declares**, because nobody else uses it. Such a file is
+  inventoried by state and skips the three link rules; an undeclared note in the same
+  directory still owes its links. ⚠️ Never repair such a finding by adding the backlink: an
+  invented link is worse than an absent one. Checked by preflight 48, whose fixture pairs
+  a declared brief with an undeclared note carrying the same tag — the exemption must not
+  swallow the rule.
   [[decision-a-lifecycle-document-declares-type-because-status-and-tags-are-carried-by-ordinary-notes]]
 - **A closed item outside `Done` is filed by nobody, and the fix is a fact rather than a
   threshold.** `sweep-closed` walks `In progress` by construction — right for its job, since
@@ -1010,29 +914,25 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
 - Any `[[wikilink]]` template pointing at a filename that is not unique across the vault
   (e.g. `_PROJECT.md`, which exists once per project) must use an explicit relative path,
   e.g. `[[../_PROJECT|_PROJECT]]` — never a bare `[[_PROJECT]]`. Obsidian resolves a bare
-  link to the first shortest-path match and silently points at the wrong project's file;
-  this shipped unnoticed in the decision-note template for 3 weeks (v1.2 → 2026-07-14) and
-  propagated into 135 vault notes. This is not a `_PROJECT.md`-specific bug — it recurred
-  2026-07-15 for `architecture-map.md` (14 bare links across 2 projects, confirmed live via
-  `obsidian links` resolving into a different project's file) and for wiki-notes that are
-  intentionally duplicated across two projects (5 filenames, ~12 links — same-directory
-  bare links are just as ambiguous as cross-directory ones, proximity does not disambiguate).
-  Treat "filename is unique in this one project" as never sufficient reasoning on its own —
-  check the whole vault before deciding a bare `[[link]]` is safe.
+  link to the first shortest-path match and silently points at the wrong project's file.
+  This is not a `_PROJECT.md`-specific bug — it recurred 2026-07-15 for
+  `architecture-map.md` (14 bare links across 2 projects, confirmed via `obsidian links`)
+  and for notes duplicated across two projects (~12 links), and same-directory bare links
+  are just as ambiguous as cross-directory ones — proximity does not disambiguate. Treat "filename is
+  unique in this one project" as never sufficient reasoning on its own — check the whole
+  vault before deciding a bare `[[link]]` is safe.
   **A correct bare link goes bad on its own, with no edit to it.** Uniqueness is a property
   of the vault at read time, not of the link at write time: the moment a second project
   creates a file with the same basename, every existing bare link to that name — in the
-  *older* project, written when the name was unique — becomes ambiguous. Measured
-  2026-08-03: five `puzzlebot-voronka` notes from 06-28…07-04 carried 33 correct bare links
-  until `goprofi-voronka` was created 07-29 reusing those five filenames, three days after
-  a full lint had declared the vault clean of this class. So the trigger is not authoring
-  discipline, and no amount of care at write time prevents it — the only defence is a
-  vault-wide sweep that re-asks "is this basename still unique", which is why it lives in
-  `/brain-lint` Step 4b (checked by preflight 15) and runs on every lint, not only for new
-  projects. Corollary for the author of the *new* file: reusing a basename from another
-  project is itself the breaking change — check first, and if you reuse it anyway, fix the
-  older project's bare links in the same pass.
-  [[decision-name-uniqueness-is-read-time-because-a-new-project-breaks-old-correct-links]]
+  *older* project, written when the name was unique — becomes ambiguous. So the trigger is
+  not authoring discipline, and no amount of care at write time prevents it — the only
+  defence is a vault-wide sweep that re-asks "is this basename still unique", which is why
+  it lives in `/brain-lint` Step 4b (checked by preflight 15) and runs on every lint, not
+  only for new projects. Corollary for the author of the *new* file: reusing a basename
+  from another project is itself the breaking change — check first, and if you reuse it
+  anyway, fix the older project's bare links in the same pass.
+  [[decision-name-uniqueness-is-read-time-because-a-new-project-breaks-old-correct-links]] ·
+  [[decision-relative-project-link-because-bare-wikilink-resolves-ambiguously]]
 - The same ambiguity applies to the `obsidian` CLI. Its `file=` argument is name-resolved
   by design — `obsidian --help`: *"file resolves by name (like wikilinks), path is exact
   (folder/note.md)"*. So never address a vault file with `file=<name>` in any command
@@ -1044,21 +944,13 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   `updated:` into a different project's `_PROJECT.md`; caught only by `git status`
   in the vault. Fixed in
   brain-save Step 0b, brain-lint Step 11, SKILL.md.
-- **The Obsidian CLI does not write to the vault at all, and "verify afterwards which file
-  changed" is why that had to become absolute.** That clause stood here as the safeguard on
-  mutating calls, and it is not wrong so much as unable to fire: measured 2026-08-04, a
-  single `obsidian move` behind the guard, addressed by `path=`, verified right after with
-  `git status` — clean, only the renamed note — then corrupted **8 places across 6 files**
-  minutes later, while the session edited them. The call had written
-  `"alwaysUpdateLinks": true` into the vault's own `.obsidian/app.json` (a setting change
-  nobody requested), after which the GUI repointed backlinks from its cached copy at
-  offsets valid for the pre-edit text, splicing `[[new-name|old-alias]]` into the middle of
-  unrelated sentences. Exit 0, empty stderr, and the links it was supposed to fix were
-  still not fixed — the session had rewritten them itself. **A verification placed after a
-  call cannot see damage that arrives after the verification**, so the rule a check can
-  hold whole is the absolute one. This is the third narrowing along one line, not a
-  reversal: `property:set` was dropped inside v1.5.0, the version that introduced the CLI,
-  and `file=` addressing right after — both for writing silently to the wrong place.
+- **The Obsidian CLI does not write to the vault at all.** "Verify afterwards which file
+  changed" stood here as the safeguard on mutating calls and could not fire: a call can
+  change a setting the GUI acts on minutes later, so **a verification placed after a call
+  cannot see damage that arrives after the verification**, and the rule a check can hold
+  whole is the absolute one. This is the third narrowing along one line, not a reversal:
+  `property:set` and `file=` addressing were dropped before it, both for writing silently
+  to the wrong place.
   Renames go through `brain.sh rename`, which repoints every link form itself and refuses a
   basename already taken elsewhere in the vault. It draws one line worth restating: **a
   pointer is updated, a quotation is not** — `[[name]]` in a session log points at a note
@@ -1069,9 +961,7 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   block. Note what that check must NOT do: the prohibition itself is stated inside the
   fenced template `/brain-init` writes, so a block declared `markdown` or `yaml` is a
   template, not a command — `exec_blocks` in `preflight.sh` is the one place that decides
-  this, and checks 1 and 2 were reading them as executable until the differentiating
-  negative test for 39 exposed it. They were green only because their wording missed by one
-  word.
+  this.
   [[decision-the-cli-never-writes-because-a-check-after-the-call-cannot-see-later-damage]]
 - `path=` is relative to the *active* vault, so it does not fix the same failure one
   level up: `_obsidian_available()` must compare `obsidian vault info=name` against
@@ -1099,24 +989,19 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   degree of change belongs in the *new* note's body, which must restate the parts of
   the old scope that still hold, not just the delta. An off-schema value is invisible
   to every `status`-based property query — same failure shape as the legacy
-  one-line supersession form above. Found live 2026-07-22 in `puzzlebot-voronka`;
-  `brain-lint` Step 10 now flags any `status:` value outside the three.
+  one-line supersession form above. `brain-lint` Step 10 flags any `status:` value
+  outside the three.
   **The same ban binds every REFERENCE field — `supersedes`, `superseded-by`,
-  `corrected-by` — and it had to be written out because the hedge simply moved one field
-  over.** Found 2026-09-04 in `goprofi-voronka`: `supersedes:
-  ["decision-the-funnel-… (только развилочное следствие, остальное в силе)"]`, i.e. the
-  degree of a partial reversal parked in the field, exactly what the sentence above sends
-  to the new note's body — where that note already carried it. The cost is not
-  cosmetic and it is not the cost you would guess: the lint takes the whole value as a
-  filename and reports `does not exist` about a target sitting on disk, so the finding is
-  a FALSE claim about existence attached to a TRUE defect of schema, and repairing what it
-  names would be repairing nothing. A field that holds an identifier holds an identifier
-  and nothing else; whitespace in the value is the machine test, because a note name is
-  kebab-case by rule. Measured before making it fire, as a threshold must be: 68 non-empty
-  values in these three fields across the whole vault, **exactly one** with whitespace —
-  the defect itself, and no legitimate value at risk. Checked by preflight 4e, which
-  asserts the finding is `decision-schema` and NOT `decision-ref` — one defect owes one
-  finding, and the wrong one of the two sends the reader to the wrong repair
+  `corrected-by` — or the hedge simply moves one field over.** The cost is not the one you
+  would guess: the lint takes the whole value as a filename and reports `does not exist`
+  about a target sitting on disk, so the finding is a FALSE claim about existence attached
+  to a TRUE defect of schema, and repairing what it names would be repairing nothing. A
+  field that holds an identifier holds an identifier and nothing else; whitespace in the
+  value is the machine test, because a note name is kebab-case by rule. Checked by
+  preflight 4e, which asserts the finding is `decision-schema` and NOT `decision-ref` — one
+  defect owes one finding, and the wrong one of the two sends the reader to the wrong repair.
+  [[decision-partial-reversal-stays-plain-superseded-because-status-is-binary-not-a-delta]] ·
+  [[decision-a-reference-field-holds-an-identifier-because-prose-in-it-fakes-a-missing-target]]
 - Partially-stale decision note (the decision holds, one supporting fact in its body
   has since been disproved) uses `corrected-by: <note>` in the old note's frontmatter,
   `status` and body untouched. Not `superseded` — that would falsely retire a rule
@@ -1174,29 +1059,26 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   [[decision-vault-search-declares-literal-or-pattern-because-a-bare-grep-is-wrong-both-ways]]
 - Repo scripts run on `bash` 3.2 — macOS ships it as `/bin/bash` and it is one of the
   two working machines. No `mapfile`/`readarray`, no `declare -A`, no `${var^^}`: all
-  are bash 4+. This is not style. `preflight.sh` used `mapfile`, so on Mac the array
-  stayed unbound, checks 5-6 received empty input and **printed a pass without ever
-  running** — the release gate was silently blind on half the fleet from 2026-07-22 to
-  2026-08-02, on exactly the two classes that had already shipped to 135 notes. From
-  which the general rule: a check must fail hard when its input is empty. Green means
-  "ran and found nothing", never "did not run" — a check that cannot tell those apart
-  is worse than an absent one, because its green is trusted. Checked by preflight 14.
+  are bash 4+. This is not style: a bash-4 construct leaves a check's input empty on the
+  Mac, and a check with empty input printed a pass without ever running. From which the
+  general rule: a check must fail hard when its input is empty. Green means "ran and found
+  nothing", never "did not run" — a check that cannot tell those apart is worse than an
+  absent one, because its green is trusted. Checked by preflight 14.
+  [[decision-a-check-with-empty-input-must-fail-because-green-must-mean-it-ran]]
 - **A multibyte character never touches an unbraced expansion, and this is NOT the bash
   3.2 class above — reading it as that is how it would recur.** `state="$state→x"` reads
   as the variable `state\xe2`: the leading byte of the multibyte character is taken as part
-  of the NAME, and under `set -u` the shell dies. Measured 2026-08-18 on Darwin — it
-  reproduces on bash 3.2 **and** on 5.3, and disappears under `LC_ALL=C` on both, so what
-  decides it is whether the C library calls a high byte a name character in a UTF-8 locale.
-  Darwin does, glibc does not; the same line is therefore correct on one working machine
-  and broken on the other, which no version floor can express. The failure is this
-  project's headline shape: `catalog` printed **51 of 63 notes with exit 0**, because the
-  loop sits on the left of a pipe, so the subshell died at the first superseded note and
-  `sort` received a truncated list with nothing said — and the standing column, the one
-  thing the catalogue adds over `ls`, never rendered at all. Braces cost one character and
-  remove the judgement entirely, so the rule is "is it braced", never "does this string
-  need it". Checked by preflight 53, over `*.sh`, `lib/*.sh` and the executable blocks of
-  the prompts, with the premise re-run rather than trusted: where the parse does not
-  reproduce the check says so as a coverage gap instead of claiming a green it did not earn.
+  of the NAME, and under `set -u` the shell dies. What decides it is whether the C library
+  calls a high byte a name character in a UTF-8 locale — Darwin does, glibc does not — so
+  the same line is correct on one working machine and broken on the other, which no version
+  floor can express. The failure is this project's headline shape: a loop on the left of a
+  pipe dies silently in its subshell and the consumer receives a truncated list with exit 0.
+  Braces cost one character and remove the judgement entirely, so the rule is "is it
+  braced", never "does this string need it". Checked by preflight 53, over `*.sh`,
+  `lib/*.sh` and the executable blocks of the prompts, with the premise re-run rather than
+  trusted: where the parse does not reproduce the check says so as a coverage gap instead of
+  claiming a green it did not earn.
+  [[decision-a-multibyte-character-never-touches-a-bare-expansion-because-the-libc-decides-what-a-name-is]]
 - **A claim about coverage is a claim, and it is verified where it is made.** The gate's
   own `gap()` — one day old — confessed "no BSD `date` on this machine" unconditionally,
   called one line **above** the test that decides it, so on Darwin check 38 printed "both
