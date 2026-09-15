@@ -2718,6 +2718,45 @@ bash "$LIBSH" rename "$rf" proj/wiki/absent.md proj/wiki/x.md --apply >/dev/null
 bash "$LIBSH" rename "$rf" ../outside.md proj/wiki/x.md >/dev/null 2>&1 &&
     missing+="rename accepted a path escaping the vault"$'\n'
 rm -rf "$rf"
+# The link count has its own channel, and the writes wait for the whole sweep. Measured
+# 2026-09-15: the count was read from awk's STDERR, where awk also writes its diagnostics,
+# so gawk's warning on a note with invalid UTF-8 reached the arithmetic, the sweep died
+# half way with exit 1, and the files swept before it pointed at a name never moved.
+rb=$(mktemp -d); mkdir -p "$rb/proj/wiki"
+printf '# note\n' > "$rb/proj/wiki/note.md"
+printf 'clean [[note]]\n' > "$rb/proj/wiki/clean.md"
+printf 'bytes \377\376 [[note]]\n' > "$rb/proj/wiki/latin.md"
+bash "$LIBSH" rename "$rb" proj/wiki/note.md proj/wiki/renamed.md --apply >/dev/null 2>&1 ||
+    missing+="rename failed on a note carrying invalid UTF-8 — awk's diagnostics reached the link count"$'\n'
+grep -qF '[[renamed]]' "$rb/proj/wiki/latin.md" ||
+    missing+="rename left a note carrying invalid UTF-8 pointing at the old name"$'\n'
+rm -rf "$rb"
+# All or nothing: an awk that fails part way leaves every file as it was and the note
+# unmoved. The old code wrote each file as it reached it, read an empty count for the
+# failing one, skipped it, moved the note and said exit 0.
+# A fixture of its own, never the one above: on gawk the old code already dies there,
+# the note never moves, and this test would then refuse for a missing source and pass
+# for the wrong reason — which is exactly what its first draft did. And the awk fails on
+# its SECOND call, not its first: failing at once leaves nothing to have been written,
+# so "a file was rewritten anyway" held on the old code too — its second draft. Both
+# linking files carry the link and the note does not carry its own name, so whichever
+# file `find` returns first, the old code has written it before the failure.
+rs=$(mktemp -d); mkdir -p "$rs/proj/wiki" "$rs/shim"
+printf '# title\n' > "$rs/proj/wiki/note.md"
+printf 'one [[note]]\n' > "$rs/proj/wiki/one.md"
+printf 'two [[note]]\n' > "$rs/proj/wiki/two.md"
+real_awk=$(command -v awk)
+printf '#!/bin/sh\ncase "$*" in *OLD=*)\n  n=$(cat "%s" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" > "%s"\n  [ "$n" -ge 2 ] && exit 2 ;;\nesac\nexec "%s" "$@"\n' \
+    "$rs/calls" "$rs/calls" "$real_awk" > "$rs/shim/awk"
+chmod +x "$rs/shim/awk"
+PATH="$rs/shim:$PATH" bash "$LIBSH" rename "$rs" proj/wiki/note.md proj/wiki/third.md --apply >/dev/null 2>&1 &&
+    missing+="rename reported success while awk was failing"$'\n'
+[ "$(cat "$rs/calls" 2>/dev/null)" = "2" ] ||
+    missing+="the failing-awk fixture did not reach a second file — the all-or-nothing half did not run"$'\n'
+grep -qF 'one [[note]]' "$rs/proj/wiki/one.md" && grep -qF 'two [[note]]' "$rs/proj/wiki/two.md" ||
+    missing+="a refused rename rewrote a file anyway"$'\n'
+[ -f "$rs/proj/wiki/note.md" ] || missing+="a refused rename moved the note anyway"$'\n'
+rm -rf "$rs"
 if [ "$scanned" -eq 0 ]; then
     fail "check 39 opened no files — empty input, not a clean repo"
 elif [ -n "$missing" ]; then

@@ -1193,8 +1193,16 @@ rename_note() {
     # substitution rather than a pipe, because the counters below must survive the loop.
     while IFS= read -r f; do
         src="$vault/$f"
-        grep -qF "$old_base" "$src" 2>/dev/null || continue
-        awk -v OLD="$old_base" -v NEW="$new_base" '
+        grep -qF -e "$old_base" "$src" 2>/dev/null || continue
+        # The count travels on its OWN channel and never on stderr, which is where awk
+        # writes its own diagnostics. Measured 2026-09-15: gawk's "Invalid multibyte data"
+        # warning on a note with invalid UTF-8 landed in `$(( quoted + q ))`, the sweep died
+        # with exit 1 half way, and the files swept before it pointed at a name that was
+        # never moved. LC_ALL=C removes that warning's cause — the program compares bytes
+        # and carries no character class a C locale would blur — and the channel removes
+        # every other stderr line's route into the arithmetic.
+        rm -f "$rn_tmp/n"
+        LC_ALL=C awk -v OLD="$old_base" -v NEW="$new_base" -v CNT="$rn_tmp/n" '
             function firstsep(s,   a, b, c, m) {
                 a = index(s, "|"); b = index(s, "#"); c = index(s, "^"); m = 0
                 if (a > 0) m = a
@@ -1249,20 +1257,41 @@ rename_note() {
                 }
                 print out
             }
-            END { print hits + 0 " " quoted + 0 > "/dev/stderr" }
-        ' "$src" > "$rn_tmp/out" 2>"$rn_tmp/n"
-        read -r h q < "$rn_tmp/n"
+            END { print hits + 0 " " quoted + 0 > CNT }
+        ' "$src" > "$rn_tmp/out" 2>"$rn_tmp/err" || {
+            echo "rename: awk failed on $f — nothing was changed:" >&2
+            sed 's/^/  /' "$rn_tmp/err" >&2; rm -rf "$rn_tmp"; return 1; }
+        h=""; q=""
+        { read -r h q < "$rn_tmp/n"; } 2>/dev/null
+        # Two non-negative integers or a refusal. Coercing a bad value to 0 would skip
+        # the file's links and still report success — the failure this guard replaces.
+        case "$h:$q" in
+            *[!0-9:]*|:*|*:)
+                echo "rename: no link count for $f — nothing was changed" >&2
+                rm -rf "$rn_tmp"; return 1 ;;
+        esac
         quoted=$(( quoted + q ))
         [ "$h" -gt 0 ] || continue
         links=$(( links + h )); touched=$(( touched + 1 ))
         printf '  %s (%s link(s))\n' "$f" "$h"
-        [ "$apply" = "--apply" ] && cat "$rn_tmp/out" > "$src"
+        # Staged, not written: a refusal on a LATER file must not leave this one repointed.
+        { cp "$rn_tmp/out" "$rn_tmp/w.$touched" && printf '%s\n' "$src" >> "$rn_tmp/srcs"; } || {
+            echo "rename: could not stage $f — nothing was changed" >&2; rm -rf "$rn_tmp"; return 1; }
     # -type f: a symlink named *.md would otherwise be enumerated, and `cat > "$src"`
     # follows it — rewriting the symlink's TARGET instead of the link, silently, and
     # outside the vault when the target points there. A symlink whose target is itself
     # inside the vault loses nothing by being skipped: the target is enumerated on its
     # own and rewritten once.
     done < <(cd "$vault" && find . -type f -name '*.md' -not -path './.git/*' | sed 's|^\./||')
+    # Writes happen here and only here, after every file has been read and counted, so a
+    # refusal anywhere in the sweep leaves the vault exactly as it was.
+    if [ "$apply" = "--apply" ] && [ -f "$rn_tmp/srcs" ]; then
+        i=0
+        while IFS= read -r s; do
+            i=$((i + 1))
+            cat "$rn_tmp/w.$i" > "$s"
+        done < "$rn_tmp/srcs"
+    fi
     rm -rf "$rn_tmp"
 
     if [ "$apply" = "--apply" ]; then
