@@ -3329,6 +3329,25 @@ else
     grep -q 'already carries a date' <<<"$out" ||
         missing+="a second run does not recognise the board as fully dated"$'\n'
 
+    # (b1) the answer covers what was looked at, and names what was not. The selection is
+    # Done only; until 2026-09-15 a board with a fully dated Done and 52 undated closed
+    # items in Backlog was told "every closed entry already carries a date". Both branches
+    # are asserted, because each prints its own sentence: nothing to date in Done, and
+    # something to date in Done.
+    printf -- '## Backlog\n- [x] ticked in the queue, undated\n\n## Done\n- [x] 2026-01-01 already dated\n' > "$bf/scope.md"
+    printf -- '## Backlog\n- [x] queue item, undated\n\n## Done\n- [x] done item, undated\n' > "$bf/scope2.md"
+    git -C "$bf" add -A >/dev/null 2>&1
+    GIT_AUTHOR_DATE='2026-07-03T11:00:00' GIT_COMMITTER_DATE='2026-07-03T11:00:00' \
+        git -C "$bf" commit -qm scope >/dev/null 2>&1
+    out=$(bash "$LIBSH" backfill-dates "$bf/scope.md" 2>&1)
+    grep -qFe 'every closed entry already carries a date' <<<"$out" &&
+        missing+="a board with an undated closed item in Backlog is called fully dated: $(head -1 <<<"$out")"$'\n'
+    grep -qFe '1 undated closed entries sit outside Done' <<<"$out" ||
+        missing+="the entries outside Done are not named when Done has nothing to date: ${out:-<no output>}"$'\n'
+    out=$(bash "$LIBSH" backfill-dates "$bf/scope2.md" 2>&1)
+    grep -qFe '1 undated closed entries sit outside Done' <<<"$out" ||
+        missing+="the entries outside Done are not named when Done has something to date: ${out:-<no output>}"$'\n'
+
     # (b2) an entry whose text BEGINS WITH A DASH. Vault text is input, and this board
     # carries an entry opening `--scope для lint-diff …`; the dedup grep took it as an
     # unknown OPTION, wrote a usage message to stderr and exited 2 on every revision,
@@ -3481,13 +3500,24 @@ rm -rf "$tc"
 # on Backlog has now been refused here five times. The fixture pairs the two directions,
 # because the whole risk is over-reach: a closed item in Done must not be counted, or the
 # finding fires on every healthy board forever.
-cx=$(mktemp -d); mkdir -p "$cx/proj/wiki" "$cx/proj/sessions" "$cx/00-system"
+cx=$(mktemp -d); mkdir -p "$cx/proj/wiki" "$cx/proj/sessions" "$cx/wide" "$cx/00-system"
 printf -- '---\nproject: proj\nstatus: active\n---\n## Current state\nx\n' > "$cx/proj/_PROJECT.md"
-printf -- '# index\n- [[proj/_PROJECT]]\n' > "$cx/00-system/index.md"
+printf -- '# index\n- [[proj/_PROJECT]]\n- [[wide/_PROJECT]]\n' > "$cx/00-system/index.md"
 printf -- '# board\n\n## In progress\n\n- [ ] open one\n\n## Backlog\n\n- [x] closed in the queue\n- ✅ closed with the other marker\n\n## Done\n\n- [x] 2026-01-01 properly filed\n' \
     > "$cx/proj/taskboard.md"
+# A board with EIGHT such sections, written smallest first so that file order is the
+# opposite of the answer, plus a tie (R4 and S4, four each) placed so that file order also
+# contradicts the name order. Names alone did not make the number actionable — goprofi's 275
+# were 40 headings in one line on 2026-09-15 — and the order was the awk build's own, which
+# had already flipped once in the shared baseline with the set unchanged.
+printf -- '---\nproject: wide\nstatus: active\n---\n## Current state\nx\n' > "$cx/wide/_PROJECT.md"
+{ i=1; while [ $i -le 7 ]; do
+      echo "## S$i"; j=0; while [ $j -lt $i ]; do echo "- [x] item $i-$j"; j=$((j + 1)); done
+      i=$((i + 1)); done
+  echo "## R4"; j=0; while [ $j -lt 4 ]; do echo "- ✅ tie $j"; j=$((j + 1)); done
+} > "$cx/wide/taskboard.md"
 cx_out=$(bash "$LIBSH" lint-collect "$cx" 2>&1)
-cx_line=$(grep -Fe 'closed-outside-done:' <<<"$cx_out")
+cx_line=$(grep -Fe 'closed-outside-done:proj' <<<"$cx_out")
 if [ -z "$cx_line" ]; then
     missing+="a closed item outside Done is not reported at all"$'\n'
 else
@@ -3499,6 +3529,14 @@ else
     grep -qFe 'Done' <<<"${cx_line#*—}" &&
         missing+="an item already in Done is counted — the finding would fire on every healthy board"$'\n'
 fi
+cw_line=$(grep -Fe 'closed-outside-done:wide' <<<"$cx_out")
+# The total leads and includes the folded tail: this type is counted, and WORSE reads it
+# from the front of the detail. A fold that dropped its items from the total would make a
+# board look better the more sections it had.
+grep -qFe 'closed-outside-done:wide	32 closed items outside Done' <<<"$cw_line" ||
+    missing+="the total is not the leading number, or the folded sections are missing from it: ${cw_line:-<no line>}"$'\n'
+grep -qFe 'S7 (7), S6 (6), S5 (5), R4 (4), S4 (4), +3 more sections (6 items)' <<<"$cw_line" ||
+    missing+="the sections are not sized, largest first with ties by name, and folded after five: ${cw_line:-<no line>}"$'\n'
 # It must stay a fact. A threshold on the queue is the fifth refusal of the same shape.
 grep -qEe '^backlog-(size|budget):' <<<"$cx_out" &&
     missing+="a size threshold on Backlog appeared — a queue is not debt"$'\n'

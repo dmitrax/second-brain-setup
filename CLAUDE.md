@@ -910,8 +910,10 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   count and the sections. Two things it deliberately is not. Not a `--section` argument to
   `sweep-closed`: that hands the caller the choice of where the tool looks, which is the
   defect repaired in `archive` the same day. And not a size threshold on `Backlog` — refused
-  here for the **fifth** time on the same grounds, a queue is not debt. ⚠️ **Date before
-  moving:** most of those 124 carry no date, and an undated entry moved into `Done` creates
+  here for the **fifth** time on the same grounds, a queue is not debt. ⚠️ **Move and date
+  in one pass** (this said "date before moving" until 2026-09-15 — unexecutable, since
+  `backfill-dates` selects entries in `Done` only; it now names the undated ones outside
+  it): most of those 124 carry no date, and an undated entry moved into `Done` creates
   an overrun no number of `archive` runs can clear, which this Block classifies as a
   permanent violation rather than a standard. `backfill-dates` now reads history across the
   whole file — the revision that first shows an entry closed usually has it still in `In

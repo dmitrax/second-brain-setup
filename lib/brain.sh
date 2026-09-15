@@ -981,8 +981,19 @@ backfill_dates() {
         }
     ' "$tb" > "$work/need"
     n_need=$(grep -c . "$work/need")
+    # The selection above is Done only, so the answer is about Done only — and the entries
+    # it did not look at are named in both branches. Until 2026-09-15 this said "every
+    # closed entry already carries a date" about the whole file while 52 undated closed
+    # items sat in this project's own Backlog: a diagnosis whose premise the command never
+    # checked, which is the class check 19 exists for. The same gap made `/brain-lint`'s
+    # "date them before moving them" an order no tool could carry out.
+    n_out=$(awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+                 !d && /^-[[:space:]]*(\[x\]|✅)/ && $0 !~ /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/ { c++ }
+                 END { print c + 0 }' "$tb")
+    [ "$n_out" -gt 0 ] &&
+        echo "backfill-dates: $n_out undated closed entries sit outside Done and were not looked at — this dates Done only; move them there, then run it again"
     if [ "$n_need" -eq 0 ]; then
-        echo "backfill-dates: every closed entry already carries a date — nothing to do"
+        echo "backfill-dates: every closed entry in Done already carries a date — nothing to do there"
         rm -rf "$work"; return 0
     fi
     # Duplicate keys would each claim the other's date. Refuse, as lint-diff does.
@@ -3063,10 +3074,28 @@ EOF
             # is a Backlog-only count that the code never actually computed. The exempt
             # list is the sections a TOOL reaches; a section reached by nobody is the
             # finding.
+            #
+            # Each section carries its size, largest first, and the tail is folded. The
+            # names alone did not make the number actionable: on 2026-09-10 goprofi's 164
+            # were 98 in a session plan, ~28 in sections its owner keeps AS done and 19 in
+            # Backlog — three different answers under one figure, and by 09-15 the detail
+            # was 40 headings in one line (275 items). The order is sorted, never left to
+            # `for (k in …)`: that order is the awk build's, the detail is written into the
+            # shared baseline, and it already flipped there with the set unchanged —
+            # `Backlog, 🚨 Блокеры…` sealed 08-30, `🚨 Блокеры…, Backlog` 09-04. Ties break
+            # on the name under LC_ALL=C for the same reason. The total stays the leading
+            # number, because this type is counted (LINT_COUNTED) and WORSE reads it there.
             cod=$(awk '/^## / { f = ($0 ~ /^## (Done|Завершено|In progress|В работе)/); if (!f) s = $0; next }
-                       !f && /^-[[:space:]]*(\[x\]|✅)/ { c++; seen[s] = 1 }
-                       END { n = ""; for (k in seen) { sub(/^#+[[:space:]]*/, "", k); n = n (n ? ", " : "") k }
-                             print (c + 0) "\t" n }' "$tb")
+                       !f && /^-[[:space:]]*(\[x\]|✅)/ { n[s]++ }
+                       END { for (k in n) { h = k; sub(/^#+[[:space:]]*/, "", h)
+                                            if (h == "") h = "(before any section)"
+                                            print n[k] "\t" h } }' "$tb" |
+                  LC_ALL=C sort -t $'\t' -k1,1nr -k2,2 |
+                  awk -F '\t' -v k=5 '{ t += $1
+                                        if (NR <= k) s = s (s ? ", " : "") $2 " (" $1 ")"
+                                        else { m++; r += $1 } }
+                                      END { if (m) s = s ", +" m " more sections (" r " items)"
+                                            print (t + 0) "\t" s }')
             cod_n=${cod%%	*}; cod_s=${cod#*	}
             [ "$cod_n" -gt 0 ] && printf 'closed-outside-done:%s\t%s closed items outside Done — nothing files them: %s\n' "$P" "$cod_n" "$cod_s"
         fi
