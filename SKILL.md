@@ -290,13 +290,21 @@ It is generated on every call and stored nowhere, so it cannot fall out of sync 
 notes; do not write its output into a file "for speed" — a stored index drifts and then
 lies, which is worse than no index. Two things it deliberately does not do: it never looks
 inside note bodies (that is what the search above is for), and it does not answer "what
-does the base know about this file of code".
+does the base know about this file of code" — that question has its own command, below.
 
 Standing is the part worth reading twice. Measured on the live vault the first time it ran:
 four decisions in `second-brain-setup` carry `corrected-by`, two of which nobody had in
 mind — a note that reads as fully correct while one of its supporting facts is already
 retracted is exactly the failure the `corrected-by` marker exists to prevent, and it only
 becomes visible in a listing that shows it.
+
+**Before changing a file of code, ask what the vault knows about it — `brain.sh notes-for
+<vault> <path> [--project <p>]`.** One line per note that names the path literally, with a
+decision's standing exactly as the catalogue prints it; `sessions/`, `raw/` and archives
+are not searched. Nothing known is a `none:` line and exit 2, never silence — so "the vault
+has nothing on this file" is an answer you can act on, not an empty screen that might be a
+search that failed. Pass the most specific form of the path the notes are likely to use:
+the match is a literal substring.
 
 **Searching the vault — always pick `-F` or `-E`, never a bare search.**
 A pattern given to `grep` with neither flag is read as a *basic* regex, where `|`,

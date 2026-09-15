@@ -73,6 +73,15 @@ usage: brain.sh <command> [args]
                                +corrected). Never stored, so it cannot drift out of sync
                                with the notes; borrowed from nf-content's catalog-records,
                                where the same index is maintained by hand and may.
+  notes-for <vault> <path> [--project <name>]
+                               what the vault knows about ONE file of code, asked before
+                               changing it: every note naming <path> literally (as a
+                               substring), one line each as standing<TAB>note, the
+                               standing computed by the same code as catalog's.
+                               sessions/, raw/ and archive-* are not searched — history
+                               and sources, not knowledge. Nothing found is a none: line
+                               on stdout, never empty output.
+                               exit 0 found · 2 none · 1 could not search.
   connections-add <connections.md> <YYYY-MM-DD>
                                read one cross-project entry from stdin and insert it at
                                the TOP of the knowledge-transfers section. The address is
@@ -2635,22 +2644,84 @@ EOF
         sb=$(printf '%s' "$fm" | cut -f3)
         cb=$(printf '%s' "$fm" | cut -f4)
         base=$(basename "$f" .md)
-        state="-"
-        case "$base" in
-            decision-*)
-                state="${s:-?}"
-                # A note can be in force AND carry a correction to one of its facts; the
-                # marker says "trust it, but read the correction" and must not be lost in
-                # a listing, or the reader is misled by exactly the note that was fixed.
-                [ -n "$cb" ] && [ "$cb" != "~" ] && state="$state+corrected"
-                [ -n "$sb" ] && [ "$sb" != "~" ] && state="${state}→$(basename "$sb" .md)"
-                ;;
-            *) [ -n "$s" ] && state="$s" ;;
-        esac
+        state=$(_standing "$base" "$s" "$sb" "$cb")
         printf '%s\t%s\t%s\n' "${d:-0000-00-00}" "$state" "$base"
     done <<EOF | LC_ALL=C sort -r
 $(find "$p/wiki" -maxdepth 1 -name '*.md')
 EOF
+    return 0
+}
+
+_standing() {
+    # The standing column of one note — the value `catalog` and `notes-for` both print.
+    # One copy on purpose: two would drift, and "is this decision still the authority"
+    # would get a different answer depending on which command was asked.
+    #   $1 basename without .md · $2 status · $3 superseded-by · $4 corrected-by
+    _st="-"
+    case "$1" in
+        decision-*)
+            _st="${2:-?}"
+            # A note can be in force AND carry a correction to one of its facts; the
+            # marker says "trust it, but read the correction" and must not be lost in
+            # a listing, or the reader is misled by exactly the note that was fixed.
+            [ -n "$4" ] && [ "$4" != "~" ] && _st="${_st}+corrected"
+            [ -n "$3" ] && [ "$3" != "~" ] && _st="${_st}→$(basename "$3" .md)"
+            ;;
+        *) [ -n "$2" ] && _st="$2" ;;
+    esac
+    printf '%s' "$_st"
+}
+
+# ── notes-for ────────────────────────────────────────────────────────────────
+# What the vault knows about ONE file of code, asked before changing it. `catalog`
+# answers "what does this project know"; this answers "what is there about
+# bot/notifications/sweep.py". Found in live use in goprofi-voronka on 2026-08-15: about to
+# edit a file, a session learnt of the three decisions and the invariant map about it only
+# by grepping a luckily remembered word.
+#
+# The match is the path taken literally, as a substring: pass the most specific form the
+# notes use. Not searched: sessions/ and archive-* (a record of what happened, not what
+# holds), raw/ (sources — untrusted, and not knowledge), .git and .obsidian.
+#
+# Nothing found is a line on STDOUT and exit 2, never empty output: an empty stdout cannot
+# tell "the vault knows nothing about this file" from a search that did not run, and that
+# answer is the one this command exists to make trustworthy.
+notes_for() {
+    vault="${1:-}"; nf_target="${2:-}"; only="${3:-}"
+    [ -d "$vault" ] || { echo "notes-for: no vault at '${vault:-}'" >&2; return 1; }
+    [ -n "$nf_target" ] ||
+        { echo "notes-for: no path given — notes-for <vault> <path> [--project <name>]" >&2; return 1; }
+    cd "$vault" || return 1
+    root="."
+    if [ -n "$only" ]; then
+        [ -f "$only/_PROJECT.md" ] || { echo "notes-for: no project '$only' in $vault" >&2; return 1; }
+        root="$only"
+    fi
+    # `-e`: the path is data in an argument position, and one that starts with a dash
+    # would be read as an option (the backfill-dates defect of 2026-09-04). `LC_ALL=C`:
+    # a literal matches as bytes either way, while GNU grep under a UTF-8 locale can
+    # report zero matches in a file carrying invalid UTF-8.
+    hits=$(LC_ALL=C grep -rlF --include='*.md' --exclude='archive-*' \
+               --exclude-dir=sessions --exclude-dir=raw --exclude-dir=.git --exclude-dir=.obsidian \
+               -e "$nf_target" "$root" 2>/dev/null)
+    rc=$?
+    # 1 is "no match", the legitimate empty answer; above it grep itself failed, and that
+    # must never be read as the vault knowing nothing.
+    if [ "$rc" -gt 1 ]; then
+        echo "notes-for: the search itself failed (grep exit $rc) — nothing was measured" >&2
+        return 1
+    fi
+    if [ -z "$hits" ]; then
+        printf 'none: no note mentions %s (scope: %s; sessions/, raw/, archive-* not searched)\n' \
+            "$nf_target" "${only:-whole vault}"
+        return 2
+    fi
+    printf '%s\n' "$hits" | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        fm=$(_cat_fm "$f")
+        s=$(printf '%s' "$fm" | cut -f2); sb=$(printf '%s' "$fm" | cut -f3); cb=$(printf '%s' "$fm" | cut -f4)
+        printf '%s\t%s\n' "$(_standing "$(basename "$f" .md)" "$s" "$sb" "$cb")" "$f"
+    done
     return 0
 }
 
@@ -3489,6 +3560,20 @@ case "${1:-}" in
                             shift
                         done
                         catalog "$cat_v" "$cat_p" ;;
+    notes-for)          shift; nf_v="${1:-}"; nf_path="${2:-}"; nf_p=""
+                        shift 2>/dev/null || true; shift 2>/dev/null || true
+                        while [ $# -gt 0 ]; do
+                            case "$1" in
+                                # An empty name would silently widen the scope to the
+                                # whole vault — a scope quietly covering more than asked.
+                                --project) shift; nf_p="${1:-}"
+                                           [ -n "$nf_p" ] ||
+                                               { echo "notes-for: --project takes a name" >&2; exit 64; } ;;
+                                *) echo "notes-for: unknown option '$1'" >&2; exit 64 ;;
+                            esac
+                            shift
+                        done
+                        notes_for "$nf_v" "$nf_path" "$nf_p" ;;
     archive)            shift
                         a_tb="${1:-}"; a_ar=""; a_before=""; a_apply=""
                         shift 2>/dev/null || true

@@ -2397,6 +2397,10 @@ else
     bash "$SCRIPT_DIR/lib/brain.sh" lint-collect "$ij"                                  >/dev/null 2>&1
     bash "$SCRIPT_DIR/lib/brain.sh" prose-budget "$ij/proj/_PROJECT.md"                 >/dev/null 2>&1
     bash "$SCRIPT_DIR/lib/brain.sh" local-conventions "$ij" proj "$ij/proj/_PROJECT.md" >/dev/null 2>&1
+    # notes-for reads every hostile file (each one names `somename`) and takes the path
+    # itself from the caller, so both halves are fed to it.
+    bash "$SCRIPT_DIR/lib/brain.sh" notes-for "$ij" somename                            >/dev/null 2>&1
+    bash "$SCRIPT_DIR/lib/brain.sh" notes-for "$ij" '$(touch zzz7)'                     >/dev/null 2>&1
     find "$ij" | sort > "$ij.after"
     added=$(diff "$ij.before" "$ij.after" | grep '^>' | sed 's/^> /    /')
     [ -n "$added" ] && missing+="files appeared after the run — a substitution executed:"$'\n'"$added"$'\n'
@@ -5251,6 +5255,110 @@ else
     else
         pass "only a scope-less seal records the run, and save-report prints its age without judging it"
     fi
+fi
+
+# ─── 66. notes-for says what the vault knows about a file, and says "none" out loud ──
+# The open half of "no path from code to notes" (goprofi-voronka, 2026-08-15): `catalog`
+# answers what a project knows, and nothing answered what is known about ONE file before
+# it is changed. Three properties carry the design and each is asserted by value:
+#   * standing comes from the SAME code as catalog's (`_standing`) — two copies of "is this
+#     decision still the authority" would drift, so the fixture compares the two outputs;
+#   * history and sources are not knowledge: sessions/, raw/ and archive-* never answer;
+#   * "nothing" is a `none:` line and exit 2, never empty stdout, because an empty screen
+#     cannot tell a vault that knows nothing from a search that did not run — hence the
+#     unreadable-file case, where grep fails and the command must refuse, not say "none".
+missing=""
+nv=$(mktemp -d)
+mkdir -p "$nv/proj/wiki" "$nv/proj/sessions" "$nv/proj/raw" "$nv/other/wiki"
+printf -- '---\nproject: proj\n---\n'  > "$nv/proj/_PROJECT.md"
+printf -- '---\nproject: other\n---\n' > "$nv/other/_PROJECT.md"
+printf -- '---\nstatus: accepted\ndate: %s\n---\nsee src/app/main.py\n' "$PF_ANCIENT" \
+    > "$nv/proj/wiki/decision-in-force.md"
+printf -- '---\nstatus: superseded\nsuperseded-by: decision-in-force.md\ndate: %s\n---\nsrc/app/main.py\n' "$PF_ANCIENT" \
+    > "$nv/proj/wiki/decision-retired.md"
+printf -- '---\nstatus: accepted\ncorrected-by: decision-in-force.md\ndate: %s\n---\nsrc/app/main.py\n' "$PF_ANCIENT" \
+    > "$nv/proj/wiki/decision-partly-wrong.md"
+printf -- '---\nstatus: accepted\ndate: %s\n---\nnothing relevant\n' "$PF_ANCIENT" \
+    > "$nv/proj/wiki/decision-unrelated.md"
+printf -- '---\nstatus: stable\n---\nsrc/app/main.py\n' > "$nv/proj/wiki/synthesis-note.md"
+printf -- '---\nstatus: stable\n---\nsrc/app/main.py\n' > "$nv/other/wiki/elsewhere.md"
+printf -- 'src/app/main.py\n' > "$nv/proj/sessions/2020-01-01_session.md"
+printf -- 'src/app/main.py\n' > "$nv/proj/wiki/archive-2026.md"
+printf -- 'src/app/main.py\n' > "$nv/proj/raw/source.md"
+# A path that opens with a dash is vault-side data in an argument position.
+printf -- '---\nstatus: stable\n---\nthe --scope flag\n' > "$nv/proj/wiki/dash-note.md"
+nv_before=$(find "$nv" | LC_ALL=C sort)
+
+nf_out=$(bash "$LIBSH" notes-for "$nv" src/app/main.py 2>&1); nf_rc=$?
+[ "$nf_rc" -eq 0 ] || missing+="  a path the vault mentions returned exit $nf_rc, want 0"$'\n'
+for want in $'accepted\tproj/wiki/decision-in-force.md' \
+            $'superseded\xe2\x86\x92decision-in-force\tproj/wiki/decision-retired.md' \
+            $'accepted+corrected\tproj/wiki/decision-partly-wrong.md' \
+            $'stable\tproj/wiki/synthesis-note.md' \
+            $'stable\tother/wiki/elsewhere.md'; do
+    grep -qxFe "$want" <<<"$nf_out" || missing+="  missing line: ${want}"$'\n'
+done
+for never in 'sessions/' 'archive-2026' 'raw/' 'decision-unrelated'; do
+    grep -qFe "$never" <<<"$nf_out" && missing+="  answered from ${never} — history, sources or a note that never names the path"$'\n'
+done
+# The standing is catalog's own, by value, not a look-alike.
+nf_cat=$(bash "$LIBSH" catalog "$nv" --project proj 2>&1)
+# Matched by exact column, never by substring: a superseded note's standing NAMES its
+# successor, so `decision-in-force` occurs on the retired note's line as well — the first
+# draft of this check compared two lines against one and went red on correct code.
+for n in decision-retired decision-partly-wrong decision-in-force; do
+    a=$(awk -F'\t' -v n="$n" '$3 == n { print $2 }' <<<"$nf_cat")
+    b=$(awk -F'\t' -v p="proj/wiki/$n.md" '$2 == p { print $1 }' <<<"$nf_out")
+    [ -n "$a" ] && [ "$a" = "$b" ] || missing+="  standing of $n differs: catalog '$a', notes-for '$b'"$'\n'
+done
+for fn in catalog notes_for; do
+    # Literal brackets as bracket classes: `awk -v` eats a backslash before the regex ever
+    # sees it (decision-a-literal-bracket-is-written-as-a-bracket-class-…).
+    body=$(awk -v f="^${fn}[(][)] [{]" '$0 ~ f { on = 1 } on { print } on && /^}/ { exit }' "$LIBSH")
+    [ -n "$body" ] || missing+="  function $fn not found in lib/brain.sh — the check lost its anchor"$'\n'
+    grep -qFe '_standing "' <<<"$body" || missing+="  $fn does not call _standing — a second copy of standing can drift"$'\n'
+done
+
+nf_scoped=$(bash "$LIBSH" notes-for "$nv" src/app/main.py --project proj 2>&1)
+grep -qFe 'other/wiki/elsewhere.md' <<<"$nf_scoped" && missing+="  --project proj still answered from another project"$'\n'
+grep -qFe 'proj/wiki/decision-in-force.md' <<<"$nf_scoped" || missing+="  --project proj lost its own note"$'\n'
+
+none_out=$(bash "$LIBSH" notes-for "$nv" src/never/mentioned.py 2>/dev/null); none_rc=$?
+[ "$none_rc" -eq 2 ] || missing+="  a path nobody mentions returned exit $none_rc, want 2"$'\n'
+grep -qFe 'none:' <<<"$none_out" || missing+="  a path nobody mentions printed no none: line — empty output is not an answer"$'\n'
+# Check 51 reads any output carrying this word as a broken invocation.
+grep -qFe 'needs ' <<<"$none_out" && missing+="  the none: line carries 'needs ', which check 51 reads as a failed call"$'\n'
+
+dash_out=$(bash "$LIBSH" notes-for "$nv" --scope 2>"$nv.err"); dash_rc=$?
+{ [ "$dash_rc" -eq 0 ] && grep -qFe 'dash-note' <<<"$dash_out"; } ||
+    missing+="  a path starting with a dash was not found (exit $dash_rc)"$'\n'
+[ -s "$nv.err" ] && missing+="  a dash path reached grep as an option: $(head -1 "$nv.err")"$'\n'
+
+bash "$LIBSH" notes-for "$nv/../definitely-absent-$$" x >/dev/null 2>&1 && missing+="  a missing vault was accepted"$'\n'
+bash "$LIBSH" notes-for "$nv" >/dev/null 2>&1 && missing+="  no path at all was accepted"$'\n'
+bash "$LIBSH" notes-for "$nv" x --project nosuch >/dev/null 2>&1 && missing+="  an unknown project was accepted"$'\n'
+bash "$LIBSH" notes-for "$nv" x --project >/dev/null 2>&1; [ $? -eq 64 ] ||
+    missing+="  --project with no name did not stop with 64 — it would widen the scope silently"$'\n'
+
+# grep failing must be a refusal, never a "none:" — skipped where chmod cannot deny a read.
+chmod 000 "$nv/proj/wiki/synthesis-note.md"
+if [ ! -r "$nv/proj/wiki/synthesis-note.md" ]; then
+    fail_out=$(bash "$LIBSH" notes-for "$nv" src/app/main.py 2>/dev/null); fail_rc=$?
+    [ "$fail_rc" -eq 1 ] || missing+="  an unreadable note gave exit $fail_rc, want 1 — a failed search read as an answer"$'\n'
+    grep -qFe 'none:' <<<"$fail_out" && missing+="  a failed search printed none:"$'\n'
+else
+    gap "the failed-search refusal of notes-for (check 66) — this user can read a mode-000 file"
+fi
+chmod 644 "$nv/proj/wiki/synthesis-note.md"
+
+[ "$(find "$nv" | LC_ALL=C sort)" = "$nv_before" ] || missing+="  notes-for wrote into the vault"$'\n'
+grep -qFe 'brain.sh notes-for' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="  SKILL.md does not tell a session to ask before changing a file — it would exist and never run"$'\n'
+rm -rf "$nv" "$nv.err"
+if [ -n "$missing" ]; then
+    fail "notes-for answers wrongly, answers from history, or stays silent on nothing" "$missing"
+else
+    pass "notes-for names every note about a path with catalog's standing, and says none out loud"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"
