@@ -1086,6 +1086,11 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   a file the bare glob matched was planted, because a glob that expands and then matches
   nothing leaves stdout just as empty as a command the shell refused to start. Only stderr
   separates them. Empty output is never by itself evidence that a command did not run.
+  **A fourth silent mode, found 2026-09-24: a line the locale cannot decode.** The stock
+  macOS `grep` under UTF-8 skips every line carrying invalid UTF-8 and matches the rest,
+  so a hand-typed vault search is pinned `LC_ALL=C` where the pattern allows it — and NOT
+  with `-i` on Cyrillic or a Cyrillic class, since under C `-i` stops folding `Д`/`д`
+  (measured: one match of two). `SKILL.md` carries both halves; checked by preflight 13.
   [[decision-vault-search-declares-literal-or-pattern-because-a-bare-grep-is-wrong-both-ways]]
 - Repo scripts run on `bash` 3.2 — macOS ships it as `/bin/bash` and it is one of the
   two working machines. No `mapfile`/`readarray`, no `declare -A`, no `${var^^}`: all
