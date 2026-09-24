@@ -594,6 +594,13 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   returns **nothing at all** with a non-zero status that a process substitution swallows —
   `cut_keys` yields an empty list — so every finding in the baseline is reported GONE. Vault filenames are input, and
   [[gnu-grep-returns-zero-matches-on-invalid-utf8]] is the same class for `grep`.
+  **The BSD side of it, found 2026-09-24:** the stock macOS `grep` under a UTF-8 locale
+  skips every LINE carrying invalid UTF-8 and matches the rest of the file, so no exit code
+  betrays it — `rename` left a note pointing at the old name and reported it repointed. So
+  every `grep` in `lib/` that searches vault TEXT is pinned too (the counting ones, `-c ''`
+  and `-c .`, measured unaffected). Found only by running the whole gate under
+  `PATH=/usr/bin:/bin`, since the ordinary run here resolves `grep` to another build;
+  check 39 now re-runs its fixture under the stock tools and says so when it cannot.
   Do not export it either — not because literal Cyrillic patterns go blind (they are byte
   sequences and match fine, verified by running `prose-budget` and `sweep-closed` under
   it), but because the character CLASS `[А-Яа-яЁё]` degrades under C
@@ -1113,6 +1120,16 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   `-v` value, a variable handed to it, and a function forwarding its Nth argument, derived
   from the code rather than listed — and finds the 08-20 defect on the code before its fix.
   [[awk-v-interprets-escapes-in-the-value-so-the-regex-engine-never-sees-the-backslash]]
+- **Permission to push is given to a session; the repository exercises it — so the save names
+  what a push would carry.** `git push` is indivisible: it carries every commit on the
+  branch. Measured on the Mac 2026-09-15, 18 of 336 pushes carried another project's
+  commits, and on 2026-09-05 a session told not to push found its commits on the remote,
+  taken by a neighbour's save. `commit-scope` therefore lists every commit ahead of the
+  upstream that belongs to another project (touching some project and not this one; a
+  registry-only commit is nobody's, a mixed one is ours), and a session asking to push names
+  them. It pushes nothing and holds nothing: whether a shared push is a defect or a property
+  of one vault is still open, and a disclosure is useful under either answer. Checked by
+  the commit-scope block of preflight, on a bare remote with three commits ahead.
 - **A claim about coverage is a claim, and it is verified where it is made.** The gate's
   own `gap()` — one day old — confessed "no BSD `date` on this machine" unconditionally,
   called one line **above** the test that decides it, so on Darwin check 38 printed "both

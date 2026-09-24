@@ -140,9 +140,12 @@ usage: brain.sh <command> [args]
                                commit without anyone saying so. It drops nothing and
                                stages nothing — a cross-project write is legitimate and
                                common, so the decision stays with the person.
+                               It also names every commit already ahead of the upstream
+                               that belongs to another project: the next push carries
+                               those too. It pushes nothing and holds nothing.
                                Run it AFTER save-report and BEFORE the commit.
-                               exit 0 nothing foreign · 2 foreign paths, answer in words
-                               · 1 could not measure.
+                               exit 0 nothing foreign · 2 foreign paths or unpushed
+                               foreign commits, answer in words · 1 could not measure.
   lint-collect <vault> [--project P]
                                run every mechanical vault check and print each
                                finding as `key<TAB>detail` on stdout. Fails, never
@@ -1218,7 +1221,13 @@ rename_note() {
     # substitution rather than a pipe, because the counters below must survive the loop.
     while IFS= read -r f; do
         src="$vault/$f"
-        grep -qF -e "$old_base" "$src" 2>/dev/null || continue
+        # C, because the stock macOS grep under a UTF-8 locale skips every LINE carrying
+        # invalid UTF-8 — the rest of the file matches, so no exit code betrays it. Found
+        # 2026-09-24 by running the gate under PATH=/usr/bin:/bin: a note whose only link sat
+        # on such a line was never repointed, and the run reported success. The same class
+        # as gnu-grep-returns-zero-matches-on-invalid-utf8, from the BSD side; every grep in
+        # this file that searches vault TEXT carries the pin.
+        LC_ALL=C grep -qF -e "$old_base" "$src" 2>/dev/null || continue
         # The count travels on its OWN channel and never on stderr, which is where awk
         # writes its own diagnostics. Measured 2026-09-15: gawk's "Invalid multibyte data"
         # warning on a note with invalid UTF-8 landed in `$(( quoted + q ))`, the sweep died
@@ -1499,7 +1508,7 @@ stamp_field() {
         rm -f "$tmp"; echo "stamp-field: refused, result was empty" >&2; return 1
     fi
     mv "$tmp" "$file"
-    grep -m1 "^$key:" "$file"
+    LC_ALL=C grep -m1 "^$key:" "$file"
 }
 
 # ── sweep-closed ─────────────────────────────────────────────────────────────
@@ -1597,7 +1606,7 @@ sweep_closed() {
         # No `|| echo 0` here: grep -c always prints a count and exits 1 when that
         # count is zero, so the fallback would append a second line and the arithmetic
         # below would fail on a two-line value. Caught by check 26 on a dateless fixture.
-        n_dated=$(grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
+        n_dated=$(LC_ALL=C grep -cE '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "$work/moved" 2>/dev/null)
         n_undated=$((n_moved - ${n_dated:-0}))
         if [ "$n_undated" -gt 0 ]; then
             echo "sweep-closed: $n_undated of them carry no date — archive cannot move those, they stay in Done"
@@ -1875,7 +1884,7 @@ _budget_read() {
 # Measured before making it fatal: all 13 `_PROJECT.md` in the live vault carry all three
 # sections, so refusing an absent one refuses nothing legitimate.
 _budget_or_absent() {  # <file> <heading regex> <counter fn> — the value, or the word absent
-    if grep -qE "$2" "$1"; then "$3" "$1"; else printf 'absent'; fi
+    if LC_ALL=C grep -qE "$2" "$1"; then "$3" "$1"; else printf 'absent'; fi
 }
 
 # prose-budget <project dir | _PROJECT.md> [taskboard.md]
@@ -2881,7 +2890,7 @@ connections_add() {
     # `-e` is load-bearing: the pattern starts with "- ", which grep reads as an option
     # otherwise. Caught by the fixture on the first run — the duplicate check reported
     # the error to stderr, added the duplicate anyway and exited 0.
-    if grep -qxFe "$head1" "$file"; then
+    if LC_ALL=C grep -qxFe "$head1" "$file"; then
         echo "connections-add: refused — this exact entry is already in $(basename "$file")" >&2
         rm -rf "$work"; return 1
     fi
@@ -3579,6 +3588,19 @@ _lc_keys() {
 # indistinguishable from success that this package exists to hunt. There is also nothing
 # to narrow in practice — the commit is made by the operator's own shell alias, which the
 # package cannot reach. So the shell measures and the person judges, as with save-report.
+# Owner of each vault path on stdin, as `owner<TAB>path`. `_arch/x` and `_mac/x` are two
+# segments deep, everything else one. `00-system`, `00-shared` and `.obsidian` belong to
+# no project and print nothing — every save writes the first two by design. One function
+# for both halves of commit-scope: two copies of "whose is this path" would drift, and
+# then the tree and the push would disagree about the same file.
+_path_owner() {
+    awk -F/ '
+        NF == 0 || $0 == "" { next }
+        $1 == "00-system" || $1 == "00-shared" || $1 == ".obsidian" { next }
+        NF < 2 { next }                            # a file at the vault root
+        { print (($1 ~ /^_/) ? $1 "/" $2 : $1) "\t" $0 }'
+}
+
 commit_scope() {
     vault="${1:-}"; project="${2:-}"
     [ -n "$vault" ] && [ -n "$project" ] || {
@@ -3591,37 +3613,72 @@ commit_scope() {
         echo "commit-scope: $vault is not a git repository — no commit to scope, nothing measured"
         return 1
     fi
+    cs_rc=0
+    echo "commit-scope: scope is $project plus 00-system, 00-shared and .obsidian"
+
+    # ── the tree: what `git add -A` would put into this save's commit ──
     cs_changes=$(git -C "$vault" -c core.quotePath=false status --porcelain -uall 2>/dev/null)
     if [ -z "$cs_changes" ]; then
         echo "commit-scope: the working tree is clean — nothing staged, nothing to name"
-        return 0
+    else
+        # `R  old -> new` names the destination; the status letters are the first two
+        # columns and a space follows, so three characters come off the front.
+        cs_foreign=$(printf '%s\n' "$cs_changes" | sed 's/^...//; s/^.* -> //' |
+                     _path_owner | awk -F'\t' -v me="$project" '$1 != me')
+        if [ -z "$cs_foreign" ]; then
+            echo "commit-scope: ok — every uncommitted path belongs to this save"
+        else
+            cs_n=$(printf '%s\n' "$cs_foreign" | grep -c .)
+            cs_who=$(printf '%s\n' "$cs_foreign" | cut -f1 | LC_ALL=C sort -u | tr '\n' ' ')
+            echo "commit-scope: ANSWER — $cs_n uncommitted path(s) outside this save, in: $cs_who"
+            printf '%s\n' "$cs_foreign" | cut -f2 | sed 's/^/  /'
+            echo "  Say in the Result block whether these are yours. They are NOT staged or dropped"
+            echo "  by this command: a cross-project write is legitimate, and only you know which."
+            cs_rc=2
+        fi
     fi
-    # `R  old -> new` names the destination; the status letters are the first two columns
-    # and a space follows, so three characters come off the front.
-    cs_paths=$(printf '%s\n' "$cs_changes" | sed 's/^...//; s/^.* -> //')
-    # Owner of a path: `_arch/x` and `_mac/x` are two segments deep, everything else one.
-    # `00-system`, `00-shared` and `.obsidian` belong to no project and are always in
-    # scope — every save writes the first two by design.
-    cs_foreign=$(printf '%s\n' "$cs_paths" | awk -F/ -v me="$project" '
-        NF == 0 || $0 == "" { next }
-        {
-            if ($1 == "00-system" || $1 == "00-shared" || $1 == ".obsidian") next
-            if (NF < 2) next                       # a file at the vault root
-            owner = ($1 ~ /^_/) ? $1 "/" $2 : $1
-            if (owner == me) next
-            print owner "\t" $0
-        }')
-    echo "commit-scope: scope is $project plus 00-system, 00-shared and .obsidian"
-    if [ -z "$cs_foreign" ]; then
-        echo "commit-scope: ok — every uncommitted path belongs to this save"
-        return 0
+
+    # ── the push: what the next `git push` carries besides this save ──
+    # A permission to push is given to a SESSION and exercised by the REPOSITORY: `git push`
+    # is indivisible and carries every commit on the branch. Measured on the Mac 2026-09-15:
+    # 18 of 336 pushes carried commits of another project (32 commits), and on 2026-09-05 a
+    # session that had been told not to push found its commits on the remote, taken there by
+    # a neighbour's save. On 2026-09-24 the count was made by hand before a push — five
+    # goprofi commits among six — and the owner decided knowing it. That count is this half.
+    # It names and decides nothing: whether to hold a push is the owner's call, and whether
+    # a shared push is a defect or a property of one vault is still open on the board.
+    # Compared against the tracking ref as of the last sync, never fetched here: Step 0 of
+    # the save synced, and a fetch from inside a report is a write nobody asked for.
+    cs_up=$(git -C "$vault" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null) || cs_up=""
+    if [ -z "$cs_up" ]; then
+        echo "commit-scope: no upstream branch — nothing is pushed, the push half does not apply"
+        return "$cs_rc"
     fi
-    cs_n=$(printf '%s\n' "$cs_foreign" | grep -c .)
-    cs_who=$(printf '%s\n' "$cs_foreign" | cut -f1 | LC_ALL=C sort -u | tr '\n' ' ')
-    echo "commit-scope: ANSWER — $cs_n uncommitted path(s) outside this save, in: $cs_who"
-    printf '%s\n' "$cs_foreign" | cut -f2 | sed 's/^/  /'
-    echo "  Say in the Result block whether these are yours. They are NOT staged or dropped"
-    echo "  by this command: a cross-project write is legitimate, and only you know which."
+    cs_list=$(git -C "$vault" rev-list --reverse "$cs_up..HEAD" 2>/dev/null) || {
+        echo "commit-scope: could not list the commits ahead of $cs_up — the push half was not measured"
+        return 1; }
+    cs_ahead=$(printf '%s' "$cs_list" | grep -c .)
+    cs_pf=""
+    for cs_c in $cs_list; do
+        cs_own=$(git -C "$vault" -c core.quotePath=false show --name-only --format= "$cs_c" |
+                 _path_owner | cut -f1 | LC_ALL=C sort -u)
+        # Foreign: it touches some project and not this one. A commit touching only the
+        # shared registries is nobody's, and one touching ours as well is ours.
+        [ -n "$cs_own" ] || continue
+        grep -qxFe "$project" <<<"$cs_own" && continue
+        cs_pf+="$(git -C "$vault" log -1 --format='%h %s' "$cs_c" | cut -c1-100)	$(printf '%s' "$cs_own" | tr '\n' ' ')"$'\n'
+    done
+    if [ -z "$cs_pf" ]; then
+        echo "commit-scope: push — $cs_ahead commit(s) already ahead of $cs_up, none of another project's"
+        return "$cs_rc"
+    fi
+    cs_pn=$(printf '%s' "$cs_pf" | grep -c .)
+    cs_pw=$(printf '%s' "$cs_pf" | cut -f2 | tr ' ' '\n' | grep . | LC_ALL=C sort | uniq -c |
+            awk '{ printf "%s%s (%s)", (NR > 1 ? ", " : ""), $2, $1 }')
+    echo "commit-scope: ANSWER — the next push carries $cs_pn commit(s) of other projects, of $cs_ahead ahead of $cs_up: $cs_pw"
+    printf '%s' "$cs_pf" | cut -f1 | sed 's/^/  /'
+    echo "  Their session may have held them on purpose. Name them when you ask to push; this"
+    echo "  command neither pushes nor holds anything."
     return 2
 }
 

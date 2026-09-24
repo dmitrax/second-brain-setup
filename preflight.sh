@@ -2774,8 +2774,26 @@ printf 'clean [[note]]\n' > "$rb/proj/wiki/clean.md"
 printf 'bytes \377\376 [[note]]\n' > "$rb/proj/wiki/latin.md"
 bash "$LIBSH" rename "$rb" proj/wiki/note.md proj/wiki/renamed.md --apply >/dev/null 2>&1 ||
     missing+="rename failed on a note carrying invalid UTF-8 — awk's diagnostics reached the link count"$'\n'
-grep -qF '[[renamed]]' "$rb/proj/wiki/latin.md" ||
+LC_ALL=C grep -qF '[[renamed]]' "$rb/proj/wiki/latin.md" ||
     missing+="rename left a note carrying invalid UTF-8 pointing at the old name"$'\n'
+# The same fixture under the stock tools, because that is where it broke. The macOS grep
+# under a UTF-8 locale skips every LINE carrying invalid UTF-8 while matching the rest of
+# the file, so a note whose only link sat on such a line was never repointed — exit 0,
+# "1 link(s) repointed". Found 2026-09-24 only by running the whole gate under
+# PATH=/usr/bin:/bin; the ordinary run here resolves `grep` to another build and stayed
+# green. The premise is run, not trusted: where the stock grep does not skip such a line,
+# this half has no force and says so.
+rb_skip=$(printf 'a \377\376 x\n' | env -i PATH=/usr/bin:/bin LANG=en_US.UTF-8 /bin/sh -c 'grep -c x' 2>/dev/null)
+if [ "$rb_skip" = 0 ]; then
+    printf '# note\n' > "$rb/proj/wiki/stock.md"
+    printf 'bytes \377\376 [[stock]]\n' > "$rb/proj/wiki/stock-latin.md"
+    env -i HOME="$HOME" PATH=/usr/bin:/bin LANG=en_US.UTF-8 /bin/bash "$LIBSH" rename "$rb" \
+        proj/wiki/stock.md proj/wiki/stock-renamed.md --apply >/dev/null 2>&1
+    LC_ALL=C grep -qF '[[stock-renamed]]' "$rb/proj/wiki/stock-latin.md" ||
+        missing+="under the stock tools rename skipped a note whose link sits on a line of invalid UTF-8"$'\n'
+else
+    gap "check 39 under the stock tools — this machine's /usr/bin grep does not skip lines of invalid UTF-8"
+fi
 rm -rf "$rb"
 # All or nothing: an awk that fails part way leaves every file as it was and the note
 # unmoved. The old code wrote each file as it reached it, read an empty count for the
@@ -3368,6 +3386,35 @@ if git -C "$cs" init -q . 2>/dev/null; then
     bash "$LIBSH" commit-scope "$cs2" mine >/dev/null 2>&1 &&
         cs_missing+="  a vault without git reported a clean scope instead of refusing"$'\n'
     rm -rf "$cs2"
+    # The push half. `git push` carries every commit on the branch, and on 2026-09-05 a
+    # session told not to push found its commits on the remote, carried by a neighbour's
+    # save. Three commits ahead of the remote: a neighbour's (named), a shared-registry one
+    # (nobody's) and a mixed one touching ours (ours). Only the first is foreign.
+    cs_r=$(mktemp -d)
+    git -C "$cs" commit -qam tree >/dev/null 2>&1; git -C "$cs" add -A >/dev/null 2>&1
+    git -C "$cs" commit -qm tree2 >/dev/null 2>&1
+    git init -q --bare "$cs_r/remote.git" >/dev/null 2>&1
+    git -C "$cs" remote add origin "$cs_r/remote.git" >/dev/null 2>&1
+    git -C "$cs" push -q -u origin HEAD >/dev/null 2>&1
+    cs_out=$(bash "$LIBSH" commit-scope "$cs" mine 2>&1); cs_rc=$?
+    [ "$cs_rc" -eq 0 ] ||
+        cs_missing+="  nothing ahead of the remote and a clean tree did not exit 0 (got $cs_rc): $(tail -1 <<<"$cs_out")"$'\n'
+    printf -- 'n\n' >> "$cs/theirs/wiki/note.md";  git -C "$cs" commit -qam "theirs: held on purpose" >/dev/null 2>&1
+    printf -- 'r\n' >> "$cs/00-system/index.md";    git -C "$cs" commit -qam "registry only" >/dev/null 2>&1
+    printf -- 'm\n' >> "$cs/mine/wiki/note.md"; printf -- 'm\n' >> "$cs/theirs/wiki/note.md"
+    git -C "$cs" commit -qam "mine, touching theirs" >/dev/null 2>&1
+    cs_out=$(bash "$LIBSH" commit-scope "$cs" mine 2>&1); cs_rc=$?
+    [ "$cs_rc" -eq 2 ] ||
+        cs_missing+="  a neighbour's unpushed commit did not set exit 2 (got $cs_rc)"$'\n'
+    grep -qFe '1 commit(s) of other projects, of 3 ahead' <<<"$cs_out" ||
+        cs_missing+="  the push half does not count 1 foreign of 3 ahead: $(grep -F 'push' <<<"$cs_out" | head -1)"$'\n'
+    grep -qFe 'theirs: held on purpose' <<<"$cs_out" ||
+        cs_missing+="  the foreign commit is not named, so the owner cannot tell whose it is"$'\n'
+    grep -qEe 'registry only|mine, touching theirs' <<<"$cs_out" &&
+        cs_missing+="  a shared-registry or a mixed commit was called foreign"$'\n'
+    [ "$(git -C "$cs" rev-list --count '@{u}..HEAD')" -eq 3 ] ||
+        cs_missing+="  commit-scope pushed — it must only name"$'\n'
+    rm -rf "$cs_r"
     if [ -n "$cs_missing" ]; then
         fail "commit-scope does not separate this save's work from a neighbour's" "$cs_missing"
     else

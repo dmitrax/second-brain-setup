@@ -718,6 +718,16 @@ those silently, and a silent omission is worse than a silent inclusion. So answe
 either the foreign paths are yours (say so in one line) or they are another session's —
 commit by path instead of `-A`, and say that.
 
+**The same command names the push, because `git push` is indivisible too.** It carries
+every commit on the branch, not only this save's — and permission to push is given to a
+session while the repository exercises it. Measured on the Mac 2026-09-15: 18 of 336
+pushes carried another project's commits; on 2026-09-05 a session that had been told not
+to push found its commits on the remote, taken there by a neighbour's save. So
+`commit-scope` also lists every commit already ahead of the upstream that belongs to
+another project. When it does (exit 2), **name those commits and their project when you
+ask to push** — their session may be holding them on purpose. It pushes nothing and holds
+nothing; whether to wait is the owner's call.
+
 ## Result
 
 Write the block from the `save-report` output — the numbers are its numbers, not a
@@ -737,6 +747,7 @@ step skipped: [step] — [reason]        ← one line per MISSING, or no such li
 
 Don't forget: git add -A && git commit -m "[DATE]" && git push
 foreign in tree: [what Step 8b named, and whose it is]   ← only when it named something
+push carries:    [the other projects' commits Step 8b named]   ← only when it named some
 ```
 The labels above are written in English here because this file is; **print them in the
 vault's working language** (`brain.sh vault-language`), and leave every identifier —
