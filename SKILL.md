@@ -278,6 +278,16 @@ Do NOT full-scan the vault on every session. Use the index and search:
   (below), `index.md`, or a search
 - Never load entire wiki/ folders when looking for one specific topic
 
+**Reading `taskboard.md` at start: everything above the first `## Backlog` in full, the
+queue by its headings only, `## Done` not at all.** List the headings first
+(`grep -nE '^##' taskboard.md`) and read the line range above the queue — a board that
+has to be read in pieces has to be read in the RIGHT pieces. Whatever sits above
+`Backlog`, under any heading, is current work by position: a session that skips an
+unfamiliar section there skips live tasks. Measured on `goprofi-voronka` 2026-09-24: 223
+live tasks sat in 144 sections between `In progress` and `Backlog`, and no session read
+them. `/brain-save` measures that part's weight (`taskboard read at start`), so the
+answer to a heavy top is moving work below `Backlog`, never reading less of it.
+
 **Before searching a project's notes, list them — `brain.sh catalog <vault> --project <p>`.**
 One line per note, newest first, and for each decision its standing: `accepted`,
 `superseded→<note>`, or `accepted+corrected` (still the authority, but a fact inside it

@@ -868,6 +868,26 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   pairs a ticked item in `In progress` with one in `Backlog`: without the second half the
   exemption would swallow the rule.
   [[decision-a-closed-item-outside-done-is-reported-as-a-fact-because-the-queue-is-not-debt]]
+- **A board is weighed by what a session READS, in bytes above the queue — a cost is not a
+  debt, and the counters that measure debt cannot see it.** Every taskboard counter asked
+  how much work is not done (lines, then items, then the largest block), and
+  `goprofi-voronka` reached 14 087 lines, ~395 thousand tokens, with all of them green:
+  the growth sat in In progress in blocks under 40 items until 09-04, then moved into 144
+  sections BELOW In progress, which emptied In progress at no saving to the reader. A
+  counter keyed to a section name cannot see a move; one keyed to the `Backlog` boundary
+  can, because a thing is either above it and read, or below it and queue. `BUDGET_READ`
+  is 64 KB, measured 2026-09-24 over every revision of all 15 boards (goprofi over in 398
+  of 459 from 08-01, this project 57 of 139 before its 09-15 clean-up, the other 13 never),
+  and it fired on goprofi the day it was set, knowingly. Bytes, not characters: a UTF-8
+  awk counts Cyrillic at half its weight. Rejected on the same measurement: a finding on
+  sections the tools do not recognise — it would have caught only the last 2.5 weeks and
+  lights on five boards whose extra sections are legitimate queues. The session start reads
+  above `Backlog` in full and the queue by its headings (`SKILL.md`, both `CLAUDE.md`
+  templates). **The second half is Step 4 measuring itself:** "the file changed" was its
+  whole test while 406 items were closed in place, so `save-report` names every item THIS
+  session closed and left outside `Done` — against HEAD, never the board's history, which
+  is the lint's. Checked by preflight 67, on a Cyrillic fixture.
+  [[decision-the-board-is-weighed-by-what-a-session-reads-because-every-counter-asked-about-debt]]
 - **A record of a claim is stamped when the claim is CONFIRMED, not only when it changes.**
   Step 5 of `/brain-save` stamped `updated:` on `architecture-map.md` only after a rewrite,
   while `map-stale` fires as soon as the newest session log is younger than that stamp — so

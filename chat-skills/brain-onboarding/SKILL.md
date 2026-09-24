@@ -164,7 +164,8 @@ Project: [name]
    Exit 0 → proceed. 2 → say so in one line and proceed. 3 → conflict, stop and report.
 1. Read `~/Workspace/second-brain-vault/00-shared/CRITICAL_FACTS.md` — user profile
 2. Read `~/Workspace/second-brain-vault/[name]/_PROJECT.md` — project overview
-3. Read `~/Workspace/second-brain-vault/[name]/taskboard.md` — current tasks
+3. Read `~/Workspace/second-brain-vault/[name]/taskboard.md` — current tasks: everything
+   above `## Backlog` in full, the queue by its headings, `## Done` not at all
 4. If this is a code or mixed project: read `architecture-map.md` before any code work
 5. If `raw/` contains unprocessed files — notify user before ingesting
 - Do not full-scan the vault or the repository. Use `_PROJECT.md`, the architecture

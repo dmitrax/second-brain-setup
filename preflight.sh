@@ -1830,7 +1830,7 @@ else
     grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
         missing+="an overrun is allowed to finish silently"$'\n'
     # One implementation: the thresholds are variables, and lint_collect reads the same ones.
-    for v in BUDGET_CURRENT BUDGET_SESSIONS BUDGET_FFC BUDGET_DONE BUDGET_PROG; do
+    for v in BUDGET_CURRENT BUDGET_SESSIONS BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_READ; do
         n=$(grep -c "^$v=" "$lb")
         [ "$n" -eq 1 ] || missing+="$v is defined $n time(s), it must be exactly one"$'\n'
         grep -qF "\$$v" "$lb" || missing+="$v is used nowhere"$'\n'
@@ -5359,6 +5359,88 @@ if [ -n "$missing" ]; then
     fail "notes-for answers wrongly, answers from history, or stays silent on nothing" "$missing"
 else
     pass "notes-for names every note about a path with catalog's standing, and says none out loud"
+fi
+
+# ─── 67. The board is measured by what a session reads, and Step 4 by its own closures ──
+# Reported from goprofi-voronka 2026-09-24: its board reached 14 087 lines (~395 thousand
+# tokens) while every counter here was green, because every counter asked how much work is
+# not DONE. Until 09-04 the growth sat in In progress in blocks under 40 items; on 09-05..08
+# the bulk moved into 144 sections BELOW In progress, which emptied In progress and read
+# exactly as heavy. So the weight is counted above the queue boundary, where a move cannot
+# hide it. And Step 4 printed `ok` for three months while 406 items were closed in place:
+# "the file changed" was the whole test.
+# Four things the fixtures pin, each one a way this could be green and wrong:
+#   * the invented section between In progress and Backlog is counted — that is the defect;
+#   * the same text below `Backlog`, or below `Phase 0 backlog`, is NOT — a queue is not read;
+#   * it is BYTES: the fixture is Cyrillic, 70 KB in bytes and half that in characters, so
+#     an awk counting characters under a UTF-8 locale reads it as within budget;
+#   * the save names only what THIS session closed: an item closed before HEAD is the lint's
+#     debt, and an item opening with `--` must reach grep as a pattern, not as an option.
+missing=""
+rw=$(mktemp -d)
+printf -- '---\nupdated: %s\n---\n## Current state\nx\n\n## Последняя сессия\n2026-01-01 — one\n\n## For future Claude\n- one\n' \
+    "$PF_ANCIENT" > "$rw/_PROJECT.md"
+rw_journal=$(awk 'BEGIN { for (i = 0; i < 350; i++) { s = ""; for (j = 0; j < 100; j++) s = s "ж"; print "- " s } }')
+printf '## In progress\n- [ ] one\n## Журнал сессии 01\n%s\n## Backlog\n- [ ] q\n## Done\n' "$rw_journal" > "$rw/journal.md"
+printf '## In progress\n- [ ] one\n## Backlog\n- [ ] q\n## Журнал сессии 01\n%s\n## Done\n' "$rw_journal" > "$rw/queued.md"
+printf '## In progress\n- [ ] one\n## Phase 0 backlog\n%s\n## Done\n' "$rw_journal" > "$rw/phase.md"
+rw_n() { grep -oE 'read at start \(KB\): [0-9]+' <<<"$1" | grep -oE '[0-9]+$'; }
+out=$(bash "$LIBSH" prose-budget "$rw/_PROJECT.md" "$rw/journal.md" 2>&1); rc=$?
+n=$(rw_n "$out")
+if [ -z "$n" ]; then
+    missing+="  prose-budget prints no read-at-start line — the weight is not measured: $(tr '\n' ' ' <<<"$out" | cut -c1-90)"$'\n'
+else
+    { [ "$n" -ge 65 ] && [ "$n" -le 75 ]; } ||
+        missing+="  a 70 KB Cyrillic journal above Backlog reads as $n KB — not counted, or counted in characters"$'\n'
+    # The characters half has force only where awk counts characters under UTF-8 (gawk).
+    # The stock macOS awk counts bytes either way, so there the pin cannot be removed into red.
+    [ "$(printf 'ж\n' | LC_ALL=en_US.UTF-8 awk '{ print length($0) }' 2>/dev/null)" = 1 ] ||
+        gap "the bytes-not-characters half of check 67 — this awk counts bytes under UTF-8 as well, so dropping LC_ALL=C cannot go red here"
+    [ "$rc" -eq 2 ] || missing+="  a journal above Backlog over the budget gives exit $rc, want 2"$'\n'
+fi
+for f in queued phase; do
+    out=$(bash "$LIBSH" prose-budget "$rw/_PROJECT.md" "$rw/$f.md" 2>&1); rc=$?
+    n=$(rw_n "$out")
+    { [ -n "$n" ] && [ "$n" -le 1 ] && [ "$rc" -eq 0 ]; } ||
+        missing+="  the same text below the queue heading ($f.md) is still counted: ${n:-<none>} KB, exit $rc"$'\n'
+done
+# The lint: one implementation, the magnitude leading the detail (WORSE reads it there).
+mkdir -p "$rw/v/proj/wiki" "$rw/v/proj/sessions" "$rw/v/00-system"
+printf -- '---\nproject: proj\nstatus: active\n---\n## Current state\nx\n' > "$rw/v/proj/_PROJECT.md"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$rw/v/00-system/index.md"
+cp "$rw/journal.md" "$rw/v/proj/taskboard.md"
+grep -qEe '^taskboard-read:proj	[0-9]+ KB above Backlog' <<<"$(bash "$LIBSH" lint-collect "$rw/v" 2>&1)" ||
+    missing+="  lint-collect does not report the board's read weight with the number first"$'\n'
+cp "$rw/queued.md" "$rw/v/proj/taskboard.md"
+grep -qFe 'taskboard-read:' <<<"$(bash "$LIBSH" lint-collect "$rw/v" 2>&1)" &&
+    missing+="  lint-collect reports a board whose weight sits in the queue"$'\n'
+grep -qFe ' taskboard-read ' <<<" $(sed -n 's/^LINT_COUNTED="\(.*\)"$/\1/p' "$LIBSH") " ||
+    missing+="  taskboard-read is not declared counted, so its growth reads as known and unchanged"$'\n'
+# Step 4 in save-report, on a git vault: HEAD is the state before the save.
+rs="$rw/s"; mkdir -p "$rs/proj/sessions"
+printf -- '---\nupdated: %s\n---\n## Current state\nx\n## Last session\n- a\n## For future Claude\n- b\n' "$PF_ANCIENT" > "$rs/proj/_PROJECT.md"
+printf '# tb\n## In progress\n- [ ] --scope for lint-diff\n- [ ] keeps going\n## Backlog\n- [x] closed long ago\n- [ ] queued\n## Done\n- [x] 2020-01-01 filed\n' > "$rs/proj/taskboard.md"
+git -C "$rs" init -q >/dev/null 2>&1
+git -C "$rs" add -A >/dev/null 2>&1
+git -C "$rs" -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
+awk '{ sub(/^- \[ \] --scope/, "- [x] 2026-01-02 --scope"); sub(/^- \[ \] queued/, "- ✅ queued") } 1' \
+    "$rs/proj/taskboard.md" > "$rs/t" && mv "$rs/t" "$rs/proj/taskboard.md"
+out=$(bash "$LIBSH" save-report "$rs" proj 2>"$rw/err")
+tl=$(grep -E '^[A-Za-z]+ +taskboard ' <<<"$out")
+grep -qE '^MISSING +taskboard +2 item' <<<"$tl" ||
+    missing+="  two items closed this session outside Done (one in In progress, one in Backlog), and the old one left out, do not read as 2 MISSING: ${tl:-<no line>}"$'\n'
+[ -s "$rw/err" ] && missing+="  save-report wrote to stderr — a vault line reached a tool as an option: $(head -1 "$rw/err" | cut -c1-80)"$'\n'
+bash "$LIBSH" sweep-closed "$rs/proj/taskboard.md" --apply >/dev/null 2>&1
+awk '/^- ✅ queued/ { next } { print } /^## Done/ { print "- ✅ 2026-01-02 queued" }' \
+    "$rs/proj/taskboard.md" > "$rs/t" && mv "$rs/t" "$rs/proj/taskboard.md"
+tl=$(bash "$LIBSH" save-report "$rs" proj 2>&1 | grep -E '^[A-Za-z]+ +taskboard ')
+grep -qE '^ok +taskboard' <<<"$tl" ||
+    missing+="  once both are moved into Done the step still does not read ok: ${tl:-<no line>}"$'\n'
+rm -rf "$rw"
+if [ -n "$missing" ]; then
+    fail "the board's reading weight or Step 4's own closures go unmeasured" "$missing"
+else
+    pass "the board is weighed in bytes above the queue, and a save names what it closed and left"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

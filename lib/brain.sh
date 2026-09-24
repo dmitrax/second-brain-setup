@@ -1711,6 +1711,14 @@ BUDGET_DONE=20
 # Items, not lines — see _budget_prog. 40 open top-level tasks is roughly what the two
 # outlier boards exceed and every other board sits far below (next largest: 4).
 BUDGET_PROG=40
+# Kilobytes of the board a session READS at start: everything above the queue — see
+# _budget_read. A cost, not a debt, which is why it is not one more reading of the
+# In progress counter above. 64 KB is roughly 19 thousand tokens. Measured 2026-09-24 over
+# every revision of all 15 boards: goprofi-voronka above it in 398 of 459 (from 08-01, at
+# 1 600 lines — the board reached 14 087 before anyone noticed), this project in 57 of 139
+# (August, before the 09-15 clean-up took it from 143 to 60 KB), the other 13 never. It
+# fires on goprofi on the day it was set (92 KB), which the owner chose knowingly.
+BUDGET_READ=64
 
 # ── which findings carry a magnitude ─────────────────────────────────────────
 # The delta compares KEYS, so a debt that grows keeps its key and reads as parked.
@@ -1731,7 +1739,7 @@ BUDGET_PROG=40
 # Every type the collector emits must appear in exactly one of these two lists; a new type
 # is a red until it is classified, which is what keeps the enumeration derived rather than
 # remembered.
-LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress wiki-no-backlink wiki-no-links wiki-no-sibling"
+LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress taskboard-read wiki-no-backlink wiki-no-links wiki-no-sibling"
 # Not counted, and why: `stale-draft` is time elapsed, not debt; `scope-note` is an
 # inventory; the rest state a fact that is either true or absent and carry no number.
 LINT_UNCOUNTED="decision-field decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
@@ -1810,6 +1818,30 @@ _budget_prog_where() {
          /^### / { h = substr($0, 5); n = 0; next }
          /^-[[:space:]]*\[ \]/ { n++; if (n > mx) { mx = n; mh = h } }
          END { print mh }' "$1"
+}
+
+# Kilobytes a session reads at start: every line above the first `##` heading that opens
+# the queue (`Backlog`, any case, `Бэклог`) or the record (`Done`, `Завершено`). The session
+# reads that part in full, so whatever sits there is paid for at every start.
+#
+# Why a second quantity when In progress is already counted: every counter here answers
+# "how much work is not done" — lines, then items, then the largest block — and the failure
+# reported from goprofi-voronka on 2026-09-24 was not that. It was "how much there is to
+# READ". The board grew to 14 087 lines (~395 thousand tokens) with every counter green,
+# and the history shows how: until 09-04 the growth sat in In progress in blocks under 40
+# items, so the largest-block counter held; on 09-05..08 the bulk was moved into 144 new
+# sections BELOW In progress, which took In progress from 656 KB to 36 KB and cost the
+# reader nothing. No counter keyed to a section name can see a move like that. A counter
+# keyed to the queue boundary can, because there are only two places a thing can go: above
+# it, where it is read and counted here, or below it, where it is queue.
+# `backlog` in lower case too: `_arch/dimarch` keeps `## Phase 0 backlog`..`Phase 4 backlog`
+# and those are queue by name. Bytes, not characters, hence C for this awk alone: a byte is
+# what a token is made of, and a UTF-8 awk would count Cyrillic at half its weight. The
+# pattern is literal alternation, no character class, so C does not blind it.
+_budget_read() {
+    LC_ALL=C awk '/^## / && /Backlog|backlog|Бэклог|бэклог|Done|Завершено/ { exit }
+                  { b += length($0) + 1 }
+                  END { print int(b / 1024) }' "$1"
 }
 
 # A section the file does not HAVE is not a section of length zero. Every counter above
@@ -1895,6 +1927,9 @@ prose_budget() {
         fi
         report "taskboard In progress (largest block)" \
                "$(_budget_or_absent "$tb" '^## (In progress|В работе)' _budget_prog)" "$BUDGET_PROG"
+        # No _budget_or_absent: a board with no queue heading is read whole, and that is its
+        # true weight rather than an absent section.
+        report "taskboard read at start (KB)" "$(_budget_read "$tb")" "$BUDGET_READ"
     fi
     [ "$over" -eq 2 ] && return 1   # a counter did not run — not the same as "within budget"
     [ "$over" -eq 1 ] && return 2
@@ -2212,6 +2247,23 @@ _sr_sel() {   # <want> <prefix> ; changes on stdin
 
 _sr_count() { grep -c . <<<"$1"; }
 
+# Closed top-level items outside Done, one line each, from the file on stdin — the same
+# markers and the same column-0 rule as `closed-outside-done`, so a closed sub-item under an
+# open parent is not an item.
+_sr_closed_out() {
+    awk '/^## / { d = ($0 ~ /^## (Done|Завершено)/); next }
+         !d && /^-[[:space:]]*(\[x\]|✅)/ { print }'
+}
+# Of those, the ones HEAD does not already carry: what this session closed and left.
+# `-e` because every such line begins with a dash, and a vault value in the argument
+# position is read as an option — the defect `backfill-dates` shipped with on 09-04.
+_sr_closed_left() {   # <vault> <path inside the vault>
+    sr_was=$(git -C "$1" show "HEAD:$2" 2>/dev/null | _sr_closed_out)
+    _sr_closed_out < "$1/$2" | while IFS= read -r l; do
+        grep -qxFe "$l" <<<"$sr_was" || printf '%s\n' "$l"
+    done
+}
+
 # The calendar day before today, anchored at noon so a DST shift cannot move it.
 # Both branches name hours, minutes and seconds: BSD `date` fills every field the format
 # does not name from the CURRENT clock, so a bare date parses to today's time-of-day and
@@ -2404,8 +2456,24 @@ save_report() {
     fi
 
     # ── 6. taskboard (Step 4) ────────────────────────────────────────────────
+    # "The file changed" is not evidence that the step's rule was kept. Step 4 says a
+    # completed task MOVES to Done, and goprofi-voronka closed 406 items in place over three
+    # months — `✅ Сделано 18.09` written as a heading where the work sat — while its Done
+    # section was never filled once and every save of the period printed `ok` here. So an
+    # item closed by THIS session and left outside Done is Step 4 not run, and says so.
+    # This session's closures only, never the board's history: the old ones are
+    # `closed-outside-done` in the lint, and a save cannot be failed for debt it did not
+    # create. Compared against HEAD, which is the state before this save; under mtime there
+    # is no such state, and a comparison that cannot be made is skipped, never guessed.
     if [ -n "$(_sr_sel any "$project/taskboard.md" <<<"$changes")" ]; then
-        verdict ok "taskboard" "updated"
+        sr_left=""
+        [ "$sr_mode" = git ] && [ -f "$pdir/taskboard.md" ] &&
+            sr_left=$(_sr_closed_left "$vault" "$project/taskboard.md")
+        if [ -n "$sr_left" ]; then
+            verdict MISSING "taskboard" "$(_sr_count "$sr_left") item(s) closed this session and left outside Done — sweep-closed --apply for In progress, by hand elsewhere: $(head -1 <<<"$sr_left" | cut -c1-70)"
+        else
+            verdict ok "taskboard" "updated"
+        fi
     elif [ ! -f "$pdir/taskboard.md" ]; then
         verdict ANSWER "taskboard" "no taskboard.md in this project — say whether one is due"
     else
@@ -3176,6 +3244,11 @@ EOF
                 printf 'taskboard-inprogress:%s\t%s open items in one block%s\n' "$P" "$prog" \
                        "${pw:+ — $pw}"
             fi
+            # What a session reads at start, in KB — see `_budget_read`. The detail opens
+            # with the magnitude, so a board that keeps growing reads WORSE, not "known".
+            rd=$(_budget_read "$tb")
+            [ "$rd" -gt "$BUDGET_READ" ] &&
+                printf 'taskboard-read:%s\t%s KB above Backlog — read in full at every session start\n' "$P" "$rd"
             # A closed item outside Done is filed by nobody, ever. `sweep-closed` walks
             # `In progress` by construction — right for its job, since that is the section
             # the threshold measures — so a task ticked in `Backlog` stays there for good.

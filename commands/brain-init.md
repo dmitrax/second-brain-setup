@@ -252,7 +252,8 @@ Project: [PROJECT]
    Exit 0 → proceed. 2 → say so in one line and proceed. 3 → conflict, stop and report.
 1. Read: 00-shared/CRITICAL_FACTS.md
 2. Read: [PROJECT]/_PROJECT.md
-3. Read: [PROJECT]/taskboard.md
+3. Read: [PROJECT]/taskboard.md — everything above `## Backlog` in full, the queue by
+   its headings, `## Done` not at all
 4. If code or mixed project: read [PROJECT]/architecture-map.md before any code work
 5. Do not full-scan the vault or repository. Use _PROJECT.md, architecture-map.md,
    and grep to find specific notes — never load whole folders or scan all code.

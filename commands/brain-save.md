@@ -486,8 +486,16 @@ almost verbatim) before this rule was written.
 
 File: `$VAULT/$PROJECT/taskboard.md`
 
-- Completed tasks → move to done section with date
-- New tasks → add to backlog or in-progress
+- Completed tasks → move to done section with date. **Closing IS the move**: a task
+  ticked where it sits, or a `✅ Done 18.09` heading written above finished work, is not
+  a move, and nothing files it afterwards. `brain.sh sweep-closed <taskboard> --apply`
+  moves the closed top-level items of `In progress`; one closed in any other section is
+  moved by hand. Step 8's report names every item this session closed and left outside
+  `Done` — measured on `goprofi-voronka`: 406 items closed in place over three months,
+  its `Done` never filled once, and every save of the period reporting this step as done
+- New tasks → add to backlog or in-progress. Anything that is not current work goes
+  **below `## Backlog`**: everything above it is read in full at every session start,
+  and Step 4b measures that weight
 - Stalled tasks — do NOT delete, only add date and reason
 
 ## Step 4b: Measure what you just wrote
@@ -538,6 +546,13 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   stays, because its text explains the open parent above it — add `--apply` to write.
   Then `archive` what landed in Done, with both flags as above. Whatever remains over budget after that is genuinely open work or `Backlog` —
   say so plainly and leave it as a task rather than trimming live content.
+- `taskboard read at start (KB)` → the kilobytes above the first `Backlog`/`Done`
+  heading, which every session start reads in full. Move what is not current work below
+  `## Backlog` — a queue is read by its headings only — then `sweep-closed` and `archive`
+  as above. Moving is the remedy, deleting never is. A section invented between
+  `In progress` and `Backlog` (a journal, a per-session plan) is inside this number by
+  construction: that is where `goprofi-voronka` kept 318 thousand tokens that no other
+  counter could see.
 
 **Never finish the save silently on exit 2.** The budgets used to be measured only by
 `/brain-lint`, hours or days later, by whoever happened to run it — so an overrun was
