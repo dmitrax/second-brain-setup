@@ -1331,6 +1331,14 @@ for flag in '`grep -rF`' '`grep -rE`'; do
 done
 grep -qF -- "--include='*.md'" "$SCRIPT_DIR/SKILL.md" ||
     missing+="SKILL.md: the quoted-glob form is not prescribed (an unquoted one cancels the search)"$'\n'
+# A line of invalid UTF-8 is skipped by the stock macOS grep under a UTF-8 locale, with no
+# sign in the exit code — found 2026-09-24 through `rename`. lib/ is pinned (check 39); a
+# search a session types by hand is reached only by the rule, and so is its exception: C
+# stops `-i` from folding Cyrillic, which in a Russian vault would cost more than it saves.
+grep -qF 'LC_ALL=C grep -rF' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: the C pin for a vault search is not prescribed (the stock grep skips lines of invalid UTF-8)"$'\n'
+grep -qF 'Not with `-i` on Cyrillic' "$SCRIPT_DIR/SKILL.md" ||
+    missing+="SKILL.md: the C pin is prescribed without its exception — under C, -i stops folding Cyrillic"$'\n'
 # Premise, not prose: assert the two outcomes on this machine rather than trusting the
 # paragraph. Absence of zsh fails instead of skipping — "the shell is missing" and "the rule
 # holds" are different facts, and only one is worth a green (same class as check 7's PyYAML).
@@ -1361,9 +1369,9 @@ for f in "${TARGETS[@]}"; do
     [ -n "$h" ] && missing+="$(basename "$f"): bare grep -r without -F/-E on lines $(echo "$h" | cut -d: -f1 | tr '\n' ' ')"$'\n'
 done
 if [ -n "$missing" ]; then
-    fail "a vault search is prescribed without -F/-E (silently wrong result)" "$missing"
+    fail "a vault search is prescribed in a form that silently loses matches" "$missing"
 else
-    pass "vault searches always carry -F or -E, and the rule is present in SKILL.md"
+    pass "vault searches carry -F or -E, quote their globs, and pin C where the pattern allows it"
 fi
 
 # ─── 14. The scripts are bash 3.2 compatible ─────────────────────────────────

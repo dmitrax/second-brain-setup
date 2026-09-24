@@ -352,6 +352,16 @@ them reported normally. Where a filter is doing real work, prefer
 `find <dir> -name '<pattern>'`, which hands the pattern to `find` so the shell never
 expands it. Applies to every glob a command receives, not only to searches.
 
+**A line carrying invalid UTF-8 is invisible to a search under a UTF-8 locale — prefix
+`LC_ALL=C` when the pattern allows it.** The stock macOS `grep` skips every such LINE and
+matches the rest of the file, so nothing in the exit code or the output says a line was
+passed over; measured 2026-09-24, it left a link unrenamed and reported success. Vault text
+arriving from `raw/` can carry such bytes. `LC_ALL=C grep -rF …` reads them as bytes, and
+literal Cyrillic still matches under it. **Not with `-i` on Cyrillic, and not with a
+Cyrillic character class:** under C, `-i` stops folding `Д`/`д` (one match of two, measured
+the same day) and `[А-Яа-я]` becomes "any non-ASCII byte". For those, keep the locale, and
+when a count looks low, re-run the literal forms under `LC_ALL=C` and compare.
+
 
 
 [[wikilinks]] in note bodies build the Obsidian graph. Without them the graph is empty.
