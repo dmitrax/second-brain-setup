@@ -621,6 +621,9 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
     package's headline defect (23).
   - `sweep-closed` moves items and never sections, spares a closed sub-item under an open
     parent, and its result is a permutation of its input or it refuses (28).
+  - `sweep-closed` names every heading it leaves with no item under it, in the dry run
+    too. The lint cannot: a heading with prose and no item is also how a legitimate
+    section looks, and only the sweep knows the heading HAD items a moment ago (26).
   - A taskboard counter measures open items and only advises `archive` for what `archive`
     can actually reach — advice that cannot be acted on is noise with a number on it (44).
   - A bullet three lines or longer carries a `[[link]]`: an account needs an owner
@@ -1099,6 +1102,17 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   trusted: where the parse does not reproduce the check says so as a coverage gap instead of
   claiming a green it did not earn.
   [[decision-a-multibyte-character-never-touches-a-bare-expansion-because-the-libc-decides-what-a-name-is]]
+- **No backslash reaches awk through `-v` — and this is neither the shell class nor the
+  tool class above.** `-v` processes its value as a string literal, as POSIX prescribes,
+  so `\[` reaches the regex engine as a bare `[`: measured 2026-08-20 on Darwin, check
+  54(a) passed `\[\[` through a function into `-v pat="$2"`, awk refused it on every file
+  and printed nothing, and the gate reported that check green for as long as it existed.
+  Shell and tool were both right; the argument was changed between them. The rule needs no
+  judgement: a literal bracket is `[[]`, and "no newline" is `.`, since an awk record never
+  holds one. Checked by preflight 68, which follows a literal down all three paths — the
+  `-v` value, a variable handed to it, and a function forwarding its Nth argument, derived
+  from the code rather than listed — and finds the 08-20 defect on the code before its fix.
+  [[awk-v-interprets-escapes-in-the-value-so-the-regex-engine-never-sees-the-backslash]]
 - **A claim about coverage is a claim, and it is verified where it is made.** The gate's
   own `gap()` — one day old — confessed "no BSD `date` on this machine" unconditionally,
   called one line **above** the test that decides it, so on Darwin check 38 printed "both

@@ -2569,6 +2569,34 @@ sed 's/✅ ЗАКРЫТО 2026-08-01 — всё сделано/Work in progress/
 ho_out=$(bash "$BL" sweep-closed "$sc_fx/honest.md" 2>&1)
 grep -qF 'this heading claims closure' <<<"$ho_out" &&
     missing+="the warning fires on an honest heading — a false alarm"$'\n'
+# A heading the sweep EMPTIES stays behind announcing a topic with nothing under it — found
+# twice by hand on this project's board (08-18, 09-04). Three headings, three answers: one
+# emptied (its intro prose stays, which is exactly why the lint cannot tell it from a
+# legitimate section), one keeping an open item, one that never had an item.
+cat > "$sc_fx/orphan.md" <<'OR'
+# t
+
+## In progress
+
+### Emptied by this sweep
+Intro prose that stays behind.
+- [x] 2026-01-01 a
+- [x] 2026-01-01 b
+
+### Keeps an open item
+- [ ] c
+- [x] 2026-01-01 d
+
+### Prose only, never had an item
+Just prose.
+
+## Done
+OR
+or_out=$(bash "$BL" sweep-closed "$sc_fx/orphan.md" 2>&1)
+grep -qFe '### Emptied by this sweep' <<<"$or_out" ||
+    missing+="a heading the sweep empties is not named — the orphan is left for someone to find by hand"$'\n'
+grep -qEe '### (Keeps an open item|Prose only)' <<<"$or_out" &&
+    missing+="a heading that keeps an item, or never had one, is named as emptied — a false alarm"$'\n'
 # The guard is verified by RUNNING a broken copy, not by grepping for its presence.
 sed 's|{ print > (w "/" (state == "moved" ? "moved" : "keep")) }|{ if ($0 !~ /body/) print > (w "/" (state == "moved" ? "moved" : "keep")) }|' "$BL" > "$sc_fx/broken.sh"
 if cmp -s "$sc_fx/broken.sh" "$BL" || [ ! -s "$sc_fx/broken.sh" ] || ! bash -n "$sc_fx/broken.sh" 2>/dev/null; then
@@ -4445,9 +4473,10 @@ while IFS=$'\t' read -r f stop; do
     [ -n "$h" ] && missing+="  $(basename "$f") states a numeric floor on links:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
     # A day threshold on `updated:` is the retired freshness rule. Both words on one line:
     # "no movement for 14+ days" is about taskboard items and is a different, live rule.
-    # `[^\n]` survives only by luck: `-v` turns it into a bracket holding a real newline,
-    # which is still a valid class and still matches, because a record never contains one.
-    h=$(_retired_hits "$src" 'updated[^\n]*[0-9]+[+]?[[:space:]]*(days|дней|дня)') ||
+    # `.*`, and until 2026-09-24 `[^\n]*`, which survived only by luck: `-v` turned it into a
+    # bracket holding a real newline — still a valid class, still matching, because a record
+    # never contains one. Same meaning, no backslash for `-v` to eat; check 68 forbids one.
+    h=$(_retired_hits "$src" 'updated.*[0-9]+[+]?[[:space:]]*(days|дней|дня)') ||
         missing+="  awk refused the freshness pattern on $(basename "$f") — check 54(b) did not run"$'\n'
     [ -n "$h" ] && missing+="  $(basename "$f") gives project freshness a day threshold:"$'\n'"$(printf '%s\n' "$h" | cut -c1-100 | sed 's/^/      /')"$'\n'
     # (c) A mutating Obsidian CLI call, PRESCRIBED rather than forbidden. The CLI stopped
@@ -5441,6 +5470,112 @@ if [ -n "$missing" ]; then
     fail "the board's reading weight or Step 4's own closures go unmeasured" "$missing"
 else
     pass "the board is weighed in bytes above the queue, and a save names what it closed and left"
+fi
+
+# ─── 68. No backslash reaches awk through -v ─────────────────────────────────
+# `awk -v name=value` processes the VALUE as a string literal, as POSIX prescribes, so
+# `\[` reaches the regex engine as a bare `[`. Measured 2026-08-20 on Darwin: check 54(a)
+# carried `\[\[` in a pattern handed through a function into `-v pat="$2"`; awk refused it
+# with "nonterminated character class" on every file, printed nothing, and the gate said
+# green for as long as the check had existed. Neither check 18 (the shell's syntax) nor 20
+# (which tool a name resolves to) can see it: shell and tool are both right, and the
+# argument is changed BETWEEN them.
+# So the rule is the one that needs no judgement: no backslash reaches `-v`, whether the
+# value is a regex or a path. A literal bracket is `[[]`; a class that meant "no newline"
+# is `.` — an awk record never contains one. The paths a literal takes are all three
+# followed, and the forwarding functions are DERIVED, never listed:
+#   * written in the `-v` value itself;
+#   * assigned to a variable that is handed to `-v`;
+#   * passed to a function that forwards its Nth argument into `-v` — the 08-20 shape.
+# Scope: the repository's own scripts. A prompt block runs in the session's shell and
+# its awk is not traced here.
+missing=""
+av_scan() {   # <file> — one line per backslash that would reach awk through -v
+    awk '
+    function tok(s, n,   i, c, q, t, k) {   # nth shell word of s, quotes kept
+        k = 0; t = ""; q = ""
+        for (i = 1; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (q != "") { t = t c; if (c == q) q = ""; continue }
+            if (c == "\047" || c == "\"") { q = c; t = t c; continue }
+            if (c == " " || c == "\t" || c == ")" || c == "|" || c == ";" || c == "&") {
+                if (t != "") { k++; if (k == n) return t; t = "" }
+                if (c != " " && c != "\t") return ""
+                continue
+            }
+            t = t c
+        }
+        if (t != "") { k++; if (k == n) return t }
+        return ""
+    }
+    function bad(t,   c) { c = substr(t, 1, 1); return ((c == "\047" || c == "\"") && index(t, "\\") > 0) }
+    FNR == 1 { pass++; fn = "" }
+    /^[[:space:]]*#/ { next }
+    /^[A-Za-z_][A-Za-z0-9_]*[(][)]/ { fn = $0; sub(/[(].*/, "", fn); def = 1 }
+    pass == 1 {
+        s = $0
+        while (match(s, /-v [A-Za-z_][A-Za-z0-9_]*="[$][{]?[A-Za-z0-9_]+/)) {
+            v = substr(s, RSTART, RLENGTH); sub(/^.*="[$][{]?/, "", v)
+            if (v ~ /^[0-9]$/) fwd[fn] = fwd[fn] " " v; else var[v] = 1
+            s = substr(s, RSTART + RLENGTH)
+        }
+        next
+    }
+    {
+        s = $0
+        while (match(s, /-v [A-Za-z_][A-Za-z0-9_]*=/)) {
+            t = tok(substr(s, RSTART + RLENGTH), 1)
+            if (bad(t)) print FILENAME ":" FNR ": in the -v value itself: " t
+            s = substr(s, RSTART + RLENGTH)
+        }
+        if (match($0, /^[[:space:]]*(local[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=/)) {
+            v = substr($0, RSTART, RLENGTH); sub(/^[[:space:]]*(local[[:space:]]+)?/, "", v); sub(/=$/, "", v)
+            t = tok(substr($0, RSTART + RLENGTH), 1)
+            if ((v in var) && bad(t)) print FILENAME ":" FNR ": assigned to $" v ", which reaches -v: " t
+        }
+        for (f in fwd) {
+            if (f == "") continue
+            if (!match($0, "(^|[^A-Za-z0-9_])" f " ")) continue
+            if ($0 ~ ("^" f "[(][)]")) continue
+            rest = substr($0, RSTART + RLENGTH)
+            n = split(fwd[f], ns, " ")
+            for (j = 1; j <= n; j++) {
+                t = tok(rest, ns[j])
+                if (bad(t)) print FILENAME ":" FNR ": argument " ns[j] " of " f ", forwarded into -v: " t
+            }
+        }
+    }' "$1" "$1"
+}
+av_n=0
+for av_f in "$SCRIPT_DIR/lib/brain.sh" "$SCRIPT_DIR/preflight.sh" "$SCRIPT_DIR/install.sh" "$SCRIPT_DIR/update.sh"; do
+    [ -f "$av_f" ] || { missing+="  $(basename "$av_f") is missing — empty input, not a clean repo"$'\n'; continue; }
+    av_n=$((av_n + 1))
+    av_hits=$(av_scan "$av_f") || missing+="  the scan did not run on $(basename "$av_f")"$'\n'
+    [ -n "$av_hits" ] && missing+="$(printf '%s\n' "$av_hits" | sed "s|^$SCRIPT_DIR/|  |")"$'\n'
+done
+[ "$av_n" -eq 4 ] || missing+="  scanned $av_n of 4 scripts"$'\n'
+# The scan has force only if it finds the 08-20 shape. A fixture script carries all three
+# paths; the backslash is written as octal so this file holds none in those positions.
+av_fx=$(mktemp -d)
+printf '#!/bin/bash\nav_fwd() {\n    awk -v pat="$2" 1 "$1"\n}\nav_fwd "$f" %s\nAV_PAT=%s\nawk -v p="$AV_PAT" 1\nawk -v q=%s 1\nav_fwd "$f" %s\n' \
+    "'a\134[b'" "'c\134[d'" "'e\134[f'" "'clean[[]'" > "$av_fx/s.sh"
+av_hits=$(av_scan "$av_fx/s.sh")
+for av_want in "argument 2 of av_fwd" 'assigned to $AV_PAT' "in the -v value itself"; do
+    grep -qFe "$av_want" <<<"$av_hits" ||
+        missing+="  the scan does not find a backslash reaching -v by this path: $av_want"$'\n'
+done
+[ "$(grep -c . <<<"$av_hits")" -eq 3 ] ||
+    missing+="  the scan reports $(grep -c . <<<"$av_hits") findings on a fixture with 3 — [[] is the fix, not a finding"$'\n'
+rm -rf "$av_fx"
+# The premise, run rather than trusted: where this awk keeps the backslash the rule is
+# defensive here, and that is a coverage statement, not a pass.
+av_bs=$(printf '\134')
+[ "$(awk -v p="x${av_bs}[y" 'BEGIN { print p }' 2>/dev/null)" = "x[y" ] ||
+    gap "the premise of check 68 — this awk keeps a backslash in a -v value, so the rule is defensive here"
+if [ -n "$missing" ]; then
+    fail "a backslash reaches awk through -v, where it is eaten before the regex sees it" "$missing"
+else
+    pass "no backslash reaches awk through -v — by the value, a variable, or a forwarding function"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"

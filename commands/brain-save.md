@@ -544,6 +544,8 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
 - taskboard `In progress` / total → `brain.sh sweep-closed <taskboard>` (dry-run by
   default) moves closed top-level items with their bodies into Done; a closed *sub-item*
   stays, because its text explains the open parent above it — add `--apply` to write.
+  When it names a heading that no item stays under, remove the heading or write under it
+  where the work went — left alone it reads as a topic whose work has not begun.
   Then `archive` what landed in Done, with both flags as above. Whatever remains over budget after that is genuinely open work or `Backlog` —
   say so plainly and leave it as a task rather than trimming live content.
 - `taskboard read at start (KB)` → the kilobytes above the first `Backlog`/`Done`

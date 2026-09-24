@@ -1646,6 +1646,27 @@ sweep_closed() {
             echo "sweep-closed:   the move loses nothing, but this heading becomes false — split the section by hand"
         done
     fi
+    # The second way a heading that stays behind goes wrong, and the quieter one: the sweep
+    # takes EVERY item from under it, and the heading goes on announcing a topic with nothing
+    # under it — or with only its introductory prose, which reads as work not yet begun.
+    # Found twice on this project's own board: three such headings on 2026-08-18, four on
+    # 2026-09-04 after 52 items moved, each tidied by hand. The lint cannot find them: a
+    # heading with prose and no item is also how a legitimate section looks (two of four on
+    # 08-18 were exactly that), and measured 2026-09-24 there were none left on any board to
+    # find. Only this command knows the heading HAD items a moment ago, so it says so, in the
+    # dry run too — before the orphan exists. Checked by preflight 26.
+    awk '
+        FNR == 1 { f++; h = ""; ip = (f == 2) }
+        f == 1 && /^## / { ip = ($0 ~ /In progress|В работе/); h = ""; next }
+        !ip { next }
+        /^#+[[:space:]]/ { h = $0; next }
+        h != "" && (/^- \[[ x]\]/ || /^- ✅/) { if (f == 1) was[h]++; else now[h]++ }
+        END { for (k in was) if (!(k in now)) print k }
+    ' "$tb" "$work/keep" | LC_ALL=C sort | while IFS= read -r empty; do
+        [ -n "$empty" ] || continue
+        echo "sweep-closed: no item stays under this heading — remove it, or say under it where the work went:"
+        echo "sweep-closed:   $empty"
+    done
     if [ "$n_moved" -eq 0 ]; then rm -rf "$work"; return 0; fi
     if [ "$apply" != "--apply" ]; then
         echo "sweep-closed: dry run, nothing written (pass --apply)"
