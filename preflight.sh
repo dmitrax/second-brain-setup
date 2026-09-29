@@ -786,6 +786,22 @@ if [ -f "$LIBSH" ]; then
     # emitted one key twice — and a duplicate key makes `lint-diff` refuse the whole run.
     printf -- '---\nstatus: accepted\nsupersedes: decision-nowhere-a\ncorrected-by: decision-nowhere-b\n---\n[[../_PROJECT|_PROJECT]]\n' \
         > "$LCV/proj/wiki/decision-tworefs.md"
+    # The two LIST forms `/brain-save` prescribes ("multiple corrections accumulate as a
+    # YAML list"). Both used to be read as the text after the colon, and both broke
+    # silently, in opposite directions (2026-09-29): the flow list below — two names, both
+    # on disk — read as one value whose `, ` looked like prose, a false `decision-field`
+    # reported from live use in goprofi-voronka; the block list read as EMPTY, so 24
+    # references in the live vault were never checked at all.
+    printf -- '---\nstatus: accepted\nsupersedes: [decision-clean.md, decision-brokenref.md]\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-flowlist.md"
+    printf -- '---\nstatus: accepted\ncorrected-by:\n  - decision-clean.md\n  - decision-nowhere-c.md\n  - decision-nowhere-e\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-blocklist.md"
+    # One list, three kinds of element: a good name, a quoted sentence carrying a COMMA
+    # (splitting inside quotes would turn one prose value into two), and a missing name.
+    # Owed: exactly one `decision-field` and one `decision-ref` on the field — the elements
+    # go into the details — and the good name in neither.
+    printf -- '---\nstatus: accepted\nsupersedes: [decision-clean, "decision-clean (one half, the rest stands)", decision-nowhere-d]\n---\n[[../_PROJECT|_PROJECT]]\n' \
+        > "$LCV/proj/wiki/decision-mixedlist.md"
 
     # An unterminated frontmatter block.
     printf -- '---\ndate: 2026-06-01\nbody with no closing rule\n' > "$LCV/proj/wiki/broken-fm.md"
@@ -883,6 +899,17 @@ if [ -f "$LIBSH" ]; then
     # assertion below is what turns a duplicate red, but only if both lines exist.
     want 'decision-ref:proj/wiki/decision-tworefs.md#supersedes'
     want 'decision-ref:proj/wiki/decision-tworefs.md#corrected-by'
+    # Lists are read element by element. Asserted on the VALUE where a key alone would
+    # pass on both editions: the block list's finding must name both missing elements, in
+    # ONE line (one per element would repeat the key, and lint-diff refuses a repeat), and
+    # not the one on disk. (The flow list's non-findings sit below `nope_pre`, which is
+    # defined there — called above it, it is "command not found" and never red.)
+    grep -q '^decision-ref:proj/wiki/decision-blocklist.md#corrected-by	decision-nowhere-c, decision-nowhere-e does not exist$' "$out" ||
+        problems+="a block list was not read element by element, or its two missing names did not share ONE finding"$'\n'
+    grep -q '^decision-field:proj/wiki/decision-mixedlist.md#supersedes	carries prose, not an identifier: decision-clean (one half, the rest stands)$' "$out" ||
+        problems+="a quoted list element with a comma was split, or its prose was not reported as one value"$'\n'
+    grep -q '^decision-ref:proj/wiki/decision-mixedlist.md#supersedes	decision-nowhere-d does not exist$' "$out" ||
+        problems+="a missing name in a mixed list was not reported, or the good name was reported with it"$'\n'
     want 'frontmatter:proj/wiki/broken-fm.md'
     want 'ambiguous-link:other/wiki/note-alone.md'
     want 'project-unregistered:unreg'
@@ -894,6 +921,8 @@ if [ -f "$LIBSH" ]; then
     # matched on the PREFIX — a `nope` demanding the tab would pass by construction.
     nope_pre() { grep -q "^$1" "$out" && problems+="false finding: $1"$'\n'; }
     nope_pre 'decision-ref:proj/wiki/decision-clean.md'
+    nope_pre 'decision-field:proj/wiki/decision-flowlist.md'
+    nope_pre 'decision-ref:proj/wiki/decision-flowlist.md'
     nope 'decision-legacy:proj/wiki/decision-clean.md'
     nope 'ambiguous-link:other/wiki/note-quotes.md'
     nope 'stale-project:other'
@@ -3861,6 +3890,12 @@ printf -- '---\nstatus: superseded\nsuperseded-by: decision-in-force.md\ndate: %
     > "$cv/alpha/wiki/decision-retired.md"
 printf -- '---\nstatus: accepted\ncorrected-by: decision-in-force.md\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
     > "$cv/alpha/wiki/decision-partly-wrong.md"
+# The same marker in the BLOCK list form `/brain-save` prescribes for several corrections.
+# Read as the text after the colon it was empty, and `+corrected` vanished from every such
+# note — 13 in the live vault on 2026-09-29, the marker whose job is to stop a retracted
+# fact being read as current.
+printf -- '---\nstatus: accepted\ncorrected-by:\n  - decision-in-force.md\n  - decision-retired.md\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
+    > "$cv/alpha/wiki/decision-listed-corrections.md"
 # `supersedes: ~` is YAML null, not a note name — it must not read as a supersession.
 printf -- '---\nstatus: accepted\nsupersedes: ~\ncorrected-by: ~\ndate: %s\n---\nbody\n' "$PF_ANCIENT" \
     > "$cv/alpha/wiki/decision-null-fields.md"
@@ -3872,9 +3907,9 @@ sum=$(bash "$LIBSH" catalog "$cv" 2>&1)
 if [ -z "$sum" ]; then
     fail "check 47 got no output from catalog — the fixture or the command is broken"
 else
-    # alpha: 5 notes, 4 decisions, 3 in force (accepted×3), 1 retired (superseded)
-    grep -qEe '^5[[:space:]]+4[[:space:]]+3[[:space:]]+1[[:space:]]' <<<"$sum" ||
-        missing+="the summary counts are wrong for alpha (want 5 notes / 4 decs / 3 in force / 1 retired), got: $(grep alpha <<<"$sum")"$'\n'
+    # alpha: 6 notes, 5 decisions, 4 in force (accepted×4), 1 retired (superseded)
+    grep -qEe '^6[[:space:]]+5[[:space:]]+4[[:space:]]+1[[:space:]]' <<<"$sum" ||
+        missing+="the summary counts are wrong for alpha (want 6 notes / 5 decs / 4 in force / 1 retired), got: $(grep alpha <<<"$sum")"$'\n'
     grep -qFe 'alpha' <<<"$sum" || missing+="the summary does not list project alpha"$'\n'
     grep -qFe 'nowiki' <<<"$sum" &&
         missing+="a project with no wiki/ appears in the summary"$'\n'
@@ -3887,6 +3922,8 @@ grep -qFe 'superseded→decision-in-force' <<<"$idx" ||
     missing+="a superseded decision does not name what replaced it — the standing is the point"$'\n'
 grep -qFe 'accepted+corrected' <<<"$idx" ||
     missing+="a corrected decision is not marked — its retracted fact would be read as current"$'\n'
+grep -qEe '^[0-9-]+[[:space:]]+accepted\+corrected[[:space:]]+decision-listed-corrections$' <<<"$idx" ||
+    missing+="a correction given as a block list is not marked — the list read as empty"$'\n'
 null_line=$(grep -Fe 'decision-null-fields' <<<"$idx")
 case "$null_line" in
     *"→"*|*"+corrected"*) missing+="YAML null (~) was read as a note name: $null_line"$'\n' ;;

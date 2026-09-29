@@ -1028,8 +1028,18 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   to a TRUE defect of schema, and repairing what it names would be repairing nothing. A
   field that holds an identifier holds an identifier and nothing else; whitespace in the
   value is the machine test, because a note name is kebab-case by rule. Checked by
-  preflight 4e, which asserts the finding is `decision-schema` and NOT `decision-ref` — one
+  preflight 4e, which asserts the finding is `decision-field` and NOT `decision-ref` — one
   defect owes one finding, and the wrong one of the two sends the reader to the wrong repair.
+  **A list in such a field is several identifiers, never one value** — `/brain-save`
+  prescribes one for accumulated corrections. Every element passes the test on its own, in
+  both YAML forms, and a field still owes at most one finding of each type, the elements
+  going into the detail (one line per element repeats the key, and `lint-diff` refuses a
+  repeat). Measured 2026-09-29, reading the text after the colon broke both forms in
+  opposite directions: the flow form `[a.md, b.md]` reported two notes on disk as prose
+  (from live use in goprofi-voronka), and the block form read as EMPTY — 24 references
+  never checked, and `+corrected` missing from 13 notes in `catalog`. The quiet half is the
+  worse one: a false red gets reported, a check that never ran does not. One reader,
+  `_fm_refs`, serves the lint and the listings. Checked by preflight 4e and 47.
   [[decision-partial-reversal-stays-plain-superseded-because-status-is-binary-not-a-delta]] ·
   [[decision-a-reference-field-holds-an-identifier-because-prose-in-it-fakes-a-missing-target]]
 - Partially-stale decision note (the decision holds, one supporting fact in its body

@@ -2655,17 +2655,94 @@ save_report() {
 # What it adds over `ls`: a decision's state. 383 decisions exist and some are retired;
 # today the only way to know which is to open the file.
 _cat_fm() {
-    # Print `date<TAB>status<TAB>superseded-by<TAB>corrected-by` of one note, reading the
-    # frontmatter only: the first block between the opening and closing `---`.
+    # Print `date<TAB>status` of one note, reading the frontmatter only: the first block
+    # between the opening and closing `---`. The reference fields are NOT read here — they
+    # can be lists, and a list is `_fm_refs`'s job (see there for what reading them on
+    # one line cost).
     awk '
         NR == 1 && $0 != "---" { exit }
         NR > 1 && /^---[[:space:]]*$/ { exit }
         /^date:/         { sub(/^date:[[:space:]]*/, "");         d = $0 }
         /^status:/       { sub(/^status:[[:space:]]*/, "");       s = $0 }
-        /^superseded-by:/{ sub(/^superseded-by:[[:space:]]*/, ""); sb = $0 }
-        /^corrected-by:/ { sub(/^corrected-by:[[:space:]]*/, ""); cb = $0 }
-        END { printf "%s\t%s\t%s\t%s\n", d, s, sb, cb }
+        END { printf "%s\t%s\n", d, s }
     ' "$1" 2>/dev/null
+}
+
+# ── _fm_refs ─────────────────────────────────────────────────────────────────
+# The note names a reference field (`supersedes`, `superseded-by`, `corrected-by`) holds,
+# one per line as `key<TAB>name` — or, with -j, one line of the keys' values in argument
+# order, TAB-separated, each a comma-joined list. Names arrive bare: quotes, `[[ ]]`, an
+# `|alias` and `.md` are stripped; `~`, `null` and an empty list yield nothing.
+#
+# A field holds a LIST as often as a scalar — `/brain-save` prescribes one ("multiple
+# corrections accumulate as a YAML list") — and the readers took the text after the colon
+# on the same line. Measured 2026-09-29 across the vault, both list forms broke silently,
+# in opposite directions:
+#   * the flow form `[a.md, b.md]` was stripped as ONE value, so the `, ` between the names
+#     read as whitespace in a name: a false `decision-field … carries prose` about two
+#     notes that both exist (reported from live use in goprofi-voronka on 09-27);
+#   * the block form (`key:` and `  - a.md` below it) read as EMPTY: 24 references in 13
+#     notes of 6 projects were never checked by the lint, and `catalog`/`notes-for` dropped
+#     `+corrected` from every such note — the marker whose whole job is to stop a reader
+#     trusting a retracted fact.
+# The second is the worse one: a false red gets reported, a check that never ran does not.
+# One reader for all three callers, so the forms cannot be understood differently by the
+# lint and by the listing.
+#
+# A flow list is split on commas OUTSIDE quotes: an element may be a quoted sentence, and
+# splitting it would turn one prose value into several. Only the frontmatter at line 1 is
+# read; a `---` further down is a rule in the body.
+_fm_refs() {   # [-j] <file> <key>...
+    _fr_join=0
+    if [ "${1:-}" = "-j" ]; then _fr_join=1; shift; fi
+    _fr_file="$1"; shift
+    awk -v keys="$*" -v join="$_fr_join" '
+        function clean(e,   f) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", e)
+            f = substr(e, 1, 1)
+            if (length(e) >= 2 && (f == "\"" || f == "\047") && substr(e, length(e), 1) == f)
+                e = substr(e, 2, length(e) - 2)
+            sub(/^\[\[/, "", e); sub(/\]\]$/, "", e); sub(/\|.*/, "", e); sub(/\.md$/, "", e)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", e)
+            return (e == "~" || e == "null") ? "" : e
+        }
+        function add(k, e) {
+            e = clean(e)
+            if (e == "") return
+            if (join) got[k] = (k in got) ? got[k] "," e : e
+            else printf "%s\t%s\n", k, e
+        }
+        BEGIN { nk = split(keys, K, " ") }
+        NR == 1 && !/^---[[:space:]]*$/ { exit }
+        /^---[[:space:]]*$/ { c++; blk = ""; if (c == 2) exit; next }
+        blk != "" && /^[[:space:]]*-([[:space:]]|$)/ {
+            v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); add(blk, v); next
+        }
+        { blk = "" }
+        {
+            for (i = 1; i <= nk; i++) if (index($0, K[i] ":") == 1) break
+            if (i > nk) next
+            k = K[i]; v = substr($0, length(k) + 2)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+            if (v == "") { blk = k; next }
+            if (substr(v, 1, 1) != "[" || substr(v, 1, 2) == "[[") { add(k, v); next }
+            v = substr(v, 2); sub(/\][[:space:]]*$/, "", v)
+            cur = ""; q = ""
+            for (j = 1; j <= length(v); j++) {
+                ch = substr(v, j, 1)
+                if (q != "") { if (ch == q) q = ""; cur = cur ch; continue }
+                if (ch == "\"" || ch == "\047") { q = ch; cur = cur ch; continue }
+                if (ch == ",") { add(k, cur); cur = ""; continue }
+                cur = cur ch
+            }
+            add(k, cur)
+        }
+        END {
+            if (!join) exit
+            for (i = 1; i <= nk; i++) printf "%s%s", (i > 1 ? "\t" : ""), got[K[i]]
+            printf "\n"
+        }
+    ' "$_fr_file" 2>/dev/null
 }
 
 catalog() {
@@ -2739,8 +2816,9 @@ EOF
         fm=$(_cat_fm "$f")
         d=$(printf '%s' "$fm" | cut -f1)
         s=$(printf '%s' "$fm" | cut -f2)
-        sb=$(printf '%s' "$fm" | cut -f3)
-        cb=$(printf '%s' "$fm" | cut -f4)
+        refs=$(_fm_refs -j "$f" superseded-by corrected-by)
+        sb=$(printf '%s' "$refs" | cut -f1)
+        cb=$(printf '%s' "$refs" | cut -f2)
         base=$(basename "$f" .md)
         state=$(_standing "$base" "$s" "$sb" "$cb")
         printf '%s\t%s\t%s\n' "${d:-0000-00-00}" "$state" "$base"
@@ -2817,7 +2895,9 @@ notes_for() {
     printf '%s\n' "$hits" | sed 's|^\./||' | LC_ALL=C sort | while IFS= read -r f; do
         [ -n "$f" ] || continue
         fm=$(_cat_fm "$f")
-        s=$(printf '%s' "$fm" | cut -f2); sb=$(printf '%s' "$fm" | cut -f3); cb=$(printf '%s' "$fm" | cut -f4)
+        s=$(printf '%s' "$fm" | cut -f2)
+        refs=$(_fm_refs -j "$f" superseded-by corrected-by)
+        sb=$(printf '%s' "$refs" | cut -f1); cb=$(printf '%s' "$refs" | cut -f2)
         printf '%s\t%s\n' "$(_standing "$(basename "$f" .md)" "$s" "$sb" "$cb")" "$f"
     done
     return 0
@@ -3379,48 +3459,56 @@ EOF
              END { exit !found }' "$p" && \
             printf 'decision-legacy:%s\tone-line status: superseded-by: — invalid YAML\n' "${p#./}"
         for k in supersedes superseded-by corrected-by; do
-            v=$(_lc_fm "$p" "$k")
-            case "$v" in ""|"~"|"null"|"[]") continue ;; esac
-            # Strip the wrappers a note name legitimately arrives in — a wikilink, a
-            # YAML flow list, quotes — before asking anything about the value.
-            v=$(printf '%s' "$v" | sed 's/^\[\[//; s/\]\]$//; s/^\[//; s/\]$//; s/^"//; s/"$//; s/|.*//; s/\.md$//')
-            # An identifier field holds an identifier and nothing else. A note name is
-            # kebab-case by rule, so whitespace in the value means prose got in, and the
-            # right finding is about the SCHEMA — reporting `does not exist` there is a
-            # false claim about the target, which usually exists. Measured 2026-09-04
-            # across the whole vault: 68 non-empty values in these three fields, exactly
-            # ONE with whitespace: a `supersedes:` in goprofi holding the note name
-            # followed by a parenthesised sentence saying which half of the old decision
-            # it reversed. Its target was on disk the whole time while the lint called it
-            # missing — a false claim about existence on a true defect of schema, which
-            # sends the reader to recreate a note instead of trimming a field. The value
-            # is not quoted here: it is Russian, and a comment in a shipped script is read
-            # by strangers. Same hedge CLAUDE.md
-            # already bans in `status:`, moved one field over: the degree of a partial
-            # supersession belongs in the new note's body, which in that case already
-            # carried it. `continue` so one defect yields one finding, never both.
-            case "$v" in
-                *[[:space:]]*)
-                    printf 'decision-field:%s#%s\tcarries prose, not an identifier: %s\n' "${p#./}" "$k" "$v"
-                    continue ;;
-            esac
-            base=$(printf '%s' "$v" | sed 's|.*/||')
-            # Output into a variable, not `find | grep -q .`: under pipefail grep -q
-            # exits on the first line, find dies of SIGPIPE with 141, and the pipeline
-            # status then says "not found" about a file that exists. It fires exactly
-            # where a basename is duplicated — the very class this vault carries
-            # (see ambiguous-link).
-            hits=$(find . -name "$base.md" -not -path './.git/*')
-            # The key names the note AND the field. This loop runs over three fields and
-            # keyed on the note alone, so a note with two broken references emitted the
-            # same key twice — and a duplicate key is not a cosmetic problem here: the
-            # uniqueness guard at the top of `lint-diff` refuses the run, so one such note
-            # anywhere in the vault would take the delta down for every project on every
-            # machine. Found 2026-09-04 while adding the sibling emitter below, which
-            # would have been the second way in. `#field` and not a second colon: the
-            # scope filter reads the object as everything after the FIRST colon.
-            [ -n "$hits" ] || \
-                printf 'decision-ref:%s#%s\t%s does not exist\n' "${p#./}" "$k" "$v"
+            # Every element of the field, whatever its form — scalar, flow list, block
+            # list. Reading the text after the colon as ONE value called a two-name list
+            # prose and never saw a block list at all; `_fm_refs` says what that cost.
+            refs=$(_fm_refs "$p" "$k" | cut -f2)
+            [ -n "$refs" ] || continue
+            prose=""; missing=""
+            while IFS= read -r v; do
+                # An identifier field holds an identifier and nothing else. A note name is
+                # kebab-case by rule, so whitespace in the value means prose got in, and
+                # the right finding is about the SCHEMA — reporting `does not exist` there
+                # is a false claim about the target, which usually exists. Measured
+                # 2026-09-04 across the whole vault: 68 non-empty values in these three
+                # fields, exactly ONE with whitespace: a `supersedes:` in goprofi holding
+                # the note name followed by a parenthesised sentence saying which half of
+                # the old decision it reversed. Its target was on disk the whole time
+                # while the lint called it missing — a false claim about existence on a
+                # true defect of schema, which sends the reader to recreate a note instead
+                # of trimming a field. The value is not quoted here: it is Russian, and a
+                # comment in a shipped script is read by strangers. Same hedge CLAUDE.md
+                # already bans in `status:`, moved one field over: the degree of a partial
+                # supersession belongs in the new note's body, which in that case already
+                # carried it. `continue` so one defect yields one finding, never both.
+                case "$v" in
+                    *[[:space:]]*) prose="${prose:+${prose}, }${v}"; continue ;;
+                esac
+                base="${v##*/}"
+                # Output into a variable, not `find | grep -q .`: under pipefail grep -q
+                # exits on the first line, find dies of SIGPIPE with 141, and the pipeline
+                # status then says "not found" about a file that exists. It fires exactly
+                # where a basename is duplicated — the very class this vault carries
+                # (see ambiguous-link).
+                hits=$(find . -name "$base.md" -not -path './.git/*')
+                [ -n "$hits" ] || missing="${missing:+${missing}, }${v}"
+            done <<EOF
+$refs
+EOF
+            # The key names the note AND the field, and each field owes at most ONE
+            # finding of each type however many elements it lists — the elements go into
+            # the detail. This loop runs over three fields and keyed on the note alone
+            # once, so a note with two broken references emitted the same key twice — and
+            # a duplicate key is not a cosmetic problem here: the uniqueness guard at the
+            # top of `lint-diff` refuses the run, so one such note anywhere in the vault
+            # would take the delta down for every project on every machine. Found
+            # 2026-09-04 while adding the sibling emitter below; a list with two broken
+            # elements would have been the third way in. `#field` and not a second colon:
+            # the scope filter reads the object as everything after the FIRST colon.
+            [ -z "$prose" ] || \
+                printf 'decision-field:%s#%s\tcarries prose, not an identifier: %s\n' "${p#./}" "$k" "$prose"
+            [ -z "$missing" ] || \
+                printf 'decision-ref:%s#%s\t%s does not exist\n' "${p#./}" "$k" "$missing"
         done
     done
 
