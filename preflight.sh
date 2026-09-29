@@ -456,9 +456,27 @@ else
     ln -s "definitely-missing-$$" "$POSHOME/.config/obsidian/SingletonLock"
     printf '#!/bin/sh\necho my-vault\n' > "$POSHOME/bin/obsidian"
     chmod +x "$POSHOME/bin/obsidian"
+    # A refusal here must explain itself, because the guard cannot: every one of its four
+    # conditions, and a CLI slower than its 2-second timeout, all come out as the same
+    # exit 1. It went red ONCE on 2026-09-29 and never again — 0 of ~500 reruns, idle and
+    # under four parallel vault lints, slowest call 0.31 s — and "a red nobody can explain"
+    # is how a gate's red starts being read as noise. So the failing call is timed (a
+    # timeout shows as >= 2 s, a failed condition as ~0), retried at once (a pass says the
+    # refusal was not deterministic), and a failed retry is traced. The retry EXPLAINS the
+    # red and never cancels it: the check stays failed either way.
+    # The trace keeps only lines that START with a guard step: `bash -x` prints a test as
+    # `'['`, and a looser match caught a global assignment whose regex merely contains `[ `.
+    pos_t0=$SECONDS
     if ! HOME="$POSHOME" PATH="$POSHOME/bin:$PATH" \
          bash "$LIBSH" obsidian-available "$POSHOME/vaultdir/my-vault" >/dev/null 2>&1; then
-        problems+="the guard denied availability in a known-good state (check -L against -e)"$'\n'
+        pos_el=$((SECONDS - pos_t0))
+        if HOME="$POSHOME" PATH="$POSHOME/bin:$PATH" bash -x "$LIBSH" obsidian-available \
+               "$POSHOME/vaultdir/my-vault" >/dev/null 2>"$POSHOME/trace"; then
+            pos_retry="an immediate retry PASSED, so the refusal was not deterministic"
+        else
+            pos_retry="an immediate retry failed too; its trace: $(awk -v q="'" '/^\++ / { l = $0; sub(/^\++ /, "", l); if (index(l, q "[" q " ") == 1 || l ~ /^(command -v|_timeout|timeout |obsidian |basename)/) printf "%s | ", l }' "$POSHOME/trace")"
+        fi
+        problems+="the guard denied availability in a known-good state (check -L against -e) — the failing call took ${pos_el}s (>= 2 means the CLI hit its timeout); ${pos_retry}"$'\n'
     fi
     rm -rf "$POSHOME"
     if [ -n "$problems" ]; then
