@@ -466,6 +466,14 @@ else
     # red and never cancels it: the check stays failed either way.
     # The trace keeps only lines that START with a guard step: `bash -x` prints a test as
     # `'['`, and a looser match caught a global assignment whose regex merely contains `[ `.
+    # It recurred 2026-10-30 on Darwin and explained itself: 2 s, the retry passed. The
+    # retry runs the SAME file, and measured that day a freshly written executable costs
+    # 0.12-0.21 s on its first exec and 0.01 s after — macOS assesses a new file once.
+    # This rig writes a new fake CLI every run and timed exactly that first exec, so the
+    # rare spike past 2 s was the OS's, not the guard's; the real CLI is a binary installed
+    # long before. The fake is run once before the timed call. A new CLI that IS slow on
+    # first sight is a live case, and the guard now names it ("did not answer within").
+    "$POSHOME/bin/obsidian" >/dev/null 2>&1
     pos_t0=$SECONDS
     if ! HOME="$POSHOME" PATH="$POSHOME/bin:$PATH" \
          bash "$LIBSH" obsidian-available "$POSHOME/vaultdir/my-vault" >/dev/null 2>&1; then
