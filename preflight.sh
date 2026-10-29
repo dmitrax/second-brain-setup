@@ -4468,12 +4468,16 @@ fi
 # a truncated list and nothing said so. The standing column, the one thing the catalogue
 # adds over `ls`, never rendered at all.
 #
-# This is NOT the bash 3.2 class, and reading it as that is how it would recur: it
-# reproduces on 3.2 and on 5.3 alike, and disappears under `LC_ALL=C` on both. What
-# decides it is whether the C library calls the high byte a name character in a UTF-8
-# locale — Darwin does, glibc does not — so the same line is correct on one working
-# machine and truncating on the other, which is exactly the shape the gate exists to
-# catch. Braces cost one character and remove the judgement entirely.
+# This is NOT the bash 3.2 class of check 14, and reading it as that is how it would
+# recur: no construct is missing, the same line parses differently. It needs a UTF-8
+# locale (it disappears under `LC_ALL=C`) and a bash that takes the high byte into the
+# name. Measured 2026-10-30 on one Darwin machine: /bin/bash 3.2 does, Homebrew bash
+# 5.3.20 does not; on Arch (glibc, bash 5) it does not either. So the earlier wording
+# here — "3.2 and 5.3 alike, the libc decides" — was refuted by its own premise test;
+# which half decides, bash build or libc, the two machines cannot separate. Either way
+# the same line is correct under one shell and truncating under another, which is
+# exactly the shape the gate exists to catch. Braces cost one character and remove the
+# judgement entirely.
 missing=""
 scanned=0
 # Space to tilde is printable ASCII; a tab is legal after an expansion and is spared.
@@ -4495,11 +4499,23 @@ for f in "$SCRIPT_DIR"/commands/*.md "$SCRIPT_DIR/SKILL.md"; do
 done
 # The premise, verified where it is claimed rather than trusted from a comment: two of
 # this project's rationales read as authoritative and were refuted within the hour.
-nb_probe=$(bash -c 'set -u; v=x; printf "%s" "$v'"$(printf '\342\206\222')"'y"' 2>&1)
-nb_mode="the parse was reproduced here"
-if [ "$nb_probe" = "x$(printf '\342\206\222')y" ]; then
-    nb_mode="defensive only — this libc does not fold the high byte into the name"
-    gap "the multibyte name-parse (check 53) — it does not reproduce on this machine; the rule is defensive here and load-bearing on Darwin"
+# Every bash on the machine is probed, not only the one PATH finds first. Until 2026-10-30
+# the probe ran `bash`, which on the reference Mac is Homebrew's 5.3 — where the parse
+# does not reproduce — so the gate confessed "load-bearing on Darwin" while running on
+# Darwin, beside a /bin/bash 3.2 that reproduces it. That bash is what a stock macOS
+# install runs the package with.
+nb_mode=""
+nb_tried=""
+for nb_bash in "$(command -v bash)" /bin/bash; do
+    [ -x "$nb_bash" ] || continue
+    case " $nb_tried " in *" $nb_bash "*) continue ;; esac
+    nb_tried="${nb_tried:+$nb_tried }$nb_bash"
+    nb_probe=$(LC_ALL=en_US.UTF-8 "$nb_bash" -c 'set -u; v=x; printf "%s" "$v'"$(printf '\342\206\222')"'y"' 2>&1)
+    [ "$nb_probe" = "x$(printf '\342\206\222')y" ] || nb_mode="${nb_mode:+$nb_mode, }reproduced under $nb_bash"
+done
+if [ -z "$nb_mode" ]; then
+    nb_mode="defensive only — no bash here takes the high byte into the name ($nb_tried)"
+    gap "the multibyte name-parse (check 53) — no bash on this machine reproduces it ($nb_tried); the rule is load-bearing where one does, as /bin/bash 3.2 on Darwin"
 fi
 if [ "$scanned" -eq 0 ]; then
     fail "check 53 opened no files — empty input, not a clean repo"

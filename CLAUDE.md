@@ -1113,10 +1113,13 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
 - **A multibyte character never touches an unbraced expansion, and this is NOT the bash
   3.2 class above — reading it as that is how it would recur.** `state="$state→x"` reads
   as the variable `state\xe2`: the leading byte of the multibyte character is taken as part
-  of the NAME, and under `set -u` the shell dies. What decides it is whether the C library
-  calls a high byte a name character in a UTF-8 locale — Darwin does, glibc does not — so
-  the same line is correct on one working machine and broken on the other, which no version
-  floor can express. The failure is this project's headline shape: a loop on the left of a
+  of the NAME, and under `set -u` the shell dies. It needs a UTF-8 locale and a shell that
+  takes the high byte into the name: measured 2026-10-30 on the Mac, `/bin/bash` 3.2 does
+  and Homebrew bash 5.3 does not; on Arch it does not reproduce. (This said "the C library
+  decides — Darwin does, glibc does not" until the gate's own premise test, probing every
+  bash rather than the first on `PATH`, showed two answers on one libc.) So the same line
+  is correct under one shell and broken under another, which no version floor can express,
+  and the shell a stock macOS install runs the package with is the one that breaks. The failure is this project's headline shape: a loop on the left of a
   pipe dies silently in its subshell and the consumer receives a truncated list with exit 0.
   Braces cost one character and remove the judgement entirely, so the rule is "is it
   braced", never "does this string need it". Checked by preflight 53, over `*.sh`,
