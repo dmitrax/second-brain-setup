@@ -31,8 +31,10 @@ usage() {
 usage: brain.sh <command> [args]
 
   obsidian-available <vault>   exit 0 if the Obsidian GUI is up AND the active
-                               vault is the one given; 1 otherwise. Never starts
-                               the app, never blocks: every call is under timeout.
+                               vault is the one given; 1 otherwise, and the
+                               reason on stderr (no CLI / not running / another
+                               vault / no answer in 2 s). Never starts the app,
+                               never blocks: every call is under timeout.
   vault-name                   print the active vault's name (empty if none).
   vault-sync <vault>           pull the vault before the first write.
                                exit 0 synced or skipped on purpose
@@ -1352,13 +1354,30 @@ rename_note() {
 # Comparing `vault info=name` to the vault we mean is the point: a zero exit code
 # only proves *some* vault is open, and every CLI path is relative to that one,
 # so with another vault switched on in the GUI a write lands there, silently.
+#
+# Every refusal is exit 1 — callers branch on it and must keep doing so — and names its
+# reason on stderr, because the reasons are different facts and a report needs the right
+# one. Until 2026-10-30 they were indistinguishable, and `/brain-lint` printed "Obsidian
+# not running" for all of them: a CLI slower than the timeout, or another vault switched
+# on in the GUI, was reported as a closed app — a diagnosis whose premise nobody checked.
 obsidian_available() {
     vault="${1:-}"
-    [ -n "$vault" ] || return 1
-    command -v obsidian >/dev/null 2>&1 || return 1
+    [ -n "$vault" ] || { echo "obsidian-available: no vault given" >&2; return 1; }
+    command -v obsidian >/dev/null 2>&1 ||
+        { echo "obsidian-available: no obsidian CLI on PATH" >&2; return 1; }
     { [ -L "$HOME/Library/Application Support/obsidian/SingletonLock" ] ||
-      [ -L "$HOME/.config/obsidian/SingletonLock" ]; } || return 1
-    [ "$(_timeout 2 obsidian vault info=name 2>/dev/null)" = "$(basename "$vault")" ]
+      [ -L "$HOME/.config/obsidian/SingletonLock" ]; } ||
+        { echo "obsidian-available: Obsidian is not running" >&2; return 1; }
+    oa_name=$(_timeout 2 obsidian vault info=name 2>/dev/null); oa_rc=$?
+    [ "$oa_name" = "$(basename "$vault")" ] && return 0
+    if [ "$oa_rc" -eq 124 ]; then
+        echo "obsidian-available: Obsidian is running, but its CLI did not answer within 2 s" >&2
+    elif [ -z "$oa_name" ]; then
+        echo "obsidian-available: Obsidian is running, but its CLI named no active vault (exit $oa_rc)" >&2
+    else
+        echo "obsidian-available: another vault is active in Obsidian — $(printf '%s' "$oa_name" | head -1)" >&2
+    fi
+    return 1
 }
 
 # ── vault-sync ───────────────────────────────────────────────────────────────

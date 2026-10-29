@@ -478,11 +478,46 @@ else
         fi
         problems+="the guard denied availability in a known-good state (check -L against -e) — the failing call took ${pos_el}s (>= 2 means the CLI hit its timeout); ${pos_retry}"$'\n'
     fi
+    # (6) Each refusal names ITS reason. They all exit 1, and until 2026-10-30 nothing
+    #     told them apart, so /brain-lint reported a timed-out CLI or another active vault
+    #     as "Obsidian not running" — a diagnosis whose premise nobody checked. Asserted on
+    #     stderr per state, and the exit code must stay 1: callers branch on it.
+    #     The known-good state above must print nothing, or a pass would read as a warning.
+    oa_reason() {   # <expected substring> <description> <fake CLI body or -> <lock: y/n>
+        rm -rf "$POSHOME/bin" "$POSHOME/.config"; mkdir -p "$POSHOME/bin" "$POSHOME/.config/obsidian"
+        [ "$4" = y ] && ln -s "definitely-missing-$$" "$POSHOME/.config/obsidian/SingletonLock"
+        oa_path="$POSHOME/bin:/usr/bin:/bin"
+        if [ "$3" != - ]; then
+            printf '#!/bin/sh\n%s\n' "$3" > "$POSHOME/bin/obsidian"; chmod +x "$POSHOME/bin/obsidian"
+            # Warmed like (5): a first exec the OS has not seen can pass the 2 s timeout
+            # and turn any expected reason into "did not answer".
+            [ "$3" = "sleep 5" ] || "$POSHOME/bin/obsidian" >/dev/null 2>&1
+        fi
+        oa_err=$(HOME="$POSHOME" PATH="$oa_path" /bin/bash "$LIBSH" obsidian-available \
+                     "$POSHOME/vaultdir/my-vault" 2>&1 >/dev/null); oa_rc=$?
+        [ "$oa_rc" -eq 1 ] || problems+="$2: exit $oa_rc, not 1 — callers branch on the exit code"$'\n'
+        grep -qF -e "$1" <<<"$oa_err" ||
+            problems+="$2: the refusal does not name its reason (wanted '$1', got '${oa_err:-nothing}')"$'\n'
+    }
+    oa_reason "no obsidian CLI"        "no CLI on PATH"          -                  y
+    oa_reason "is not running"         "GUI closed"              "echo my-vault"    n
+    oa_reason "another vault is active" "another vault in the GUI" "echo other-vault" y
+    oa_reason "named no active vault"  "CLI answers with nothing" "exit 1"          y
+    oa_reason "did not answer within"  "CLI slower than 2 s"     "sleep 5"          y
+    oa_err=$(HOME="$POSHOME" PATH="$POSHOME/bin:/usr/bin:/bin" /bin/bash "$LIBSH" obsidian-available "" 2>&1 >/dev/null)
+    grep -qF -e "no vault given" <<<"$oa_err" ||
+        problems+="an empty vault argument is refused without saying so"$'\n'
+    rm -rf "$POSHOME/bin" "$POSHOME/.config"; mkdir -p "$POSHOME/bin" "$POSHOME/.config/obsidian"
+    ln -s "definitely-missing-$$" "$POSHOME/.config/obsidian/SingletonLock"
+    printf '#!/bin/sh\necho my-vault\n' > "$POSHOME/bin/obsidian"; chmod +x "$POSHOME/bin/obsidian"
+    oa_err=$(HOME="$POSHOME" PATH="$POSHOME/bin:/usr/bin:/bin" /bin/bash "$LIBSH" obsidian-available \
+                 "$POSHOME/vaultdir/my-vault" 2>&1 >/dev/null)
+    [ -z "$oa_err" ] || problems+="the guard printed on success: $oa_err"$'\n'
     rm -rf "$POSHOME"
     if [ -n "$problems" ]; then
         fail "lib/brain.sh: the guard misbehaves (verified by running it)" "$problems"
     else
-        pass "lib/brain.sh: guard exercised — 3 refusals + a working state + timeout"
+        pass "lib/brain.sh: guard exercised — 3 refusals + a working state + timeout; each of 6 refusals names its reason"
     fi
 fi
 

@@ -163,10 +163,13 @@ bash "$BRAIN" obsidian-available "$VAULT"   # exit 0 = GUI up AND this vault act
 ```
 
 Use it as the condition of every CLI branch: `if bash "$BRAIN" obsidian-available "$VAULT";
-then … else <skip> fi`. Non-zero → skip. Do not retry, do not wait longer, never call
-`obsidian` outside the branch, and never diagnose the guard by splitting its conditions
-into separate commands — they are chained on `&&` precisely so the CLI is not touched
-until the cheap checks pass, and run apart the last one cold-starts the GUI.
+then … else <skip> fi`. Non-zero → skip, and the reason for the report is the one line
+the guard prints on stderr — not running, another vault active, a CLI that did not answer —
+never a guess: they are different facts and only the guard checked which. Do not retry, do
+not wait longer, never call `obsidian` outside the branch, and never diagnose the guard by
+splitting its conditions into separate commands — they are chained on `&&` precisely so
+the CLI is not touched until the cheap checks pass, and run apart the last one cold-starts
+the GUI.
 
 ```bash
 obsidian orphans      # notes with no incoming [[wikilinks]]
@@ -305,7 +308,7 @@ BETTER since last lint:[N] ← parked debt that shrank
 Known, unchanged:      [N] ← parked debt, listed in the baseline, do not re-litigate
 
 Contradictions:        [M] (list — the part no script can find)
-Broken links (CLI):    [N] (list) / n/a (Obsidian not running)
+Broken links (CLI):    [N] (list) / n/a (<the reason the guard printed on stderr>)
 Connections.md:        updated / no changes
 
 Recommendations:
