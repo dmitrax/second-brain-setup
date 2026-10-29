@@ -3788,6 +3788,18 @@ printf -- '---\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-p2]]\n' >
 # A note with no backlink: a CONTENT defect, unrelated to freshness. It must still be
 # reported for a parked project — the exemption covers staleness, not everything.
 printf -- '---\ndate: 2020-01-01\n---\nno backlink here [[note-p1]]\n' > "$fv/parked/wiki/note-p3.md"
+# Drafts. Days elapsed is freshness too, and the sweep that measures it sits outside the
+# per-project loop, so it missed the exemption until 2026-10-30 (`nf-content`, reference,
+# two drafts at 108 days). Three cases, because the live vault nests an ACTIVE project
+# inside a parked one: the parked project's draft is exempt, the nested active project's
+# draft is not, and an active project's draft is not — the last two keep the exemption
+# from swallowing the rule.
+mkdir -p "$fv/parked/inner/wiki"
+printf -- '---\nproject: inner\nstatus: active\nupdated: 2020-01-01\n---\n## Current state\nx\n' > "$fv/parked/inner/_PROJECT.md"
+printf -- '- [[parked/inner/_PROJECT]]\n' >> "$fv/00-system/index.md"
+printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-p1]]\n' > "$fv/parked/wiki/draft-p.md"
+printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]]\n' > "$fv/parked/inner/wiki/draft-i.md"
+printf -- '---\nstatus: draft\ndate: 2020-01-01\n---\n[[../_PROJECT|_PROJECT]] [[note-q1]]\n' > "$fv/quiet/wiki/draft-q.md"
 fv_out=$(bash "$LIBSH" lint-collect "$fv" 2>&1)
 if [ -z "$fv_out" ]; then
     fail "check 45 got no output from lint-collect — the fixture or the command is broken"
@@ -3800,6 +3812,12 @@ else
         missing+="a non-active project is held to freshness anyway"$'\n'
     grep -q '^map-stale:parked' <<<"$fv_out" &&
         missing+="a non-active project is reported for map drift"$'\n'
+    grep -q '^stale-draft:parked/wiki/draft-p' <<<"$fv_out" &&
+        missing+="a non-active project's draft is aged by the calendar — the exemption stops at the per-project loop"$'\n'
+    grep -q '^stale-draft:parked/inner/wiki/draft-i' <<<"$fv_out" ||
+        missing+="an active project nested inside a parked one lost its drafts — the owner must be the deepest project"$'\n'
+    grep -q '^stale-draft:quiet/wiki/draft-q' <<<"$fv_out" ||
+        missing+="an active project's old draft is not reported — the exemption swallowed the rule"$'\n'
     grep -q '^scope-note:not-active' <<<"$fv_out" ||
         missing+="the excluded projects are not named — a silent exemption"$'\n'
     grep -q 'parked' <<<"$(grep '^scope-note:not-active' <<<"$fv_out")" ||
@@ -3812,7 +3830,7 @@ rm -rf "$fv"
 if [ -n "$missing" ]; then
     fail "freshness reports the calendar, or a status exemption hides projects silently" "$missing"
 else
-    pass "stale-project measures the record against the work; non-active projects are skipped and named"
+    pass "stale-project measures the record against the work; non-active projects are skipped and named, drafts included"
 fi
 
 # ─── 46. A cross-project entry is placed by code, because prose named no address ──

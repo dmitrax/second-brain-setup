@@ -3428,10 +3428,27 @@ $PROJECTS
 EOF
 
     # ── stale drafts ─────────────────────────────────────────────────────────
+    # Days elapsed is a freshness measure, so a project that is not `active` is exempt
+    # here exactly as in the per-project loop. Until 2026-10-30 it was not: the exemption
+    # was written for `stale-project` and `map-stale` and this sweep, sitting outside that
+    # loop, never learned it — `nf-content` (status: reference) carried two drafts at 108
+    # days while `scope-note:not-active` said freshness was skipped for it. The owner is
+    # the DEEPEST project holding the file: the live vault nests an active
+    # `nf-content/MWR-Dima` inside the parked `nf-content`, and its drafts still count.
     printf '%s\n' "$SCOPED_MD" | grep -v '/raw/' | while read -r p; do
         [ "$(_lc_fm "$p" status)" = "draft" ] || continue
         d=$(_lc_fm "$p" date); [ -n "$d" ] || continue
         ds=$(_lc_epoch "$d"); [ -n "$ds" ] || continue
+        owner=""
+        while IFS= read -r P; do
+            [ -n "$P" ] || continue
+            case "${p#./}" in "$P"/*) [ "${#P}" -gt "${#owner}" ] && owner="$P" ;; esac
+        done <<EOF
+$FS_P
+EOF
+        if [ -n "$owner" ]; then
+            case "$(_lc_fm "$owner/_PROJECT.md" status)" in ""|active) : ;; *) continue ;; esac
+        fi
         days=$(( (TODAY - ds) / 86400 ))
         [ "$days" -gt 14 ] && printf 'stale-draft:%s\t%s days\n' "$(echo "${p#./}" | sed 's|\.md$||')" "$days"
     done
