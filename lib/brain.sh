@@ -1768,6 +1768,12 @@ BUDGET_PROG=40
 # (August, before the 09-15 clean-up took it from 143 to 60 KB), the other 13 never. It
 # fires on goprofi on the day it was set (92 KB), which the owner chose knowingly.
 BUDGET_READ=64
+# Kilobytes of the WHOLE `_PROJECT.md`, which a session reads in full at start. The section
+# counters above count non-blank lines of three sections, so they cannot see a section none
+# of them names, nor a line's length. Measured 2026-11-01: goprofi-voronka's file was 162 KB
+# (~60 thousand tokens), 132 of them in `Key decisions`, and prose-budget answered ok, 30/30,
+# exit 0. Across the 16 projects that day: 162, then 30.6, 28.7, the rest 18 and below.
+BUDGET_PROJECT_READ=32
 
 # ── which findings carry a magnitude ─────────────────────────────────────────
 # The delta compares KEYS, so a debt that grows keeps its key and reads as parked.
@@ -1788,7 +1794,7 @@ BUDGET_READ=64
 # Every type the collector emits must appear in exactly one of these two lists; a new type
 # is a red until it is classified, which is what keeps the enumeration derived rather than
 # remembered.
-LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity retelling-no-source session-list taskboard-done taskboard-inprogress taskboard-read wiki-no-backlink wiki-no-links wiki-no-sibling"
+LINT_COUNTED="ambiguous-link closed-outside-done current-state ffc-budget key-uniformity project-read retelling-no-source session-list taskboard-done taskboard-inprogress taskboard-read wiki-no-backlink wiki-no-links wiki-no-sibling"
 # Not counted, and why: `stale-draft` is time elapsed, not debt; `scope-note` is an
 # inventory; the rest state a fact that is either true or absent and carry no number.
 LINT_UNCOUNTED="decision-field decision-legacy decision-ref decision-schema frontmatter map-stale missing-updated project-missing project-unregistered registry-stale scope-note stale-draft stale-project"
@@ -1893,6 +1899,12 @@ _budget_read() {
                   END { print int(b / 1024) }' "$1"
 }
 
+# Kilobytes of the whole file: every section is read at start, named or not. Bytes under C
+# for the same reason as `_budget_read`.
+_budget_project_read() {
+    LC_ALL=C awk '{ b += length($0) + 1 } END { print int(b / 1024) }' "$1"
+}
+
 # A section the file does not HAVE is not a section of length zero. Every counter above
 # returns 0 for both, and 0 is inside every budget — so `prose-budget <taskboard.md>` printed
 # three `ok` lines (0/30, 0/5, 0/20) for a file carrying none of the sections, and a wrong
@@ -1949,6 +1961,7 @@ prose_budget() {
            "$(_budget_or_absent "$pm" '^## (Last session|Последняя сессия)' _budget_sessions)" "$BUDGET_SESSIONS"
     report "_PROJECT.md For future Claude" \
            "$(_budget_or_absent "$pm" '^## (For future Claude|Для будущего Claude)' _budget_ffc)" "$BUDGET_FFC"
+    report "_PROJECT.md whole file (KB)" "$(_budget_project_read "$pm")" "$BUDGET_PROJECT_READ"
     if [ -z "$tb" ]; then
         # Name the file that was NOT measured when one is sitting right there: a scope this
         # command declined to cover is stated, never left to the caller to notice.
@@ -3299,6 +3312,9 @@ EOF
         [ "$cur" -gt "$BUDGET_CURRENT" ] && printf 'current-state:%s\t%s lines against ~%s — Current state holds status and open blockers only\n' "$P" "$cur" "$BUDGET_CURRENT"
         [ "$sess" -gt "$BUDGET_SESSIONS" ] && printf 'session-list:%s\t%s entries against ~%s — drop the oldest, the account stays in sessions/\n' "$P" "$sess" "$BUDGET_SESSIONS"
         [ "$ffc" -gt "$BUDGET_FFC" ] && printf 'ffc-budget:%s\t%s lines against ~%s — For future Claude\n' "$P" "$ffc" "$BUDGET_FFC"
+        # The detail opens with the magnitude, so a file that keeps growing reads WORSE.
+        prd=$(_budget_project_read "$f")
+        [ "$prd" -gt "$BUDGET_PROJECT_READ" ] && printf 'project-read:%s\t%s KB against ~%s — the whole file is read at every session start\n' "$P" "$prd" "$BUDGET_PROJECT_READ"
 
         # A bullet in `Current state` that runs three lines or more is no longer a state —
         # it is an account of something, and an account without a `[[link]]` has no owner

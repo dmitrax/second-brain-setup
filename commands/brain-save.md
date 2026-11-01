@@ -548,6 +548,10 @@ On **2**, name the overrun in the result block and act on it now, in this sessio
   where the work went — left alone it reads as a topic whose work has not begun.
   Then `archive` what landed in Done, with both flags as above. Whatever remains over budget after that is genuinely open work or `Backlog` —
   say so plainly and leave it as a task rather than trimming live content.
+- `_PROJECT.md whole file (KB)` → every section of this file is read at session start.
+  Move what no session needs before it knows its topic: the older `Key decisions` lines into
+  a file beside it reached by grep, keeping the newest and a pointer; dated status reports
+  into an archive beside it. Moving is the remedy, deleting never is.
 - `taskboard read at start (KB)` → the kilobytes above the first `Backlog`/`Done`
   heading, which every session start reads in full. Move what is not current work below
   `## Backlog` — a queue is read by its headings only — then `sweep-closed` and `archive`

@@ -1928,7 +1928,7 @@ else
     grep -qE 'не заканчивать молча|Never finish the save silently' "$bs" ||
         missing+="an overrun is allowed to finish silently"$'\n'
     # One implementation: the thresholds are variables, and lint_collect reads the same ones.
-    for v in BUDGET_CURRENT BUDGET_SESSIONS BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_READ; do
+    for v in BUDGET_CURRENT BUDGET_SESSIONS BUDGET_FFC BUDGET_DONE BUDGET_PROG BUDGET_READ BUDGET_PROJECT_READ; do
         n=$(grep -c "^$v=" "$lb")
         [ "$n" -eq 1 ] || missing+="$v is defined $n time(s), it must be exactly one"$'\n'
         grep -qF "\$$v" "$lb" || missing+="$v is used nowhere"$'\n'
@@ -5763,6 +5763,44 @@ if [ -n "$missing" ]; then
     fail "a backslash reaches awk through -v, where it is eaten before the regex sees it" "$missing"
 else
     pass "no backslash reaches awk through -v — by the value, a variable, or a forwarding function"
+fi
+
+# ─── 69. _PROJECT.md is weighed whole, because the section counters cannot see the rest ──
+# Reported from goprofi-voronka 2026-11-01: a 162 KB file, 132 of them in `Key decisions`,
+# read ok, 30/30 with exit 0. The fixture puts its weight where no section counter looks, in
+# Cyrillic, so a counter keyed to a section name or to characters stays within budget.
+missing=""
+pw=$(mktemp -d)
+pw_body=$(awk 'BEGIN { for (i = 0; i < 200; i++) { s = ""; for (j = 0; j < 100; j++) s = s "ж"; print "- " s } }')
+pw_head='---\nproject: proj\nstatus: active\n---\n## Current state\nx\n\n## Последняя сессия\n2026-01-01 — one\n\n## For future Claude\n- one\n'
+mkdir -p "$pw/v/proj/wiki" "$pw/v/proj/sessions" "$pw/v/00-system"
+printf -- '# index\n- [[proj/_PROJECT]]\n' > "$pw/v/00-system/index.md"
+printf -- "$pw_head"'\n## Key decisions\n%s\n' "$pw_body" > "$pw/v/proj/_PROJECT.md"
+out=$(bash "$LIBSH" prose-budget "$pw/v/proj/_PROJECT.md" 2>&1); rc=$?
+n=$(grep -oE 'whole file \(KB\): [0-9]+' <<<"$out" | grep -oE '[0-9]+$')
+if [ -z "$n" ]; then
+    missing+="  prose-budget prints no whole-file line: $(tr '\n' ' ' <<<"$out" | cut -c1-90)"$'\n'
+else
+    { [ "$n" -ge 35 ] && [ "$n" -le 45 ]; } ||
+        missing+="  a 40 KB Cyrillic section nobody names reads as $n KB — not counted, or counted in characters"$'\n'
+    [ "$rc" -eq 2 ] || missing+="  a whole file over the budget gives exit $rc, want 2"$'\n'
+fi
+grep -qEe '^project-read:proj	[0-9]+ KB' <<<"$(bash "$LIBSH" lint-collect "$pw/v" 2>&1)" ||
+    missing+="  lint-collect does not report the file's weight with the number first"$'\n'
+printf -- "$pw_head" > "$pw/v/proj/_PROJECT.md"
+out=$(bash "$LIBSH" prose-budget "$pw/v/proj/_PROJECT.md" 2>&1); rc=$?
+grep -qFe 'ok              _PROJECT.md whole file (KB): 0/' <<<"$out" ||
+    missing+="  a light file does not read ok on the whole-file line: $(tr '\n' ' ' <<<"$out" | cut -c1-90)"$'\n'
+[ "$rc" -eq 0 ] || missing+="  a light file gives exit $rc, want 0"$'\n'
+grep -qFe 'project-read:' <<<"$(bash "$LIBSH" lint-collect "$pw/v" 2>&1)" &&
+    missing+="  lint-collect reports a file under the budget"$'\n'
+grep -qFe ' project-read ' <<<" $(sed -n 's/^LINT_COUNTED="\(.*\)"$/\1/p' "$LIBSH") " ||
+    missing+="  project-read is not declared counted, so its growth reads as known and unchanged"$'\n'
+rm -rf "$pw"
+if [ -n "$missing" ]; then
+    fail "_PROJECT.md's reading weight goes unmeasured" "$missing"
+else
+    pass "_PROJECT.md is weighed whole in bytes, by prose-budget and by the lint"
 fi
 
 echo -e "${BLUE}[2/3] Scripts${NC}"
