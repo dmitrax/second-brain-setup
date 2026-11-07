@@ -1048,10 +1048,20 @@ Run `/brain-save` — updates wiki, taskboard, session log, and architecture map
   still in force. The marker must sit in the note being corrected, not only as a
   backlink from the new note: a backlink is invisible to a reader who has not yet
   found the correction, which is precisely the reader being misled
-- `/brain-lint`'s `_PROJECT.md` size check counts **prose sections only**, never total
-  file length — and each section is limited **independently**, never as a sum: `Current
-  state` 30 lines, the session list 5 entries, `For future Claude` 20 lines, the numbers
-  living in `BUDGET_*` in `lib/brain.sh`. (This bullet prescribed the summed ~60-line
+- `/brain-lint` measures `_PROJECT.md` twice, and the two numbers answer different
+  questions. **Prose is DEBT**, counted per section and never as a sum: `Current state` 30
+  lines, the session list 5 entries, `For future Claude` 20 lines. **The whole file is
+  COST** — every byte of it is read at session start — weighed in kilobytes against
+  `BUDGET_PROJECT_READ` (finding `project-read`). The numbers live in `BUDGET_*` in
+  `lib/brain.sh`. The second measure exists because the first cannot see what it does not
+  name: measured 2026-11-01, `goprofi-voronka` was 162 KB, 132 of them in `Key decisions`,
+  and the prose budget answered `ok, 30/30`, exit 0. A link list that grows legitimately
+  as knowledge is still not owed a place in the start-up read — the repair is a verbatim
+  move into a file beside it, reached by grep, never a deletion. Checked by preflight 25
+  and 69. (Until 2026-11-07 this bullet said "never total file length", true of the code
+  until `319f470` and false for a week after it.)
+  [[decision-the-whole-project-file-is-weighed-as-a-read-cost-because-a-prose-budget-cannot-see-a-link-list]]
+  (This bullet prescribed the summed ~60-line
   budget until 2026-08-19, four weeks after the rule below retired it for firing in two
   runs out of three. Nothing could see the contradiction: check 52 compares live docs
   against the code but its file list is the four documentation files, and check 54 reads

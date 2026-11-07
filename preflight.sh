@@ -1476,7 +1476,9 @@ B4="(map""file|read""array|declare -""A|local -""A|\\\$\\{[A-Za-z_][A-Za-z0-9_]*
 hits=""
 # lib/*.sh is in scope, and its absence was the whole point: until 2026-08-19 this loop
 # read the three repo scripts and NOT lib/brain.sh — 2400+ lines that are the entire
-# implementation and the one file that actually runs on the Mac's /bin/bash 3.2. Proved by
+# implementation and the file a stock macOS runs under /bin/bash 3.2 (it is started as
+# `bash`, found on PATH — a Mac with Homebrew bash first on PATH runs it under that instead,
+# which is why a green on the working Mac does not by itself cover the floor). Proved by
 # mutation: `declare -A` plus `mapfile` inserted into vault_sync left the gate unchanged
 # and this check printed its pass. That is the incident it was written from, recurring in
 # the file it was written to protect. Check 53 already scans both; this one had not been
